@@ -7,8 +7,15 @@
 
 See skills/dispatching-work/references/plan-mechanics.md. Prefer the
 narrowest query that answers the actual question: --task for one task,
---not-done or --ready for a filtered list. --full is for the rare case
-of actually wanting the whole plan.
+--not-done, --in-flight, or --ready for a filtered list. --full is for
+the rare case of actually wanting the whole plan.
+
+--not-done includes every task that isn't done/failed yet, including ones
+never dispatched at all (still `planned`). --in-flight is narrower: only
+tasks actually occupying a concurrency-cap slot (dispatched, not yet
+terminal) -- use this one, not --not-done, for any cap/slot-counting
+math (e.g. boss-say's batch dispatch); --not-done's count includes the
+ready queue itself and overcounts in-flight by exactly its size.
 """
 
 from __future__ import annotations
@@ -73,13 +80,34 @@ def not_done(plan_slug: str, plan: dict[str, Any]) -> list[dict[str, Any]]:
     return result
 
 
+def in_flight(plan_slug: str, plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Tasks actually occupying a concurrency-cap slot: dispatched (not still
+    `planned`) and not yet terminal -- includes `awaiting-authorization`/
+    `awaiting-user-input`, whose pane/worktree is still open. Deliberately
+    narrower than `not_done`, which also includes never-dispatched `planned`
+    tasks -- using `not_done`'s count as "in-flight" overcounts by exactly
+    the size of the ready queue, so a cap-slicing caller (e.g. boss-say's
+    batch dispatch) must use this, not `not_done`, to compute free slots."""
+    result = []
+    for t in plan["tasks"]:
+        if t["status"] != "dispatched":
+            continue
+        status = effective_status(plan_slug, t)
+        if status not in ("done", "failed"):
+            result.append({**t, "status": status})
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", required=True, help="plan slug")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--task", help="return this one task's status")
     group.add_argument(
-        "--not-done", action="store_true", help="list tasks not yet done/failed"
+        "--not-done", action="store_true", help="list tasks not yet done/failed (includes never-dispatched planned tasks)"
+    )
+    group.add_argument(
+        "--in-flight", action="store_true", help="list tasks actually occupying a concurrency-cap slot (dispatched, not yet terminal)"
     )
     group.add_argument(
         "--ready", action="store_true", help="list the current ready wave"
@@ -109,6 +137,10 @@ def main() -> int:
 
     if args.not_done:
         print(json.dumps(not_done(args.plan, plan), indent=2))
+        return 0
+
+    if args.in_flight:
+        print(json.dumps(in_flight(args.plan, plan), indent=2))
         return 0
 
     if args.ready:

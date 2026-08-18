@@ -1,6 +1,6 @@
 # Plan mechanics
 
-Exact file formats, scripts, and command sequences for plan-aware dispatch. Extends `dispatch-mechanics.md` (single-instruction dispatch is unchanged and still the mechanism each plan task ultimately uses) — read that file too, this one only covers what's new for plans.
+Exact file formats, scripts, and command sequences for plan-aware dispatch. Extends `dispatch-mechanics.md` (single-instruction dispatch is unchanged and still the mechanism each plan task ultimately uses) — read that file too, this one only covers what's new for plans. `<app_dir>` below is defined there ("Resolving the app directory") — never assume it looks like `<repo_root>/apps/<app>`.
 
 ## Plan file
 
@@ -86,9 +86,10 @@ Every dispatch instruction for a plan task MUST tell the agent to run this on co
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan-slug> --task <task-id>
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan-slug> --not-done
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan-slug> --in-flight
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan-slug> --ready
 ```
-`--task` returns one task's status only. `--not-done` lists tasks not yet `done`/`failed`. `--ready` computes and returns the current ready wave (every task whose `depends_on` are all `done` and whose own status is still `planned`) — use this instead of recomputing the graph by hand each time. None of these dump the full plan or the full status directory unless explicitly asked to (a `--full` flag, used rarely, e.g. when the user asks to see the whole plan).
+`--task` returns one task's status only. `--not-done` lists every task not yet `done`/`failed`, including ones still `planned` (never dispatched) — this answers "what's left in this plan," not "what's currently occupying a slot." `--in-flight` is the narrower one for that: only tasks that are actually dispatched (not `planned`) and not yet terminal — use this, never `--not-done`, for any concurrency-cap/slot-counting math (e.g. `boss-say`'s batch dispatch), since `--not-done`'s count also includes the ready queue itself and overcounts in-flight by exactly its size. `--ready` computes and returns the current ready wave (every task whose `depends_on` are all `done` and whose own status is still `planned`) — use this instead of recomputing the graph by hand each time. None of these dump the full plan or the full status directory unless explicitly asked to (a `--full` flag, used rarely, e.g. when the user asks to see the whole plan).
 
 ## Computing and dispatching a wave
 
@@ -152,23 +153,23 @@ Derive both the herdr agent name and any tab label from `plan_id`/`task_id`, e.g
 **Do not use `herdr worktree create`.** It always opens a brand-new herdr workspace with no way to target an existing one instead (`--workspace` only names the *source* repo, not a destination; confirmed against `herdr api schema --json` and the herdr project's own acknowledgement of this gap in [GitHub Discussion #553](https://github.com/herdrdev/herdr/discussions/553)) — one worktree per plan would mean one stray workspace per task, which is exactly what this mechanism must not do. Create the worktree with plain git instead, then, if the task is herdr-pane mode, add it to the *existing* workspace as a tab:
 
 ```bash
-git -C "<repo_root>/apps/<app>" worktree add "<repo_root>/apps/<app>-<slug>" -b "<branch>" "<base_branch>"
+git -C "<app_dir>" worktree add "<app_dir>-<slug>" -b "<branch>" "<base_branch>"
 ```
 Applies regardless of whether the target app has its own git-workflow skill.
 
 **Mandatory verification after every call** (confirmed necessary live, not a hypothetical — and confirmed to reproduce identically whether the worktree was created via `git worktree add` or the old `herdr worktree create`, so this step stays mandatory regardless of creation method):
 ```bash
-cd "<repo_root>/apps/<app>-<slug>" && git rev-parse --show-toplevel
+cd "<app_dir>-<slug>" && git rev-parse --show-toplevel
 ```
-If this does not equal `<repo_root>/apps/<app>-<slug>` exactly, the worktree is broken (confirmed root cause: repos with `extensions.worktreeConfig = true` don't get a per-worktree `core.worktree` override written automatically). Repair:
+If this does not equal `<app_dir>-<slug>` exactly, the worktree is broken (confirmed root cause: repos with `extensions.worktreeConfig = true` don't get a per-worktree `core.worktree` override written automatically). Repair:
 ```bash
 cat > "<git-common-dir>/worktrees/<worktree-name>/config.worktree" <<EOF
 [core]
-	worktree = <repo_root>/apps/<app>-<slug>
+	worktree = <app_dir>-<slug>
 	bare = false
 EOF
 ```
-(`<git-common-dir>` is `git -C <repo_root>/apps/<app> rev-parse --git-common-dir`; `<worktree-name>` is usually the branch/slug name — confirm via `ls <git-common-dir>/worktrees/`.) Re-run the verification command after writing the repair file. Do not dispatch into a worktree that still fails verification after one repair attempt — stop and report it. `git worktree repair` does **not** fix this class of problem — do not reach for it.
+(`<git-common-dir>` is `git -C <app_dir> rev-parse --git-common-dir`; `<worktree-name>` is usually the branch/slug name — confirm via `ls <git-common-dir>/worktrees/`.) Re-run the verification command after writing the repair file. Do not dispatch into a worktree that still fails verification after one repair attempt — stop and report it. `git worktree repair` does **not** fix this class of problem — do not reach for it.
 
 **Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree, and an agent either fails to run or has to discover and copy it itself mid-task, both a worse experience than getting it upfront. Read the resolved app's `localFiles` entry in `.claude/straw-boss/apps.json` (see `skills/init/references/apps-config-schema.md`) — copy only the files listed there, each `path` relative to the app's `dir`. Blind-copy only (`cp -r`, never `Read`/`cat`) so file contents never enter the boss's own context. If an entry has `sensitive: true`, ask the user once before copying it, even though it's already listed in the config — a config entry pre-authorizes *that the file exists and is expected*, not that copying live credentials needs no confirmation. An app with no `localFiles` entries has nothing to copy — that's the common case, not a gap.
 
@@ -176,7 +177,7 @@ Skip silently (no error) when a listed source file doesn't exist in the main che
 
 **Joining the plan's shared workspace (herdr-pane mode only).** All worktree-backed tabs for the same plan land in one workspace — never a fresh one per task. That workspace is, by construction, the boss's own: when the boss is itself running inside a herdr pane, `$HERDR_WORKSPACE_ID` names it (confirmed set alongside `HERDR_ENV`).
 ```bash
-herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "<repo_root>/apps/<app>-<slug>" --label "<slug>" --no-focus
+herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "<app_dir>-<slug>" --label "<slug>" --no-focus
 ```
 Confirmed live: `tab create` (unlike `worktree create`) genuinely accepts an explicit `--workspace` target and lands the new tab there without disturbing the boss's own pane. There is no per-task decision to make about which workspace to target or whether it's "shared with the main agent" — it always is, because this mechanism never creates a new one. If the boss is not itself running inside a herdr pane (no `$HERDR_WORKSPACE_ID`), there is no workspace to join — the task falls back to `claude-p` mode per `dispatch-mechanics.md`, where workspace/tab concepts don't apply.
 
@@ -185,7 +186,7 @@ The dispatch instruction for a full-flow task states the worktree's path explici
 **Removal, symmetrically, never touches the shared workspace itself:**
 ```bash
 herdr tab close <tab_id>
-git -C "<repo_root>/apps/<app>" worktree remove "<repo_root>/apps/<app>-<slug>"
+git -C "<app_dir>" worktree remove "<app_dir>-<slug>"
 ```
 Not `herdr worktree remove` (that primitive assumes the old one-workspace-per-worktree model and errors `not_linked_worktree` once a workspace holds more than one worktree's tab) and not `herdr workspace close` (the workspace is the boss's own — possibly still in active use by the human user or the boss itself — and this mechanism never owns its lifecycle, only the tabs it added to it).
 

@@ -4,6 +4,10 @@ Exact file formats and command sequences for `dispatching-work`. Everything belo
 
 All state lives under a `.straw-boss/` directory in the user's home directory, not the target project's checkout — this is per-user, per-machine operational state (which dispatch mode this user prefers, what's currently dispatched), not project configuration.
 
+## Resolving the app directory — never assume `apps/<app>`
+
+`<app_dir>` below always means `<repo_root>/<dir>`, where `<dir>` is the resolved app's `apps.json` entry (`skills/init/references/apps-config-schema.md`) — or `<repo_root>` itself, unchanged, when `work-on`'s no-config single-app fast path resolved the implicit app (see `work-on`'s Task 1). `apps/<name>` is one possible shape `<dir>` takes in a monorepo, never a literal path segment to hardcode — confirmed live: for a single-app repo (the primary use case per the README, not an edge case), `<app_dir>` is the repo root itself, and `cd`-ing into a literal `<repo_root>/apps/<app>` fails outright since that directory never exists. Resolve `<app_dir>` once per dispatch and use it everywhere below — never reconstruct an `apps/<app>` path by convention.
+
 ## Resolving the home directory — do not use shell `~` expansion
 
 `~` expansion is shell-dependent and unreliable across platforms this tool's users are on (Windows shells don't expand it consistently). Resolve the base directory with:
@@ -83,7 +87,7 @@ esac
 ## `claude-p` dispatch
 
 ```bash
-cd "<repo_root>/apps/<app>" && claude -p --session-id "<uuid from dispatch-task.py write>" $PERM_FLAGS "<task text>"
+cd "<app_dir>" && claude -p --session-id "<uuid from dispatch-task.py write>" $PERM_FLAGS "<task text>"
 ```
 
 - Foreground (blocking): run as above and wait for exit — appropriate when the caller needs the result immediately.
@@ -111,7 +115,7 @@ cd "<repo_root>/apps/<app>" && claude -p --session-id "<uuid from dispatch-task.
    Wide pane → `--direction right`; narrow/tall pane → `--direction down`. If the tab already has 4 panes (2x2), don't split again — create another tab instead, labeled with a `-2`/`-3` suffix on the same batch label.
 3. **Split and set cwd to the app directory:**
    ```bash
-   herdr pane split --pane <target_pane_id> --direction right --cwd "<repo_root>/apps/<app>" --no-focus
+   herdr pane split --pane <target_pane_id> --direction right --cwd "<app_dir>" --no-focus
    ```
    Read the new pane id from `.result.pane.pane_id`.
 4. **Start the claude agent with the session_id `dispatch-task.py write` printed:**
