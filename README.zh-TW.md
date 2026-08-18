@@ -62,6 +62,7 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 - 處理一批獨立任務 → `boss-say`（一次跑完，或 `/loop boss-say ...` 讓它自己抓步調跨多個 turn）
 - 只是想知道某個請求歸哪個 app 管 → `work-on`
 - 想在加入或打斷之前先看某個 agent 做到哪 → `peeking-work`
+- 幫沒有 agent system 的 app 建一套精簡版 → `create-great-harness`（`init` 也會主動提議）
 - 對照規則稽核現有程式碼 → `inspecting-app`
 - 研究目前行為，沒有規則或故障要查 → `investigating-app`
 - 東西壞了，原因不明 → `troubleshooting-app`

@@ -62,6 +62,7 @@ Once `init` has run, trigger whichever entry skill matches what you're doing:
 - Work through a batch of independent tasks → `boss-say` (one turn, or `/loop boss-say ...` to self-pace across many)
 - Just want to know which app a request belongs to → `work-on`
 - Check on an agent before joining or interrupting it → `peeking-work`
+- Bootstrap a minimal agent system for an app that has none → `create-great-harness` (also offered automatically by `init`)
 - Audit existing code against your rules → `inspecting-app`
 - Research current behavior, no rule or failure in question → `investigating-app`
 - Something's broken, cause unknown → `troubleshooting-app`
