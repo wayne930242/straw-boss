@@ -36,19 +36,20 @@ Then run once per project:
 /straw-boss:init
 ```
 
-`init` asks which apps to manage (scanning for a common monorepo layout as a starting point), writes `.claude/straw-boss/apps.json`, syncs a managed-apps section into your project's root `CLAUDE.md`, and asks separately whether to enable herdr on this machine.
+`init` asks which apps to manage (scanning for a common monorepo layout as a starting point), writes `.claude/straw-boss/apps.json`, syncs a managed-apps section into your project's root `CLAUDE.md`, offers a lightweight agent-system bootstrap for any app that has neither `CLAUDE.md` nor `.claude/`, and asks separately whether to enable herdr on this machine.
 
 ## Skills
 
 | Skill | Description |
 |-------|-------------|
-| `init` | One-time setup: ask which apps to manage, write the config, sync root `CLAUDE.md`; decide whether to enable herdr dispatch |
+| `init` | One-time setup: ask which apps to manage, write the config, sync root `CLAUDE.md`, offer to bootstrap a missing agent system per app; decide whether to enable herdr dispatch |
 | `work-on` | Resolve a request to one of the configured apps, apply any legacy redirect; hand implementation requests to dispatch |
 | `dispatching-work` | Choose the dispatch mode (`claude-p` / `herdr-pane`), write the dispatch instruction, actually dispatch, list/wrap up existing dispatches |
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch one task, and get user authorization before every commit/push/merge |
 | `boss-say` | Drive a batch of independent tasks under a concurrency cap, refilling as items finish; runs as one long turn or repeatedly via `/loop` |
 | `peeking-work` | Read-only peek at one dispatch's live progress — herdr pane output, or a `claude-p` transcript tail — without joining or interrupting it |
 | `notifying-boss` | Used automatically by a dispatched agent to reach the boss with a purely informational question — herdr first, `SendMessage` as fallback |
+| `create-great-harness` | Lightweight agent-system bootstrap for an app with neither `CLAUDE.md` nor `.claude/` — a short `CLAUDE.md` plus one pipe-tested guard hook |
 | `inspecting-app` | Resolve the app, hand off to your own rules/conventions audit skill (read-only, no dispatch) |
 | `investigating-app` | Resolve the app, hand off to your own research skill (read-only, no dispatch) |
 | `troubleshooting-app` | Diagnose a reported failure — app-code vs. infrastructure — then hand off to `shipping-task` for the fix |

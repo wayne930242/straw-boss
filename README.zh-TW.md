@@ -36,19 +36,20 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 /straw-boss:init
 ```
 
-`init` 會問你要納管哪些 app（先掃一輪常見的 monorepo 結構當起點），寫進 `.claude/straw-boss/apps.json`，同步一段納管範圍摘要進專案根目錄的 `CLAUDE.md`，另外也會問你要不要在這台機器啟用 herdr。
+`init` 會問你要納管哪些 app（先掃一輪常見的 monorepo 結構當起點），寫進 `.claude/straw-boss/apps.json`，同步一段納管範圍摘要進專案根目錄的 `CLAUDE.md`，對沒有 `CLAUDE.md` 也沒有 `.claude/` 的 app 主動提議建立一套精簡的 agent system，另外也會問你要不要在這台機器啟用 herdr。
 
 ## Skills
 
 | Skill | 說明 |
 |-------|-------------|
-| `init` | 一次性設定：問要納管哪些 app、寫設定檔、同步 root `CLAUDE.md`；決定要不要啟用 herdr |
+| `init` | 一次性設定：問要納管哪些 app、寫設定檔、同步 root `CLAUDE.md`、對缺 agent system 的 app 主動提議建立；決定要不要啟用 herdr |
 | `work-on` | 把請求對應到某個已設定的 app，處理 legacy redirect；把實作請求交給派工 |
 | `dispatching-work` | 選派工模式（`claude-p` / `herdr-pane`）、寫派工指令、實際派工、列出/收尾既有派工 |
 | `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工單一任務、每次 commit/push/merge 前找你授權 |
 | `boss-say` | 在固定並行上限下跑一批獨立任務，一有空位就補下一個；可以一次跑完，也可以搭配 `/loop` 反覆調用 |
 | `peeking-work` | 唯讀查看某個派工目前在做什麼——herdr pane 的輸出，或 `claude-p` 的 transcript tail——不加入、不打斷 |
 | `notifying-boss` | 派出去的 agent 用來聯絡 boss、問純資訊性問題——優先用 herdr，`SendMessage` 當備援；由 agent 自動觸發 |
+| `create-great-harness` | 幫沒有 `CLAUDE.md` 也沒有 `.claude/` 的 app 建一套精簡 agent system——一份 `CLAUDE.md` 加一個經過 pipe-test 驗證的 guard hook |
 | `inspecting-app` | 對應出目標 app，交給你自己的規則/慣例稽核 skill（唯讀，不派工） |
 | `investigating-app` | 對應出目標 app，交給你自己的研究型 skill（唯讀，不派工） |
 | `troubleshooting-app` | 診斷回報的故障——app 程式碼還是基礎設施出包——再交給 `shipping-task` 修 |

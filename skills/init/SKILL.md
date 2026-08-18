@@ -11,7 +11,7 @@ Two independent one-time decisions, both persisted so no other skill has to ask 
 
 Locate the repo root with `git rev-parse --show-toplevel` — never assume the current directory is the root. Read `<repo-root>/.claude/straw-boss/apps.json` (schema: `references/apps-config-schema.md`). If it exists, show the current app list and ask whether the user wants to keep it, add/remove apps, or redo it from scratch — do not silently overwrite it.
 
-- **Keep, no changes:** Task 2 is a no-op — the config already reflects the intended app list, so don't re-run its resolution dialogue. Continue straight to Task 3 (still re-sync `CLAUDE.md`, in case that file drifted independently of the config).
+- **Keep, no changes:** Task 2 is a no-op — the config already reflects the intended app list, so don't re-run its resolution dialogue. Continue straight to Task 3 (still check each app for a missing agent system, and re-sync `CLAUDE.md` in Task 4, in case that file drifted independently of the config).
 - **Add/remove apps, or redo from scratch:** Task 2 runs for real, scoped to what the user asked to change (e.g. only the new apps, not re-confirming ones the user didn't mention).
 - **No existing config:** Task 2 runs fresh, as normal.
 
@@ -32,7 +32,18 @@ Write the result to `<repo-root>/.claude/straw-boss/apps.json` (same repo-root r
 
 **Verification:** every app in the written config has a `name`, `dir`, and at least one `match` phrase; nothing was invented without the user confirming it; optional fields are present only where the user actually said so.
 
-## Task 3: Sync the managed-apps section in root CLAUDE.md
+## Task 3: Offer to bootstrap a missing agent system, per app
+
+For each app resolved in Task 2 (newly added or already-configured — this check is about the app's own directory, not about whether `apps.json` itself changed this run), check whether it already has any agent system at all: does `<app-dir>/CLAUDE.md` and/or `<app-dir>/.claude/` exist?
+
+- **Either exists:** nothing to do for this app — some agent system is already there, even a minimal one; this task doesn't second-guess its adequacy.
+- **Neither exists:** tell the user this app has no agent system yet, and ask whether to bootstrap a lightweight one now — a `CLAUDE.md` plus one basic guard hook, via the `create-great-harness` skill — or skip it. Ask per app, not once for the whole batch; a vendored or generated app, for instance, may deliberately warrant none.
+  - **Yes:** invoke `create-great-harness` for that app's directory, then move to the next app.
+  - **Skip:** move on. This check is live, not a remembered decision — a future `init` run checks again, but stops asking the moment `CLAUDE.md`/`.claude/` exists, however it got there.
+
+**Verification:** every app from Task 2 was checked for `CLAUDE.md`/`.claude/` existence; an app that already had either was never asked; an app with neither got an explicit yes/skip answer before this task moved on.
+
+## Task 4: Sync the managed-apps section in root CLAUDE.md
 
 **Keep this section minimal.** A monorepo's root `CLAUDE.md` is inherited by every nested session — not just the one running straw-boss's skills, but every session dispatched into an individual app's own directory too (nested `CLAUDE.md` loads walk up to the repo root). Anything written here has its token cost paid by every one of those sessions, every time, unlike `apps.json`, which only the skills that need it read on demand. Names and directories only — no prose, no per-app quirks. `forbidDirectCommit`, `gitWorkflowSkill`, `redirectTo`, `note`, `localFiles`, and `crossAppSkills` all stay in `apps.json` exclusively; never duplicate them here.
 
@@ -53,28 +64,28 @@ If the markers already exist, replace only the content between them — leave th
 
 **Verification:** root `CLAUDE.md` exists and contains an up-to-date managed-apps section between the markers, listing only app names and directories; nothing outside the markers was touched; no per-app rule detail leaked into this section from `apps.json`.
 
-## Task 4: Check for an existing capability record
+## Task 5: Check for an existing capability record
 
 Resolve the home directory with `python3 -c "from pathlib import Path; print(Path.home() / '.straw-boss')"` — never write a literal `~/.straw-boss/...` into a command (shell `~` expansion is unreliable across the platforms this tool's users are on). Read `<home>/.straw-boss/capability.json` (schema: `${CLAUDE_PLUGIN_ROOT}/skills/dispatching-work/references/dispatch-mechanics.md`). If it already exists, show its current state (`herdr-enabled` or `claude-p-only`) and ask whether the user wants to keep it or change it — do not silently overwrite it, and do not silently skip re-running the rest of this skill just because a record exists.
 
-**Verification:** you either found no record and proceeded to Task 5, or found one and got an explicit keep/change answer before touching it.
+**Verification:** you either found no record and proceeded to Task 6, or found one and got an explicit keep/change answer before touching it.
 
-## Task 5: Create the dispatch-instruction directory
+## Task 6: Create the dispatch-instruction directory
 
 Create `<home>/.straw-boss/dispatch/` and `<home>/.straw-boss/dispatch/archive/` if they don't exist. Nothing here needs `.gitignore` handling — it's outside any git checkout entirely.
 
 **Verification:** both directories exist under the user's home directory, not under the project checkout.
 
-## Task 6: Ask whether to enable herdr
+## Task 7: Ask whether to enable herdr
 
 Ask the user whether to enable herdr-backed dispatch (`herdr-pane` mode). Explain briefly what it buys them (a visible, interactive pane the user can join, real synchronous wait for mid-task questions) versus the always-available `claude-p` fallback.
 
-- **Declines:** persist `{"mode": "claude-p-only"}` and stop here — Task 7 does not run.
-- **Enables:** continue to Task 7.
+- **Declines:** persist `{"mode": "claude-p-only"}` and stop here — Task 8 does not run.
+- **Enables:** continue to Task 8.
 
 **Verification:** the user made an explicit choice; you did not default to enabling herdr without asking.
 
-## Task 7: Verify herdr and its claude integration (enable branch only)
+## Task 8: Verify herdr and its claude integration (enable branch only)
 
 1. Run `herdr status`. If it doesn't report a running server, tell the user plainly and ask whether to proceed `claude-p-only` for now instead — do not persist `herdr-enabled` against a herdr that isn't actually reachable.
 2. Run `herdr integration status` and check the `claude` line.
@@ -82,9 +93,9 @@ Ask the user whether to enable herdr-backed dispatch (`herdr-pane` mode). Explai
    - **Not installed:** tell the user plainly that `herdr integration install claude` writes `~/.claude/hooks/herdr-agent-state.sh` and registers a global `SessionStart` hook in `~/.claude/settings.json` — this affects **every** Claude Code session on this machine, not just straw-boss dispatches. This is a hard prerequisite for `herdr-pane` mode's session tracking, not optional. Get explicit confirmation before running it. On decline, fall back to persisting `claude-p-only` rather than half-enabling herdr without the integration.
 3. Persist `{"mode": "herdr-enabled"}`.
 
-**Verification:** `herdr-enabled` is only persisted after both the server and the claude integration were actually confirmed working — not assumed from the user having said "yes" to the general question in Task 6.
+**Verification:** `herdr-enabled` is only persisted after both the server and the claude integration were actually confirmed working — not assumed from the user having said "yes" to the general question in Task 7.
 
-## Task 8: Check `crossSessionInbound` (enable branch only)
+## Task 9: Check `crossSessionInbound` (enable branch only)
 
 `herdr-pane` tasks can message the boss directly for coordination questions (see `dispatching-work`'s `references/cross-session-coordination.md`) — but only if incoming cross-session messages actually deliver. Read `~/.claude/settings.json`'s top-level `crossSessionInbound` key.
 
@@ -99,10 +110,12 @@ Ask the user whether to enable herdr-backed dispatch (`herdr-pane` mode). Explai
 - "The directory scan found everything, skip confirming with the user" — no, present candidates and let the user confirm/trim/add.
 - "Ask every app about forbidDirectCommit/gitWorkflowSkill/localFiles/crossAppSkills one by one" — no, ask once whether any app needs them; most don't.
 - "Root CLAUDE.md doesn't have the markers, just append a second copy" — no, search for the markers first; only append when truly absent.
-- "Add the Notes column back, it's more useful at a glance" — no, per Task 3: every nested session inherits root `CLAUDE.md`, so per-app detail belongs in `apps.json` only, never duplicated into the root file.
-- "The user said yes to herdr, persist it now" — no, Task 7 still has to confirm the server and integration are actually there.
+- "Add the Notes column back, it's more useful at a glance" — no, per Task 4: every nested session inherits root `CLAUDE.md`, so per-app detail belongs in `apps.json` only, never duplicated into the root file.
+- "The user said yes to herdr, persist it now" — no, Task 8 still has to confirm the server and integration are actually there.
 - "Integration install is just a config tweak, no need to call out the global scope" — no, it's a machine-wide hook; say so every time it's about to run, not just the first.
-- "Just set crossSessionInbound to accept, it's obviously useful" — no, Task 8 still explains what it does and asks first, same as every other setting change in this skill.
+- "Just set crossSessionInbound to accept, it's obviously useful" — no, Task 9 still explains what it does and asks first, same as every other setting change in this skill.
+- "An app has neither CLAUDE.md nor .claude/, but it's probably fine, skip asking" — no, Task 3 asks explicitly per app; only an app that already has one is exempt.
+- "Ask once for the whole app list whether to bootstrap agent systems" — no, Task 3: per app, since a vendored/generated app may deliberately warrant none.
 
 ## References
 
