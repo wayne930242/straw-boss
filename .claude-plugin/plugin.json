@@ -1,0 +1,8 @@
+{
+  "name": "straw-boss",
+  "version": "0.1.0",
+  "description": "Cross-app development router for monorepos: resolves a request to the right app, then dispatches implementation work into a session actually rooted in that app's own directory (headless `claude -p`, or an interactive herdr pane) so its own CLAUDE.md/rules/skills/hooks load the way they would for any developer working there directly.",
+  "author": { "name": "Wei Hung" },
+  "license": "MIT",
+  "keywords": ["herdr", "dispatch", "multi-app", "monorepo", "agent-harness", "orchestration"]
+}

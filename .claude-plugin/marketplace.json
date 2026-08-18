@@ -1,0 +1,12 @@
+{
+  "name": "straw-boss",
+  "owner": { "name": "Wei Hung" },
+  "description": "straw-boss: cross-app dev dispatch plugin for Claude Code monorepos.",
+  "plugins": [
+    {
+      "name": "straw-boss",
+      "source": "./",
+      "description": "Cross-app development router + herdr-backed dispatch for monorepos."
+    }
+  ]
+}

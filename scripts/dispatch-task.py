@@ -1,0 +1,196 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""Consolidates the pre/post-dispatch instruction-file bookkeeping.
+
+Two phases, both operating on the same instruction file
+(<home>/.straw-boss/dispatch/<app>--<slug>.json -- see
+skills/dispatching-work/references/dispatch-mechanics.md):
+
+  write   -- before the actual claude/herdr dispatch call. Generates a
+             session_id, writes the instruction file with status
+             "pending", and (for a plan task) marks plan.json's matching
+             task "dispatched". Does not run any claude/herdr command
+             itself -- the caller still does that, using the session_id
+             this prints.
+  confirm -- after the dispatch call succeeds and delivery is confirmed.
+             Flips the instruction to "in-progress" and records
+             herdr_pane_id/herdr_tab_id for herdr-pane mode.
+
+This script never runs claude/herdr/git itself -- those stay live tool
+calls the orchestrator makes per dispatch-mechanics.md, so their output
+and failures stay visible. This script only keeps the bookkeeping files
+consistent around them.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+def mp_dev_root() -> Path:
+    return Path.home() / ".straw-boss"
+
+
+def instruction_path(app: str, slug: str) -> Path:
+    return mp_dev_root() / "dispatch" / f"{app}--{slug}.json"
+
+
+def plan_path(plan_slug: str) -> Path:
+    return mp_dev_root() / "plans" / plan_slug / "plan.json"
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text())
+
+
+def dump_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def load_plan_and_task(plan_slug: str, task_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    path = plan_path(plan_slug)
+    if not path.is_file():
+        raise ValueError(f"no plan found at {path}")
+    plan = load_json(path)
+    task = next((t for t in plan["tasks"] if t["task_id"] == task_id), None)
+    if task is None:
+        raise ValueError(f"no task {task_id!r} in plan {plan_slug!r}")
+    return plan, task
+
+
+def check_dispatchable(plan_slug: str, task_id: str) -> None:
+    """Read-only guard, checked before any file is written -- a rejected
+    dispatch must never leave a stray instruction file behind."""
+    _, task = load_plan_and_task(plan_slug, task_id)
+    if task["status"] != "planned":
+        raise ValueError(f"task {task_id!r} is already {task['status']!r} -- refusing to dispatch it again")
+
+
+def mark_plan_task(plan_slug: str, task_id: str, status: str) -> None:
+    plan, task = load_plan_and_task(plan_slug, task_id)
+    task["status"] = status
+    dump_json(plan_path(plan_slug), plan)
+
+
+def write_instruction(
+    app: str,
+    slug: str,
+    task: str,
+    mode: str,
+    repo_root: str,
+    batch: str | None,
+    plan_slug: str | None,
+    task_id: str | None,
+) -> dict[str, Any]:
+    path = instruction_path(app, slug)
+    if path.exists():
+        raise ValueError(
+            f"instruction file {path} already exists -- pick a different --slug or wrap up the existing dispatch first"
+        )
+    if (plan_slug is None) != (task_id is None):
+        raise ValueError("--plan and --task-id must be given together, or not at all")
+    if plan_slug is not None:
+        assert task_id is not None
+        check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
+
+    session_id = str(uuid.uuid4())
+    payload: dict[str, Any] = {
+        "app": app,
+        "task": task,
+        "mode": mode,
+        "batch": batch,
+        "session_id": session_id,
+        "herdr_pane_id": None,
+        "herdr_tab_id": None,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "repo_root": repo_root,
+    }
+    if plan_slug is not None:
+        payload["plan_id"] = f"p-{plan_slug}"
+        payload["task_id"] = task_id
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    dump_json(path, payload)
+
+    if plan_slug is not None:
+        assert task_id is not None
+        mark_plan_task(plan_slug, task_id, "dispatched")
+
+    return {"session_id": session_id, "instruction_path": str(path)}
+
+
+def confirm_instruction(app: str, slug: str, pane_id: str | None, tab_id: str | None) -> dict[str, Any]:
+    path = instruction_path(app, slug)
+    if not path.is_file():
+        raise ValueError(f"no instruction file at {path}")
+    payload = load_json(path)
+    if payload["status"] != "pending":
+        raise ValueError(
+            f"instruction at {path} is {payload['status']!r}, not 'pending' -- "
+            f"refusing to confirm a dispatch that wasn't just written"
+        )
+    payload["status"] = "in-progress"
+    if pane_id is not None:
+        payload["herdr_pane_id"] = pane_id
+    if tab_id is not None:
+        payload["herdr_tab_id"] = tab_id
+    dump_json(path, payload)
+    return {"instruction_path": str(path)}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="action", required=True)
+
+    write_p = sub.add_parser("write", help="write the pending instruction file")
+    write_p.add_argument("--app", required=True)
+    write_p.add_argument("--slug", required=True, help="short slug for the filename")
+    write_p.add_argument("--task", required=True, help="full task text for the dispatched session")
+    write_p.add_argument("--mode", required=True, choices=["claude-p", "herdr-pane"])
+    write_p.add_argument("--repo-root", required=True)
+    write_p.add_argument("--batch", default=None)
+    write_p.add_argument("--plan", default=None, help="plan slug, if this is a plan task")
+    write_p.add_argument("--task-id", default=None, help="this task's task_id within the plan")
+
+    confirm_p = sub.add_parser("confirm", help="mark the dispatch in-progress after it lands")
+    confirm_p.add_argument("--app", required=True)
+    confirm_p.add_argument("--slug", required=True)
+    confirm_p.add_argument("--pane-id", default=None)
+    confirm_p.add_argument("--tab-id", default=None)
+
+    args = parser.parse_args()
+
+    try:
+        if args.action == "write":
+            result = write_instruction(
+                app=args.app,
+                slug=args.slug,
+                task=args.task,
+                mode=args.mode,
+                repo_root=args.repo_root,
+                batch=args.batch,
+                plan_slug=args.plan,
+                task_id=args.task_id,
+            )
+        else:
+            result = confirm_instruction(app=args.app, slug=args.slug, pane_id=args.pane_id, tab_id=args.tab_id)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
