@@ -21,8 +21,13 @@ fleet.
                 below for the common case of actually wanting to wait.
   wait       -- block until the resource is free, then acquire it.
                 Loops `acquire` internally with the poll cadence it
-                reports, printing progress to stderr, up to
-                --max-wait-seconds before giving up (non-zero exit).
+                reports, printing progress to stderr. By default never
+                gives up before the currently observed holder's own
+                ttl_seconds would make it reclaimable -- a resource
+                genuinely cannot stay contended forever as long as
+                something eventually calls this. --max-wait-seconds is
+                an optional, deliberate early cutoff for a caller that
+                wants to fail fast instead.
   claim-port -- for a task whose dev-server port is configurable: derive
                 a starting candidate deterministically from --key, then
                 acquire it, incrementing on contention up to
@@ -117,6 +122,7 @@ def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, hold
                     "held_by_boss": existing.get("holder_boss"),
                     "held_note": existing.get("note"),
                     "age_seconds": round(age, 1),
+                    "held_ttl_seconds": existing["ttl_seconds"],
                     "retry_after_seconds": max(5, min(30, int(remaining))),
                 }
             # Stale -- the previous holder never released and outlived its own ttl.
@@ -132,27 +138,53 @@ def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, hold
     )
 
 
+WAIT_CHURN_MULTIPLIER = 3  # see wait_for's docstring note below
+
+
 def wait_for(
-    resource: str, holder: str, ttl_seconds: int, note: str | None, holder_boss: str | None, max_wait_seconds: int
+    resource: str, holder: str, ttl_seconds: int, note: str | None, holder_boss: str | None, max_wait_seconds: int | None
 ) -> dict[str, Any]:
+    """A resource can go unavailable for two different reasons, and the give-up
+    deadline has to handle both without an explicit --max-wait-seconds:
+
+    - One holder, legitimately slow: never give up before *that holder's own*
+      ttl_seconds would make it reclaimable -- otherwise this fails a task that
+      would have succeeded on the very next poll.
+    - Several holders in a row (churn): a naive per-holder deadline that resets
+      on every new holder never terminates. max_ttl_seen only grows when a
+      materially larger ttl is actually observed, so capping total elapsed at
+      WAIT_CHURN_MULTIPLIER times the largest ttl seen so far still comfortably
+      covers any single legitimate holder while guaranteeing termination under
+      churn.
+    """
     started = time.monotonic()
+    max_ttl_seen = 0
     while True:
         result = acquire(resource, holder, ttl_seconds, note, holder_boss)
         if result["acquired"]:
             return result
         retry = result["retry_after_seconds"]
-        boss_bit = f" (boss {result['held_by_boss']!r})" if result.get("held_by_boss") else ""
         elapsed = time.monotonic() - started
+        max_ttl_seen = max(max_ttl_seen, result["held_ttl_seconds"])
+        reclaimable_in = max(0.0, result["held_ttl_seconds"] - result["age_seconds"])
+        deadline = max_ttl_seen * WAIT_CHURN_MULTIPLIER
+        if max_wait_seconds is not None:
+            deadline = min(deadline, max_wait_seconds)
+        boss_bit = f" (boss {result['held_by_boss']!r})" if result.get("held_by_boss") else ""
         print(
-            f"waiting on {resource!r}, held by {result['held_by']!r}{boss_bit}, "
-            f"retrying in {retry}s ({elapsed:.0f}s elapsed of {max_wait_seconds}s budget)",
+            f"waiting on {resource!r}, held by {result['held_by']!r}{boss_bit}, retrying in {retry}s "
+            f"({elapsed:.0f}s elapsed of {deadline:.0f}s budget; this holder's own ttl reclaimable in "
+            f"~{reclaimable_in:.0f}s if not released sooner)",
             file=sys.stderr,
         )
-        if elapsed > max_wait_seconds:
-            raise ValueError(
-                f"gave up waiting on {resource!r} after {elapsed:.0f}s (budget {max_wait_seconds}s) -- "
-                f"still held by {result['held_by']!r}"
+        if elapsed > deadline:
+            reason = (
+                f"--max-wait-seconds {max_wait_seconds} reached"
+                if max_wait_seconds is not None
+                else f"{WAIT_CHURN_MULTIPLIER}x the largest ttl_seconds observed ({max_ttl_seen}s) reached -- "
+                f"likely several different holders in a row rather than one slow one"
             )
+            raise ValueError(f"gave up waiting on {resource!r} after {elapsed:.0f}s -- still held by {result['held_by']!r} ({reason})")
         time.sleep(retry)
 
 
@@ -266,7 +298,17 @@ def main() -> int:
     wait_p.add_argument("--ttl-seconds", type=int, default=1800)
     wait_p.add_argument("--note", default=None)
     wait_p.add_argument("--requester-boss", default=None)
-    wait_p.add_argument("--max-wait-seconds", type=int, default=600, help="give up and exit nonzero past this total wait")
+    wait_p.add_argument(
+        "--max-wait-seconds",
+        type=int,
+        default=None,
+        help=(
+            "explicit early cutoff, exits nonzero once reached. Default (unset) waits up to 3x the largest "
+            "ttl_seconds observed among holders seen so far -- comfortably covers one legitimately slow holder "
+            "while still terminating under churn. Pass this only to deliberately fail faster and let a human "
+            "decide sooner"
+        ),
+    )
 
     claim_port_p = sub.add_parser("claim-port", help="derive a port deterministically and acquire it, retrying on contention")
     claim_port_p.add_argument("--app", required=True)

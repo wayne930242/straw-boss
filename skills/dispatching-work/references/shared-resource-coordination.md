@@ -22,6 +22,8 @@ It derives a starting candidate from `--key` (`hashlib.sha256`, not the randomiz
 
 **Set `--base`/`--range` deliberately, at instruction-assembly time — the defaults are not safe to leave unexamined.** The lock only prevents two *worktrees* from landing on the same port; it does nothing to keep the derived range from overlapping the app's own default dev-server port, its HMR/websocket port, or a sibling service's fixed port. Check what the target app actually uses before picking a range, and choose one that doesn't overlap. Prints the port it landed on in the `port` field of its JSON result — bind the dev server to that, not the app's default. Because the lock is checked *before* binding, this also catches two tasks landing on the identical candidate by hash coincidence, which a bare bind-and-catch-`EADDRINUSE` approach would miss.
 
+**`claim-port` never waits — exhausting `--max-attempts` is a hard failure, by design, not a queue.** A flexible port's whole point is that another number works just as well, so it always prefers moving on over waiting; if every candidate in the derived band is genuinely held, the band is too narrow for how many worktrees are actually running at once — widen `--range` or raise `--max-attempts`, don't add a wait here. Waiting only ever makes sense for the fixed case below, where there's no alternate number to try.
+
 **Fixed (the port value itself is externally constrained — hardcoded app config, or another service's CORS allowlist expects an exact origin/port, even if the dev-server tool itself could technically bind elsewhere).** There is no alternate candidate to try — incrementing would just break CORS again. This is the agent's actual **request** for that exact port: it uses `wait` on `port--<app>--<port-number>` exactly like the DB case below, and if it's taken, waits rather than substitutes.
 
 ## Shared DB migrations — always the lock
@@ -44,13 +46,13 @@ The DB case, and the fixed-port case, both use `wait`:
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" wait \
   --resource "db-migration--<db-identity>" --holder "<app>--<slug>" \
   --requester-boss "<this dispatch's boss pane id or SendMessage peer name>" \
-  --ttl-seconds 1800 --note "<short reason>" --max-wait-seconds 600
+  --ttl-seconds 1800 --note "<short reason>"
 # ... run the migration / start the dev server here ...
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" release \
   --resource "db-migration--<db-identity>" --holder "<app>--<slug>"
 ```
 
-(For the fixed-port case, `--resource "port--<app>--<fixed-port-number>"` instead.) `wait` exits nonzero and prints why if it's still held after `--max-wait-seconds` (default 600) — the dispatch instruction tells the agent to report that through its own failure-reporting mechanism (`report-task-status.py --status failed` for a plan task; this task's own failure path otherwise), not treat a nonzero exit as something to retry silently. A task that legitimately needs to wait longer states so and raises `--max-wait-seconds` explicitly.
+(For the fixed-port case, `--resource "port--<app>--<fixed-port-number>"` instead.) **Leave `--max-wait-seconds` unset — that's what guarantees a resource can never stay stuck forever.** With it unset, `wait` never gives up before whatever `--ttl-seconds` the *current holder* actually declared has elapsed — recomputed fresh on every poll, so it tracks the real holder even if a different one grabs the lock in between. Once that elapses, the very next poll reclaims it. Passing an explicit `--max-wait-seconds` doesn't change that guarantee for anyone else — it only makes *this* call give up sooner than the holder's own ttl, on purpose, when a task would genuinely rather fail fast and let a human decide than keep waiting. Don't add it as a matter of habit.
 
 **Always invoke the script with the full `uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py"` form**, same as every other script in this plugin — it is not executable on its own and a bare `claim-resource.py ...` call fails.
 
