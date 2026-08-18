@@ -12,7 +12,7 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 
 ## 工作流程特色
 
-- **單一協調者**——負責派工，不動手實作。
+- **一個 epic，一個 boss**——整個 epic 由單一協調 session 負責，只派工不動手實作。
 - **任務級 context**——每個派工都有自己的 context，只裝那一件任務要用的東西，不是整個專案。
 - **worktree 隔離**——多個任務平行跑，互不干擾。
 - **`/loop` 處理批次**——`boss-say` 讓一批任務跨 turn 自己抓步調。
@@ -48,6 +48,7 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 | `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工單一任務、每次 commit/push/merge 前找你授權 |
 | `boss-say` | 在固定並行上限下跑一批獨立任務，一有空位就補下一個；可以一次跑完，也可以搭配 `/loop` 反覆調用 |
 | `peeking-work` | 唯讀查看某個派工目前在做什麼——herdr pane 的輸出，或 `claude-p` 的 transcript tail——不加入、不打斷 |
+| `notifying-boss` | 派出去的 agent 用來聯絡 boss、問純資訊性問題——優先用 herdr，`SendMessage` 當備援；由 agent 自動觸發 |
 | `inspecting-app` | 對應出目標 app，交給你自己的規則/慣例稽核 skill（唯讀，不派工） |
 | `investigating-app` | 對應出目標 app，交給你自己的研究型 skill（唯讀，不派工） |
 | `troubleshooting-app` | 診斷回報的故障——app 程式碼還是基礎設施出包——再交給 `shipping-task` 修 |
@@ -59,7 +60,7 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 - 開始實作 → `shipping-task`（會先呼叫 `work-on`，再派工）
 - 處理一批獨立任務 → `boss-say`（一次跑完，或 `/loop boss-say ...` 讓它自己抓步調跨多個 turn）
 - 只是想知道某個請求歸哪個 app 管 → `work-on`
-- 想在加入或打斷之前先看某個工人做到哪 → `peeking-work`
+- 想在加入或打斷之前先看某個 agent 做到哪 → `peeking-work`
 - 對照規則稽核現有程式碼 → `inspecting-app`
 - 研究目前行為，沒有規則或故障要查 → `investigating-app`
 - 東西壞了，原因不明 → `troubleshooting-app`

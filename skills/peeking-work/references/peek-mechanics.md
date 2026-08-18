@@ -21,8 +21,8 @@ tail -n 40 ~/.claude/projects/<encoded-cwd>/<session_id>.jsonl \
   | jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text'
 ```
 
-One JSON object per line, oldest first — `tail` gets the most recent activity. Filtering to `assistant`/`text` entries surfaces what the worker most recently said; a run of `tool_use`/`tool_result` entries with no nearby `text` means it's still mid-tool-call, which is itself worth reporting ("running a command, no summary yet"). If the file doesn't exist yet, the worker hasn't produced output yet — report that plainly, it isn't an error.
+One JSON object per line, oldest first — `tail` gets the most recent activity. Filtering to `assistant`/`text` entries surfaces what the agent most recently said; a run of `tool_use`/`tool_result` entries with no nearby `text` means it's still mid-tool-call, which is itself worth reporting ("running a command, no summary yet"). If the file doesn't exist yet, the agent hasn't produced output yet — report that plainly, it isn't an error.
 
 ## Reporting back
 
-State what the worker is currently doing in plain language, not a raw dump of the read/tail output. If the peek reveals the worker is visibly stuck on something its status file hasn't caught up to yet (e.g. a question sitting in the pane before `awaiting-user-input` synced), say so — but don't act on it from here; resolving it goes through the worker's own pane, or `dispatching-work`'s checkpoint handling, never this skill.
+State what the agent is currently doing in plain language, not a raw dump of the read/tail output. If the peek reveals the agent is visibly stuck on something its status file hasn't caught up to yet (e.g. a question sitting in the pane before `awaiting-user-input` synced), say so — but don't act on it from here; resolving it goes through the agent's own pane, or `dispatching-work`'s checkpoint handling, never this skill.

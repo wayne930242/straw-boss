@@ -4,7 +4,7 @@ Exact file formats, scripts, and command sequences for plan-aware dispatch. Exte
 
 ## Plan file
 
-`<home>/.straw-boss/plans/<plan-slug>/plan.json`. Written once by `work-on` after the decomposition is confirmed with the user via `grilling`; afterward only the orchestrating session updates per-task `status` fields — never a dispatched task's own session.
+`<home>/.straw-boss/plans/<plan-slug>/plan.json`. Written once by `work-on` after the decomposition is confirmed with the user via `grilling`; afterward only the boss updates per-task `status` fields — never a dispatched agent's own session.
 
 ```json
 {
@@ -34,7 +34,7 @@ Exact file formats, scripts, and command sequences for plan-aware dispatch. Exte
 
 ## Cross-task artifacts (when a dependent task needs its prerequisite's output)
 
-A `depends_on` edge is only meaningful if the dependent task can actually get at what its prerequisite produced — `plan.json`'s `description` field is high-level prose, not a place to point at a file. Use `<home>/.straw-boss/plans/<plan-slug>/artifacts/` (a sibling of `status/`, created the same way — empty directory at plan-write time) for any file one task's output and a later task's input both need to reference. Name files `<task-id>-<short-label>.<ext>` so origin is obvious without cross-referencing `plan.json`. State the exact path in both tasks' dispatch instructions explicitly — the producing task's instruction says where to write it, the consuming task's instruction says where to read it from and that it's real required input, not optional context. Confirmed live: a dependent task's dispatched session correctly treated a prerequisite's artifact file as authoritative input and produced output that genuinely depended on its content.
+A `depends_on` edge is only meaningful if the dependent task can actually get at what its prerequisite produced — `plan.json`'s `description` field is high-level prose, not a place to point at a file. Use `<home>/.straw-boss/plans/<plan-slug>/artifacts/` (a sibling of `status/`, created the same way — empty directory at plan-write time) for any file one task's output and a later task's input both need to reference. Name files `<task-id>-<short-label>.<ext>` so origin is obvious without cross-referencing `plan.json`. State the exact path in both tasks' dispatch instructions explicitly — the producing task's instruction says where to write it, the consuming task's instruction says where to read it from and that it's real required input, not optional context. Confirmed live: a dependent task's agent correctly treated a prerequisite's artifact file as authoritative input and produced output that genuinely depended on its content.
 
 ## Status directory (per-task completion reports)
 
@@ -59,17 +59,17 @@ or, for a task that hit a substantive work-content question, not a git mutation 
 
 ## Authorization checkpoints (full flow only)
 
-A dispatched session must stop and report readiness rather than execute any commit/push/merge — the orchestrating session (in practice, `shipping-task`, not `dispatching-work` itself) obtains authorization and resumes it. Within a plan, that checkpoint is reported the same way completion is: the dispatch instruction for every full-flow task MUST tell the dispatched session to call the status script with `--status awaiting-authorization` (not just stop silently) the moment it's ready to commit/push/merge, before it actually stops. This is what makes the checkpoint visible to `Monitor` — without it, a task waiting on authorization looks identical to a task still working, which is exactly the "silence is not success" failure `Monitor`'s coverage requirement exists to prevent.
+An agent must stop and report readiness rather than execute any commit/push/merge — the boss (in practice, `shipping-task`, not `dispatching-work` itself) obtains authorization and resumes it. Within a plan, that checkpoint is reported the same way completion is: the dispatch instruction for every full-flow task MUST tell the agent to call the status script with `--status awaiting-authorization` (not just stop silently) the moment it's ready to commit/push/merge, before it actually stops. This is what makes the checkpoint visible to `Monitor` — without it, a task waiting on authorization looks identical to a task still working, which is exactly the "silence is not success" failure `Monitor`'s coverage requirement exists to prevent.
 
 `dispatching-work`'s own plan-dispatch loop (wave computation, parallel dispatch, auto-detach) treats `awaiting-authorization` as "leave this task alone, it isn't done or failed" — it does **not** attempt to authorize or resume it. That's `shipping-task`'s job (or whichever caller assembled the instruction and owns the authorization gate for it), watching the same `Monitor` notifications and, on an `awaiting-authorization` event for one of its tasks, doing what `shipping-task`'s own authorization step already does: state what's about to happen, get explicit authorization, resume the session to actually execute it. Once resumed, the task continues and eventually reports a real terminal state (`done`/`failed`).
 
 ## User-clarification checkpoints (`herdr-pane` only)
 
-Different from an authorization checkpoint on every axis that matters: it isn't a mutation gate, and the orchestrator doesn't act as an intermediary. A dispatched task's instruction MUST also tell it: if it hits a substantive question about the *work itself* — which of several valid approaches to take, how to interpret an ambiguous requirement, whether an existing OpenSpec change it found mid-task should be extended or left alone — that isn't a commit/push/merge decision, it calls the status script with `--status awaiting-user-input` and the question in `--note`, then asks the question directly in its own pane and waits there. The user can answer it directly in that pane — the orchestrator does not need to relay the question or the answer, and should not try to guess the answer on the task's behalf.
+Different from an authorization checkpoint on every axis that matters: it isn't a mutation gate, and the boss doesn't act as an intermediary. A dispatched task's instruction MUST also tell it: if it hits a substantive question about the *work itself* — which of several valid approaches to take, how to interpret an ambiguous requirement, whether an existing OpenSpec change it found mid-task should be extended or left alone — that isn't a commit/push/merge decision, it calls the status script with `--status awaiting-user-input` and the question in `--note`, then asks the question directly in its own pane and waits there. The user can answer it directly in that pane — the boss does not need to relay the question or the answer, and should not try to guess the answer on the task's behalf.
 
-On an `awaiting-user-input` notification, the orchestrator's job is narrow: tell the user which task is asking and which pane/tab to go answer it in (from the dispatch instruction's recorded `herdr_pane_id`/`herdr_tab_id`), then leave it alone — same as `awaiting-authorization`, `dispatching-work`'s plan loop does not treat this as done, failed, or ready-for-a-new-wave, and does not auto-detach it. Once the user has answered directly in the pane, the task continues on its own and eventually reports a real terminal state or another checkpoint — the orchestrator does not need to explicitly "resume" it the way it does for an authorization checkpoint, because the conversation already happened directly in the pane.
+On an `awaiting-user-input` notification, the boss's job is narrow: tell the user which task is asking and which pane/tab to go answer it in (from the dispatch instruction's recorded `herdr_pane_id`/`herdr_tab_id`), then leave it alone — same as `awaiting-authorization`, `dispatching-work`'s plan loop does not treat this as done, failed, or ready-for-a-new-wave, and does not auto-detach it. Once the user has answered directly in the pane, the task continues on its own and eventually reports a real terminal state or another checkpoint — the boss does not need to explicitly "resume" it the way it does for an authorization checkpoint, because the conversation already happened directly in the pane.
 
-**Not every mid-task question needs the user.** When a task's question is something the orchestrator can answer directly from what it already knows (another task's status, which apps are in scope) — not a judgment call about the work — it uses `SendMessage` to the orchestrator instead of `awaiting-user-input`, and doesn't touch the status file at all for that exchange. See `references/cross-session-coordination.md` for addressing and the safety boundary (a peer's reply is never authorization for anything).
+**Not every mid-task question needs the user.** When a task's question is something the boss can answer directly from what it already knows (another task's status, which apps are in scope) — not a judgment call about the work — it uses `SendMessage` to the boss instead of `awaiting-user-input`, and doesn't touch the status file at all for that exchange. See `references/cross-session-coordination.md` for addressing and the safety boundary (a peer's reply is never authorization for anything).
 
 **This checkpoint only exists for `herdr-pane` tasks.** A `claude -p` process is not interactive — once it exits there is no live process left to answer a question to, so a `claude-p` task cannot genuinely pause and wait for a user reply. If a `claude-p` task hits a question it cannot resolve on its own, the closest it can do is report `failed` with the question stated in `--note`, ending the attempt — the user answers separately and the task gets redispatched with that answer folded into a new instruction. Because of this, `dispatching-work`'s mode selection (its own Task 1) requires `herdr-pane` — not just prefers it — whenever a task seems likely to need mid-task clarification (e.g. `work-on` found an existing OpenSpec change in the target app and the user's answer about it was ambiguous, or the task is genuinely open-ended) and herdr is available; only fall back to `claude-p` with an explicit caveat to the user when herdr genuinely isn't available for that dispatch.
 
@@ -79,7 +79,7 @@ On an `awaiting-user-input` notification, the orchestrator's job is narrow: tell
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
   --plan <plan-slug> --task <task-id> --status done --note "..."
 ```
-Every dispatch instruction for a plan task MUST tell the dispatched session to run this on completion or failure — this is how the orchestrator finds out, not by asking the dispatched session directly. The script writes only `status/<task-id>.json` — it must never touch `plan.json` or another task's status file.
+Every dispatch instruction for a plan task MUST tell the agent to run this on completion or failure — this is how the boss finds out, not by asking the agent directly. The script writes only `status/<task-id>.json` — it must never touch `plan.json` or another task's status file.
 
 ## Reading plan/task status (targeted, not full-file dumps)
 
@@ -136,14 +136,14 @@ When a task's status file reports `done`/`failed` (observed via the Monitor noti
 
 ## Same-task continuation (`/compact` then phase 2)
 
-Only when the next task is a later phase of the *same* logical task (never a different, independent task — those always get a fresh worker regardless of whether a finished session is sitting idle):
+Only when the next task is a later phase of the *same* logical task (never a different, independent task — those always get a fresh agent regardless of whether a finished session is sitting idle):
 ```bash
-herdr agent prompt "<same-worker-name>" "/compact <optional focus text>" 
-herdr agent prompt "<same-worker-name>" "<phase 2 task text>" --wait --timeout <ms>
+herdr agent prompt "<same-agent-name>" "/compact <optional focus text>" 
+herdr agent prompt "<same-agent-name>" "<phase 2 task text>" --wait --timeout <ms>
 ```
 Two separate calls. Do not wait for the compact call to settle before sending the second — Claude Code processes queued input in order.
 
-## Worker naming
+## Agent naming
 
 Derive both the herdr agent name and any tab label from `plan_id`/`task_id`, e.g. `<plan-slug short>-<task-id>` — must match `[a-z][a-z0-9_-]{0,31}` and be unique among live agents (check `herdr agent list` first if unsure). Do not use a generic or app-only name once a plan is involved — the point is that herdr's own `agent list`/pane listings reveal the plan/task without cross-referencing files.
 
@@ -170,24 +170,24 @@ EOF
 ```
 (`<git-common-dir>` is `git -C <repo_root>/apps/<app> rev-parse --git-common-dir`; `<worktree-name>` is usually the branch/slug name — confirm via `ls <git-common-dir>/worktrees/`.) Re-run the verification command after writing the repair file. Do not dispatch into a worktree that still fails verification after one repair attempt — stop and report it. `git worktree repair` does **not** fix this class of problem — do not reach for it.
 
-**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree, and a dispatched session either fails to run or has to discover and copy it itself mid-task, both a worse experience than getting it upfront. Read the resolved app's `localFiles` entry in `.claude/straw-boss/apps.json` (see `skills/init/references/apps-config-schema.md`) — copy only the files listed there, each `path` relative to the app's `dir`. Blind-copy only (`cp -r`, never `Read`/`cat`) so file contents never enter the orchestrator's own context. If an entry has `sensitive: true`, ask the user once before copying it, even though it's already listed in the config — a config entry pre-authorizes *that the file exists and is expected*, not that copying live credentials needs no confirmation. An app with no `localFiles` entries has nothing to copy — that's the common case, not a gap.
+**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree, and an agent either fails to run or has to discover and copy it itself mid-task, both a worse experience than getting it upfront. Read the resolved app's `localFiles` entry in `.claude/straw-boss/apps.json` (see `skills/init/references/apps-config-schema.md`) — copy only the files listed there, each `path` relative to the app's `dir`. Blind-copy only (`cp -r`, never `Read`/`cat`) so file contents never enter the boss's own context. If an entry has `sensitive: true`, ask the user once before copying it, even though it's already listed in the config — a config entry pre-authorizes *that the file exists and is expected*, not that copying live credentials needs no confirmation. An app with no `localFiles` entries has nothing to copy — that's the common case, not a gap.
 
 Skip silently (no error) when a listed source file doesn't exist in the main checkout — not every dev environment has every optional local file set up.
 
-**Joining the plan's shared workspace (herdr-pane mode only).** All worktree-backed tabs for the same plan land in one workspace — never a fresh one per task. That workspace is, by construction, the orchestrator's own: when the orchestrator is itself running inside a herdr pane, `$HERDR_WORKSPACE_ID` names it (confirmed set alongside `HERDR_ENV`).
+**Joining the plan's shared workspace (herdr-pane mode only).** All worktree-backed tabs for the same plan land in one workspace — never a fresh one per task. That workspace is, by construction, the boss's own: when the boss is itself running inside a herdr pane, `$HERDR_WORKSPACE_ID` names it (confirmed set alongside `HERDR_ENV`).
 ```bash
 herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "<repo_root>/apps/<app>-<slug>" --label "<slug>" --no-focus
 ```
-Confirmed live: `tab create` (unlike `worktree create`) genuinely accepts an explicit `--workspace` target and lands the new tab there without disturbing the orchestrator's own pane. There is no per-task decision to make about which workspace to target or whether it's "shared with the main agent" — it always is, because this mechanism never creates a new one. If the orchestrator is not itself running inside a herdr pane (no `$HERDR_WORKSPACE_ID`), there is no workspace to join — the task falls back to `claude-p` mode per `dispatch-mechanics.md`, where workspace/tab concepts don't apply.
+Confirmed live: `tab create` (unlike `worktree create`) genuinely accepts an explicit `--workspace` target and lands the new tab there without disturbing the boss's own pane. There is no per-task decision to make about which workspace to target or whether it's "shared with the main agent" — it always is, because this mechanism never creates a new one. If the boss is not itself running inside a herdr pane (no `$HERDR_WORKSPACE_ID`), there is no workspace to join — the task falls back to `claude-p` mode per `dispatch-mechanics.md`, where workspace/tab concepts don't apply.
 
-The dispatch instruction for a full-flow task states the worktree's path explicitly and that the dispatched session must not create its own. Everything after worktree creation (commit, MR/release mechanics) still follows the target app's own conventions where one exists — only the worktree-creation step moved.
+The dispatch instruction for a full-flow task states the worktree's path explicitly and that the agent must not create its own. Everything after worktree creation (commit, MR/release mechanics) still follows the target app's own conventions where one exists — only the worktree-creation step moved.
 
 **Removal, symmetrically, never touches the shared workspace itself:**
 ```bash
 herdr tab close <tab_id>
 git -C "<repo_root>/apps/<app>" worktree remove "<repo_root>/apps/<app>-<slug>"
 ```
-Not `herdr worktree remove` (that primitive assumes the old one-workspace-per-worktree model and errors `not_linked_worktree` once a workspace holds more than one worktree's tab) and not `herdr workspace close` (the workspace is the orchestrator's own — possibly still in active use by the human user or the orchestrating session itself — and this mechanism never owns its lifecycle, only the tabs it added to it).
+Not `herdr worktree remove` (that primitive assumes the old one-workspace-per-worktree model and errors `not_linked_worktree` once a workspace holds more than one worktree's tab) and not `herdr workspace close` (the workspace is the boss's own — possibly still in active use by the human user or the boss itself — and this mechanism never owns its lifecycle, only the tabs it added to it).
 
 ## Failure handling
 

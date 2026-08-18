@@ -1,11 +1,11 @@
 ---
 name: dispatching-work
-description: Dispatches a resolved app + task to a session actually rooted in that app's own directory. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app/boss-say, when the user asks what's currently dispatched, or when a dispatched task should be closed out. Not for one dispatch's live content (`peeking-work`).
+description: Starts, tracks, lists, and closes out the agents this plugin runs — one per dispatched task, each rooted in its resolved app's own directory. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app/boss-say, when the user asks what's currently dispatched, or when a dispatched task should be closed out. Not for one dispatch's live content (`peeking-work`).
 ---
 
 ## Overview
 
-Every dispatched task is tracked as one instruction file under `~/.straw-boss/dispatch/` — the user's home directory, not the target project checkout (see `init`). This skill covers: **dispatch** a single task (Tasks 1-5), **dispatch a plan** (Branch below, when `work-on` produced a multi-task dependency graph), **list**, and **wrap up**. Exact CLI/JSON syntax lives in `references/` — `dispatch-mechanics.md` (single-task + permission-mode detection), `plan-mechanics.md` (plan/status schemas, worktree repair heredoc, zsh `Monitor` gotchas), `cross-session-coordination.md` (`SendMessage`/interrupt syntax) — read the relevant one for the exact command before running it. Every requirement below is real, not a pointer to go read something else first. For a specific dispatch's actual live content or progress — not just its status — invoke `peeking-work` instead of reading a pane/transcript inline here.
+**The unit this skill manages is the agent, not the app.** An app (`.claude/straw-boss/apps.json`, resolved upstream by `work-on`) is only *where* an agent is rooted — this skill starts the agent there, tracks it, and closes it out; it never itself decides which app a request belongs to. Every dispatched task is one agent, tracked as one instruction file under `~/.straw-boss/dispatch/` — the user's home directory, not the target project checkout (see `init`). This skill covers: **dispatch** a single agent (Tasks 1-5), **dispatch a plan** (Branch below, when `work-on` produced a multi-task dependency graph — one agent per task), **list**, and **wrap up**. Exact CLI/JSON syntax lives in `references/` — `dispatch-mechanics.md` (single-agent dispatch + permission-mode detection), `plan-mechanics.md` (plan/status schemas, worktree repair heredoc, zsh `Monitor` gotchas), `cross-session-coordination.md` (`SendMessage`/interrupt syntax) — read the relevant one for the exact command before running it. Every requirement below is real, not a pointer to go read something else first. For a specific agent's actual live content or progress — not just its status — invoke `peeking-work` instead of reading a pane/transcript inline here.
 
 Prerequisite: `~/.straw-boss/capability.json` must exist. If it doesn't, stop and tell the caller to run `init` first.
 
@@ -16,9 +16,9 @@ Prerequisite: `~/.straw-boss/capability.json` must exist. If it doesn't, stop an
 
 State the mode and why before doing anything else.
 
-**Before the first `herdr-pane` dispatch in this orchestrator session** (not per-dispatch, not per-plan), ensure the orchestrator itself is addressable — see `references/cross-session-coordination.md` "Making the orchestrator addressable" for the exact mechanism. Skipping this is not a cosmetic gap: `SendMessage` does not fail loudly when a worker guesses the wrong target — it silently delivers to whatever session across the account happens to share a similar auto-derived title, which can be a stale, unrelated, offline session. Confirmed live: exactly this happened — a worker's coordination question was reported "sent" and was never seen again, no error anywhere.
+**Before the first `herdr-pane` dispatch in this boss session** (not per-dispatch, not per-plan), ensure the boss itself is addressable — see `references/cross-session-coordination.md` "Making the boss addressable" for the exact mechanism. Skipping this is not a cosmetic gap: `SendMessage` does not fail loudly when an agent guesses the wrong target — it silently delivers to whatever session across the account happens to share a similar auto-derived title, which can be a stale, unrelated, offline session. Confirmed live: exactly this happened — an agent's coordination question was reported "sent" and was never seen again, no error anywhere.
 
-**Verification:** mode stated with a reason; `herdr-pane` never chosen without checking both conditions; a task likely to need clarification never silently went to `claude-p` when herdr was available; before the first `herdr-pane` dispatch this session, the orchestrator's own addressability was checked, not assumed.
+**Verification:** mode stated with a reason; `herdr-pane` never chosen without checking both conditions; a task likely to need clarification never silently went to `claude-p` when herdr was available; before the first `herdr-pane` dispatch this session, the boss's own addressability was checked, not assumed.
 
 ## Task 2: Resolve batch membership
 
@@ -34,7 +34,7 @@ Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) —
 
 Follow `references/dispatch-mechanics.md` for the exact `claude`/`herdr` command sequence — don't improvise it from general knowledge.
 
-**Mirror the orchestrator's own permission mode onto the worker.** Detect it from the orchestrator's own process args (`ps -p "$CLAUDE_PID" -ww -o args=`, exact detection in the reference) and pass the equivalent flag to the worker's launch command. A worker must never end up more tightly gated than the orchestrator dispatching it — never hardcode a specific mode here, and never omit this "to be safe."
+**Mirror the boss's own permission mode onto the agent.** Detect it from the boss's own process args (`ps -p "$CLAUDE_PID" -ww -o args=`, exact detection in the reference) and pass the equivalent flag to the agent's launch command. An agent must never end up more tightly gated than the boss dispatching it — never hardcode a specific mode here, and never omit this "to be safe."
 
 For `herdr-pane`, a `herdr agent prompt` success return is not proof of delivery — a first-run interruption can swallow the submission while the CLI still reports success. Confirm delivery (terminal-title check, in the reference) before proceeding.
 
@@ -52,20 +52,20 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 
 **Wave dispatch.** Compute the ready wave (`read-plan-status.py --ready`) and dispatch **every task in it at once** — never one at a time, never serialize an independent task through another task's session because it happens to be idle. Each task still goes through Tasks 1-5 individually (mode selection, instruction, dispatch, confirm), with `plan_id`/`task_id` added.
 
-**Worktree ownership (full-flow tasks).** The orchestrator creates every worktree itself, for every managed app uniformly, regardless of the app's own tooling — plain `git worktree add`, never `herdr worktree create` (it always opens a new herdr workspace with no way to target an existing one; confirmed via herdr's own API schema and [GitHub Discussion #553](https://github.com/herdrdev/herdr/discussions/553)). Verify `git rev-parse --show-toplevel` inside it resolves to the worktree's own path — repos with `extensions.worktreeConfig = true` silently don't, regardless of creation method — and repair with a `config.worktree` file if not (exact steps in `plan-mechanics.md`). Never dispatch into an unverified worktree. For `herdr-pane`, join it to the orchestrator's own existing workspace as a tab (`herdr tab create --workspace`) — a plan's worktrees never scatter across workspaces, and the shared workspace is never closed by this mechanism, only the tabs added to it.
+**Worktree ownership (full-flow tasks).** The boss creates every worktree itself, for every managed app uniformly, regardless of the app's own tooling — plain `git worktree add`, never `herdr worktree create` (it always opens a new herdr workspace with no way to target an existing one; confirmed via herdr's own API schema and [GitHub Discussion #553](https://github.com/herdrdev/herdr/discussions/553)). Verify `git rev-parse --show-toplevel` inside it resolves to the worktree's own path — repos with `extensions.worktreeConfig = true` silently don't, regardless of creation method — and repair with a `config.worktree` file if not (exact steps in `plan-mechanics.md`). Never dispatch into an unverified worktree. For `herdr-pane`, join it to the boss's own existing workspace as a tab (`herdr tab create --workspace`) — a plan's worktrees never scatter across workspaces, and the shared workspace is never closed by this mechanism, only the tabs added to it.
 
-**Worker naming.** Derive from `plan_id`/`task_id` for both herdr's own agent handle and the trailing `claude --name` flag — the same value serves herdr control (`agent get/prompt/read`) and `SendMessage`/`ListAgents` addressability, no separate naming decision.
+**Agent naming.** Derive from `plan_id`/`task_id` for both herdr's own agent handle and the trailing `claude --name` flag — the same value serves herdr control (`agent get/prompt/read`) and `SendMessage`/`ListAgents` addressability, no separate naming decision.
 
 **Cross-task artifacts.** When task B depends on task A and genuinely needs A's output, both dispatch instructions state the exact path under `~/.straw-boss/plans/<slug>/artifacts/` — A's says where to write it, B's says where to read it and that it's required input, not optional context. `plan.json`'s `description` field is prose, not a handoff mechanism.
 
 **Three checkpoint types — never conflate them:**
 | Status | For | Answered by | Terminal? |
 |---|---|---|---|
-| `awaiting-authorization` | commit/push/merge | User, relayed through the orchestrator (`shipping-task`) | No — orchestrator resumes after authorizing |
-| `awaiting-user-input` | work-content question needing human judgment | User, directly in the worker's own pane — orchestrator only points at it | No — worker continues on its own once answered |
-| `SendMessage` to the orchestrator | informational question the orchestrator can answer from what it already knows | Orchestrator itself, no human needed (`references/cross-session-coordination.md`) | Not a status transition at all |
+| `awaiting-authorization` | commit/push/merge | User, relayed through the boss (`shipping-task`) | No — boss resumes after authorizing |
+| `awaiting-user-input` | work-content question needing human judgment | User, directly in the agent's own pane — boss only points at it | No — agent continues on its own once answered |
+| `SendMessage` to the boss | informational question the boss can answer from what it already knows | Boss itself, no human needed (`references/cross-session-coordination.md`) | Not a status transition at all |
 
-A task unsure which applies tries to resolve it itself or asks the orchestrator via `SendMessage` first — only escalate to `awaiting-user-input` when neither the worker nor the orchestrator can actually answer it. Both status checkpoints are `herdr-pane`-only; `claude-p` cannot pause for either.
+A task unsure which applies tries to resolve it itself or asks the boss via `SendMessage` first — only escalate to `awaiting-user-input` when neither the agent nor the boss can actually answer it. Both status checkpoints are `herdr-pane`-only; `claude-p` cannot pause for either.
 
 **Same-task continuation.** Only for phase 2 of the *same* logical task on an idle finished session — never for a different, independent task. Send `/compact [focus]` and the phase-2 text as **two separate** `herdr agent prompt` calls; don't wait for compact to finish before sending the second.
 
@@ -92,14 +92,14 @@ Scan `~/.straw-boss/dispatch/` (excluding `archive/`), report grouped by status.
 - "No herdr session available, ask the user to open one anyway" — last resort only; default to `claude-p` first.
 - "Skip writing the instruction until dispatch succeeds" — no, write it `pending` first; a stray pending file on failure is signal, not noise.
 - "Reconstruct the herdr command sequence from memory" — no, always the reference.
-- "This worker's mode doesn't matter, use whatever's default" — no, mirror the orchestrator's actual mode every time.
+- "This agent's mode doesn't matter, use whatever's default" — no, mirror the boss's actual mode every time.
 - "Pane looks closed already, skip confirming" — no, check via `herdr pane get`/`agent get` first.
 - "Two unrelated dispatches, share a batch to save a tab" — no, batch is one multi-app unit of work only.
 - "3 ready tasks, dispatch one at a time to keep it simple" — no, all at once, always.
 - "This idle finished session could take the next ready task" — no, unless it's literally the same task's next phase.
 - "First task in the plan finished, mark the plan done" — no, only once every task is terminal.
 - "Task might need clarification but herdr's available, use claude-p to keep it simple" — no, herdr-pane is required in that case.
-- "The task's mid-flight question, relay it like an authorization checkpoint" — no, `awaiting-user-input` is answered directly in the pane; a question the orchestrator can itself answer goes through `SendMessage` instead, not a status transition.
+- "The task's mid-flight question, relay it like an authorization checkpoint" — no, `awaiting-user-input` is answered directly in the pane; a question the boss can itself answer goes through `SendMessage` instead, not a status transition.
 - "Skip the worktree verify-repair step, herdr worktree create usually works fine" — no, the `config.worktree` bug happens with *any* creation method on a repo with `extensions.worktreeConfig`; verify every time.
-- "Dispatch the herdr-pane task first, worry about orchestrator addressability if a worker actually needs it" — no, Task 1 requires this checked *before* the first herdr-pane dispatch this session; a worker that needs the channel and finds it unaddressed doesn't get an error, it gets silent misdelivery to an unrelated session.
-- "This coordination question sounds like something the orchestrator could reasonably weigh in on, SendMessage it" — no, per `cross-session-coordination.md`: any trade-off or "which direction" call is `awaiting-user-input`, full stop, regardless of how qualified the orchestrator seems.
+- "Dispatch the herdr-pane task first, worry about boss addressability if an agent actually needs it" — no, Task 1 requires this checked *before* the first herdr-pane dispatch this session; an agent that needs the channel and finds it unaddressed doesn't get an error, it gets silent misdelivery to an unrelated session.
+- "This coordination question sounds like something the boss could reasonably weigh in on, SendMessage it" — no, per `cross-session-coordination.md`: any trade-off or "which direction" call is `awaiting-user-input`, full stop, regardless of how qualified the boss seems.

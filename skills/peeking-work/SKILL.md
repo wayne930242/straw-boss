@@ -18,13 +18,13 @@ Identify which dispatch to peek at — from a task_id/plan slug, a session_id, o
 Follow `references/peek-mechanics.md` for the exact command — don't improvise the transcript path encoding or the `herdr agent read` flags from memory.
 
 - `herdr-pane` → `herdr agent read`, read-only, doesn't interrupt.
-- `claude-p` → tail the worker's own transcript jsonl; there's no pane to read.
+- `claude-p` → tail the agent's own transcript jsonl; there's no pane to read.
 
 **Verification:** the mechanism used matches the dispatch's actual mode; nothing was typed or sent into the target pane.
 
 ## Task 3: Report
 
-Summarize what the worker is currently doing in plain language — not a raw dump of the read/tail output. If the peek shows the worker is effectively stuck on something its status file hasn't caught up to yet, say so — but don't act on it here: resolving a checkpoint goes through the worker's own pane, or `dispatching-work`'s checkpoint handling, not this skill.
+Summarize what the agent is currently doing in plain language — not a raw dump of the read/tail output. If the peek shows the agent is effectively stuck on something its status file hasn't caught up to yet, say so — but don't act on it here: resolving a checkpoint goes through the agent's own pane, or `dispatching-work`'s checkpoint handling, not this skill.
 
 **Verification:** the caller gets a plain-language answer to "what's it doing", not unfiltered raw output.
 

@@ -35,7 +35,7 @@ One file per dispatch: `<home>/.straw-boss/dispatch/<app>--<short-slug>.json`. P
 ```json
 {
   "app": "api",
-  "task": "Full task description as given to the dispatched session — this is what gets submitted as the prompt in Task 4",
+  "task": "Full task description as given to the agent — this is what gets submitted as the prompt in Task 4",
   "mode": "herdr-pane",
   "batch": null,
   "session_id": "<uuid>",
@@ -61,9 +61,9 @@ Prints `{"session_id": "...", "instruction_path": "..."}` — use that `session_
 
 Archived (wrapped-up) instructions move to `<home>/.straw-boss/dispatch/archive/<app>--<short-slug>.json`, same shape — see "Closing a herdr-pane instruction" below for how that move happens.
 
-## Detecting the orchestrator's own permission mode
+## Detecting the boss's own permission mode
 
-SKILL.md's Task 4 requires mirroring this onto every worker. `$CLAUDE_PID` is already exported into the orchestrator's own environment:
+SKILL.md's Task 4 requires mirroring this onto every agent. `$CLAUDE_PID` is already exported into the boss's own environment:
 
 ```bash
 ORCH_ARGS=$(ps -p "$CLAUDE_PID" -ww -o args= 2>/dev/null)
@@ -78,7 +78,7 @@ case "$ORCH_ARGS" in
 esac
 ```
 
-**Always produce a single token, never a bare `--permission-mode value` pair.** This environment's `Bash`/`Monitor` tools run under zsh, which does not word-split an unquoted variable the way bash does — `$PERM_FLAGS` expanding to two space-separated words would arrive at `claude`/`herdr` as one literal argument, not two, and fail to parse. `--permission-mode=<value>` (confirmed live to work identically to the two-word form) sidesteps this entirely by staying one token regardless of shell. Confirmed live: this detection correctly caught a real case an orchestrator would otherwise have no reason to suspect — this session was itself running with `--dangerously-skip-permissions`. Only catches an *explicit* CLI flag; when `$PERM_FLAGS` comes back empty, the worker gets the CLI's own default (`auto`) and that's correct — there was nothing explicit to mirror. Append `$PERM_FLAGS` to the worker's launch command in both dispatch modes below, exactly where `--session-id`/`--name` already go.
+**Always produce a single token, never a bare `--permission-mode value` pair.** This environment's `Bash`/`Monitor` tools run under zsh, which does not word-split an unquoted variable the way bash does — `$PERM_FLAGS` expanding to two space-separated words would arrive at `claude`/`herdr` as one literal argument, not two, and fail to parse. `--permission-mode=<value>` (confirmed live to work identically to the two-word form) sidesteps this entirely by staying one token regardless of shell. Confirmed live: this detection correctly caught a real case a boss would otherwise have no reason to suspect — this session was itself running with `--dangerously-skip-permissions`. Only catches an *explicit* CLI flag; when `$PERM_FLAGS` comes back empty, the agent gets the CLI's own default (`auto`) and that's correct — there was nothing explicit to mirror. Append `$PERM_FLAGS` to the agent's launch command in both dispatch modes below, exactly where `--session-id`/`--name` already go.
 
 ## `claude-p` dispatch
 
@@ -94,7 +94,7 @@ cd "<repo_root>/apps/<app>" && claude -p --session-id "<uuid from dispatch-task.
 
 ## `herdr-pane` dispatch
 
-0. **Ensure the orchestrator itself is addressable — once per orchestrator session, before the first `herdr-pane` dispatch, never skipped as "probably still fine from last time."** `/rename` does not persist across a session restart (see `cross-session-coordination.md` "Making the orchestrator addressable"), so a freshly restarted orchestrator is not addressable even if a prior session already did this. Check first rather than re-running blindly: `ListAgents` excludes the caller's own session, so there is no direct self-lookup — instead, treat "have I renamed myself this session" as a fact to track once and remember, not something to re-derive by calling any inspection command. If unrenamed, run the self-rename now, before writing any dispatch instruction that might need this channel.
+0. **Ensure the boss itself is addressable — once per boss session, before the first `herdr-pane` dispatch, never skipped as "probably still fine from last time."** `/rename` does not persist across a session restart (see `cross-session-coordination.md` "Making the boss addressable"), so a freshly restarted boss is not addressable even if a prior session already did this. Check first rather than re-running blindly: `ListAgents` excludes the caller's own session, so there is no direct self-lookup — instead, treat "have I renamed myself this session" as a fact to track once and remember, not something to re-derive by calling any inspection command. If unrenamed, run the self-rename now, before writing any dispatch instruction that might need this channel.
 
 1. **Resolve the tab.** Default to accumulating dispatched panes into the caller's own currently active tab (`$HERDR_TAB_ID`) rather than always opening a new one — this matches herdr's own guidance to default to a sibling pane in the current tab, and the 2x2-then-new-tab layout this was designed around.
    - If the instruction has a `batch` and another in-progress instruction with the same batch recorded a `herdr_tab_id`, check that tab still exists and has fewer than 4 panes (`herdr tab get <tab_id>` / `herdr pane list --workspace <id>` filtered to that tab) — prefer reusing it over the caller's own tab, so a multi-app batch's panes stay together.

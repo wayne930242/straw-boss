@@ -1,6 +1,6 @@
 ---
 name: notifying-boss
-description: Use when you are a dispatched worker session with a purely informational question for the orchestrating ("boss") session that dispatched you. Not for a work-content judgment call — use `awaiting-user-input` instead.
+description: Use when you are a dispatched agent with a purely informational question for the boss session that dispatched you. Not for a work-content judgment call — use `awaiting-user-input` instead.
 ---
 
 ## Overview

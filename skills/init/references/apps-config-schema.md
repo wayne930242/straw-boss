@@ -40,7 +40,7 @@ The managed-apps list lives at `.claude/straw-boss/apps.json`, relative to the p
 | `redirectTo` | string \| `null` | no | Another entry's `name`. When set, this entry is a legacy/retired source — new work redirects to the named app instead (`work-on` Task 2). Omit or `null` for a live app. |
 | `note` | string \| `null` | no | Free-text caveat surfaced whenever this app is resolved or redirected — e.g. "still looks actively maintained, but new feature work belongs in `api` instead" for a `redirectTo` entry that doesn't read as deprecated. |
 | `forbidDirectCommit` | boolean | no | Default `false`. When `true`, `shipping-task` only offers the full worktree→MR flow for this app, never a direct commit to its base branch. |
-| `gitWorkflowSkill` | string \| `null` | no | Name of a project-level skill (in this app's own `.claude/skills/`) that already drives commit/MR/release mechanics. When set, `shipping-task` tells the dispatched session to run that skill's steps instead of its own fallback. |
+| `gitWorkflowSkill` | string \| `null` | no | Name of a project-level skill (in this app's own `.claude/skills/`) that already drives commit/MR/release mechanics. When set, `shipping-task` tells the agent to run that skill's steps instead of its own fallback. |
 | `localFiles` | array of objects | no | Gitignored files `git worktree add` won't check out, that a fresh worktree needs. Each entry: `path` (string, relative to `dir`), `sensitive` (boolean, default `false`), `note` (string, optional). |
 | `crossAppSkills` | array of objects | no | Pointers to an existing project skill that already handles this app depending on another. Each entry: `withApp` (the other app's `name`), `skill` (the skill's name), `note` (string, optional). |
 

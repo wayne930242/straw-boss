@@ -8,11 +8,11 @@ Named after the ranch foreman who works the ground alongside the crew, not from 
 
 ## Why
 
-An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session whose working directory is that app's own root — a monorepo root, or any orchestrating cwd, never sees them. straw-boss dispatches the work itself into a session that actually lives there, instead of hand-maintaining a summary of what the app's rules say. Routing across a monorepo's apps (`work-on`) is a bonus on top, not a prerequisite. Full design rationale: `docs/architecture.md`.
+An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session whose working directory is that app's own root — a monorepo root, or any cwd a boss runs from, never sees them. straw-boss dispatches the work itself into a session that actually lives there, instead of hand-maintaining a summary of what the app's rules say. Routing across a monorepo's apps (`work-on`) is a bonus on top, not a prerequisite. Full design rationale: `docs/architecture.md`.
 
 ## Workflow highlights
 
-- **One coordinator** — delegates, doesn't implement.
+- **One epic, one boss** — a single orchestrating session coordinates the whole epic; it delegates, never implements.
 - **Per-task context** — each dispatch gets its own, scoped to one task, not the whole project.
 - **Worktree isolation** — parallel tasks run side by side without colliding.
 - **`/loop` for batches** — `boss-say` self-paces a batch of tasks across turns.
@@ -48,6 +48,7 @@ Then run once per project:
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch one task, and get user authorization before every commit/push/merge |
 | `boss-say` | Drive a batch of independent tasks under a concurrency cap, refilling as items finish; runs as one long turn or repeatedly via `/loop` |
 | `peeking-work` | Read-only peek at one dispatch's live progress — herdr pane output, or a `claude-p` transcript tail — without joining or interrupting it |
+| `notifying-boss` | Used automatically by a dispatched agent to reach the boss with a purely informational question — herdr first, `SendMessage` as fallback |
 | `inspecting-app` | Resolve the app, hand off to your own rules/conventions audit skill (read-only, no dispatch) |
 | `investigating-app` | Resolve the app, hand off to your own research skill (read-only, no dispatch) |
 | `troubleshooting-app` | Diagnose a reported failure — app-code vs. infrastructure — then hand off to `shipping-task` for the fix |
@@ -59,7 +60,7 @@ Once `init` has run, trigger whichever entry skill matches what you're doing:
 - Start implementing something → `shipping-task` (calls `work-on`, then dispatches)
 - Work through a batch of independent tasks → `boss-say` (one turn, or `/loop boss-say ...` to self-pace across many)
 - Just want to know which app a request belongs to → `work-on`
-- Check on a worker before joining or interrupting it → `peeking-work`
+- Check on an agent before joining or interrupting it → `peeking-work`
 - Audit existing code against your rules → `inspecting-app`
 - Research current behavior, no rule or failure in question → `investigating-app`
 - Something's broken, cause unknown → `troubleshooting-app`

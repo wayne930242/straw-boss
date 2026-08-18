@@ -1,20 +1,20 @@
 # Cross-session coordination
 
-Three capabilities, all live-tested: an agent reaching its boss (`herdr-pane` primary channel, `SendMessage` fallback and the only channel `claude-p` has), and the orchestrator interrupting an agent mid-task to inject an urgent correction (`herdr-pane` only — see "Mid-task interrupt and correction" below for why `claude-p` can't do this one).
+Three capabilities, all live-tested: an agent reaching its boss (`herdr-pane` primary channel, `SendMessage` fallback and the only channel `claude-p` has), and the boss interrupting an agent mid-task to inject an urgent correction (`herdr-pane` only — see "Mid-task interrupt and correction" below for why `claude-p` can't do this one).
 
-**An agent's own judgment rule and send mechanics for reaching its boss live in `notifying-boss` — the worker-facing skill, not here.** This file covers only what the orchestrator itself must do: make itself addressable, two ways (below), and, separately, interrupt an agent mid-task. Confirmed live: an agent sent a genuine API-design trade-off (two viable directions, a real cost/benefit on each) via `SendMessage` instead of `awaiting-user-input` — the orchestrator could not have answered it either, so even a successful delivery wouldn't have resolved anything correctly. This is exactly the failure mode `notifying-boss`'s Task 1 exists to prevent — every dispatch instruction points the agent at that skill rather than restating its judgment rule inline.
+**An agent's own judgment rule and send mechanics for reaching its boss live in `notifying-boss` — the agent-facing skill, not here.** This file covers only what the boss itself must do: make itself addressable, two ways (below), and, separately, interrupt an agent mid-task. Confirmed live: an agent sent a genuine API-design trade-off (two viable directions, a real cost/benefit on each) via `SendMessage` instead of `awaiting-user-input` — the boss could not have answered it either, so even a successful delivery wouldn't have resolved anything correctly. This is exactly the failure mode `notifying-boss`'s Task 1 exists to prevent — every dispatch instruction points the agent at that skill rather than restating its judgment rule inline.
 
-## Making the orchestrator addressable
+## Making the boss addressable
 
 Two independent addressing schemes, not interchangeable — an agent uses whichever one its own dispatch mode actually has:
 
-**herdr pane id (primary, `herdr-pane` agents only).** The orchestrator's own `$HERDR_PANE_ID` (e.g. `wF:p9`) is a valid `herdr agent get`/`herdr agent prompt` target regardless of whether that pane was ever named via `herdr agent start` — confirmed live: `herdr agent list`/`herdr agent get "$HERDR_PANE_ID"` return the orchestrator's own entry with no `name` field at all when it wasn't started that way, `pane_id` alone still resolves it. Nothing needs to be set up for this in advance; the orchestrator's dispatch instruction just states its own current `$HERDR_PANE_ID` value literally, resolved at instruction-assembly time (not the literal string `$HERDR_PANE_ID` — its actual value).
+**herdr pane id (primary, `herdr-pane` agents only).** The boss's own `$HERDR_PANE_ID` (e.g. `wF:p9`) is a valid `herdr agent get`/`herdr agent prompt` target regardless of whether that pane was ever named via `herdr agent start` — confirmed live: `herdr agent list`/`herdr agent get "$HERDR_PANE_ID"` return the boss's own entry with no `name` field at all when it wasn't started that way, `pane_id` alone still resolves it. Nothing needs to be set up for this in advance; the boss's dispatch instruction just states its own current `$HERDR_PANE_ID` value literally, resolved at instruction-assembly time (not the literal string `$HERDR_PANE_ID` — its actual value).
 
-**`SendMessage` peer name (fallback for `herdr-pane`, the only option for `claude-p`).** `SendMessage`/`ListAgents` address live sessions by an auto-derived peer name (`<cwd-basename>-<random-suffix>`, e.g. `web-04`) — confirmed live this is **not** the `session_id` UUID; a raw `--session-id` value is never a valid `SendMessage` `to` target. `ListAgents` also excludes the caller's own session (self-listing, unlike `herdr agent list`), so the orchestrator cannot look up its own peer name the way it can a worker's — it sets one instead.
+**`SendMessage` peer name (fallback for `herdr-pane`, the only option for `claude-p`).** `SendMessage`/`ListAgents` address live sessions by an auto-derived peer name (`<cwd-basename>-<random-suffix>`, e.g. `web-04`) — confirmed live this is **not** the `session_id` UUID; a raw `--session-id` value is never a valid `SendMessage` `to` target. `ListAgents` also excludes the caller's own session (self-listing, unlike `herdr agent list`), so the boss cannot look up its own peer name the way it can an agent's — it sets one instead.
 
-Confirmed live: the orchestrator can make its own peer name deterministic by running `/rename straw-boss-orchestrator` on itself once — this works even on an already-running session (not just at `claude` launch), takes effect immediately, and is idempotent (renaming to the same name again is harmless). Do this once per orchestrator session, before the first dispatch that might need this channel — not per-plan, not per-task. `/rename` does not persist across a session restart, so a freshly restarted orchestrator session needs to do this again before it's reachable.
+Confirmed live: the boss can make its own peer name deterministic by running `/rename straw-boss-orchestrator` on itself once — this works even on an already-running session (not just at `claude` launch), takes effect immediately, and is idempotent (renaming to the same name again is harmless). Do this once per boss session, before the first dispatch that might need this channel — not per-plan, not per-task. `/rename` does not persist across a session restart, so a freshly restarted boss session needs to do this again before it's reachable.
 
-`/rename` is a Claude Code CLI slash command, not a tool call — the orchestrator cannot trigger it by emitting the text as part of its own response (that only reaches a human-typed input box, not the model's own output). Confirmed live: submit it to your own pane via `herdr agent prompt`, using the pane id `$HERDR_PANE_ID` already exported into the orchestrator's own environment:
+`/rename` is a Claude Code CLI slash command, not a tool call — the boss cannot trigger it by emitting the text as part of its own response (that only reaches a human-typed input box, not the model's own output). Confirmed live: submit it to your own pane via `herdr agent prompt`, using the pane id `$HERDR_PANE_ID` already exported into the boss's own environment:
 ```bash
 herdr agent prompt "$HERDR_PANE_ID" "/rename straw-boss-orchestrator"
 ```
@@ -26,13 +26,13 @@ This queues as input for after the current turn (submitting to a `working` pane 
 
 That's the whole instruction either way; `notifying-boss` itself carries the judgment rule, the channel-selection logic, and the never-authorization safety boundary, so none of it needs restating here.
 
-## Making a worker addressable
+## Making an agent addressable
 
 Confirmed live: `herdr agent start`'s trailing `-- --name <name>` flag (passed through to the underlying `claude` process, distinct from herdr's own `<unique-name>` control handle that's the command's first argument) sets the exact name that shows up in `ListAgents`/is reachable via `SendMessage`, overriding the auto-derived `<cwd-basename>-<suffix>` default entirely. `dispatch-mechanics.md`'s `herdr agent start` command already passes the same `plan_id`/`task_id`-derived value for both — no separate naming decision needed here.
 
 ## Mid-task interrupt and correction
 
-Confirmed live: `herdr agent send-keys "<name>" esc` interrupts a currently-`working` turn and drops the worker back to `idle`, ready for a new prompt — matches Claude Code's own interactive Escape-to-interrupt behavior. Use this when the orchestrator learns of an urgent requirement change mid-task (from the user, typically) and needs to redirect a worker before it finishes its current turn, rather than waiting for it to finish first:
+Confirmed live: `herdr agent send-keys "<name>" esc` interrupts a currently-`working` turn and drops the agent back to `idle`, ready for a new prompt — matches Claude Code's own interactive Escape-to-interrupt behavior. Use this when the boss learns of an urgent requirement change mid-task (from the user, typically) and needs to redirect an agent before it finishes its current turn, rather than waiting for it to finish first:
 
 ```bash
 herdr agent send-keys "<name>" esc
