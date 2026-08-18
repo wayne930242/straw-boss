@@ -1,5 +1,7 @@
 # straw-boss
 
+English | [繁體中文](./README.zh-TW.md)
+
 A Claude Code plugin that dispatches implementation work into a session rooted in your app's own directory — a headless `claude -p` process, or an interactive [herdr](https://github.com/herdrdev/herdr) pane you can watch and join — with a standardized git lifecycle and an authorization gate on every commit/push/merge. Works directly in a single-app repo; in a monorepo, it also routes each request to the right app first.
 
 The name is a ranch term: the straw boss is the crew foreman who works alongside the hands, not from an office. That's the job here — get each task into the right hands, in the right place, and stay close enough to unblock it.
