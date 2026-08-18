@@ -4,7 +4,9 @@ Design rationale for straw-boss — read this if you're extending the plugin, no
 
 ## Why dispatch, not a condensed summary
 
-Path-scoped rules and nested `CLAUDE.md` files already reach a session working from the monorepo root reactively, once a matching file is touched. What doesn't reach it: an app's own `.claude/skills/` and `.claude/settings.json` hooks, which only load for a session whose root is that app's own directory. A session working on an app from the monorepo root has never actually triggered that app's own hooks, and never sees its own skills.
+This is the plugin's core value, independent of app count — it applies to a single-app repo dispatched from an orchestrating cwd just as much as to any one app in a monorepo. Routing across multiple apps (`work-on`) is an additional layer on top for monorepos, not what makes dispatch itself worthwhile.
+
+Path-scoped rules and nested `CLAUDE.md` files already reach a session working from an orchestrating root reactively, once a matching file is touched. What doesn't reach it: an app's own `.claude/skills/` and `.claude/settings.json` hooks, which only load for a session whose root is that app's own directory. A session working on an app from somewhere else has never actually triggered that app's own hooks, and never sees its own skills.
 
 Dispatching into a session rooted in the app closes that gap directly, instead of hand-maintaining a summary of what the app's own rules say. A condensed digest drifts the moment the app's real rules change, and duplicates content the app's own files already state authoritatively. straw-boss dispatches the *work*, not a description of the work.
 

@@ -13,7 +13,9 @@ Locate the config with `git rev-parse --show-toplevel` from the current working 
 
 ## Task 1: Resolve the target app
 
-Build a routing table from `apps.json`: one row per entry, `name` + `match` phrases → `dir`. Skip entries with `redirectTo` set — those are legacy sources, handled in Task 2. Match the request against this table. If it clearly names or implies one row, that's the target — no need to ask.
+**Exactly one non-redirect app configured:** that's always the target — skip matching entirely, don't ask. straw-boss's dispatch model (worktree isolation, authorization-gated git lifecycle, watchable/background execution) is the point even for a single-app repo; routing across apps is an extra capability for monorepos, not a precondition for using the rest of this plugin.
+
+**More than one:** build a routing table from `apps.json`: one row per entry, `name` + `match` phrases → `dir`. Skip entries with `redirectTo` set — those are legacy sources, handled in Task 2. Match the request against this table. If it clearly names or implies one row, that's the target — no need to ask.
 
 If the request clearly spans more than one app, name every app it touches — don't force a single answer. Each app is routed, gated, and later shipped independently; `shipping-task` runs them as separate per-app worktree/MR/review cycles, not one blended change.
 

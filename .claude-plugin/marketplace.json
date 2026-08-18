@@ -6,7 +6,7 @@
     {
       "name": "straw-boss",
       "source": "./",
-      "description": "Cross-app development router + herdr-backed dispatch for monorepos."
+      "description": "Herdr-backed dispatch for Claude Code, single-app or across a monorepo."
     }
   ]
 }

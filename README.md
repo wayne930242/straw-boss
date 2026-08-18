@@ -1,12 +1,12 @@
 # straw-boss
 
-A Claude Code plugin that routes work to the right app in your monorepo, then dispatches the actual implementation into a session rooted in that app's own directory — a headless `claude -p` process, or an interactive [herdr](https://github.com/herdrdev/herdr) pane you can watch and join.
+A Claude Code plugin that dispatches implementation work into a session rooted in your app's own directory — a headless `claude -p` process, or an interactive [herdr](https://github.com/herdrdev/herdr) pane you can watch and join — with a standardized git lifecycle and an authorization gate on every commit/push/merge. Works directly in a single-app repo; in a monorepo, it also routes each request to the right app first.
 
 The name is a ranch term: the straw boss is the crew foreman who works alongside the hands, not from an office. That's the job here — get each task into the right hands, in the right place, and stay close enough to unblock it.
 
 ## Why
 
-An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session whose working directory is that app's own root. A session working from your monorepo root never sees them — even though path-scoped rules and nested `CLAUDE.md` files do reach it. straw-boss closes that gap by dispatching the work itself into a session that actually lives in the target app, instead of hand-maintaining a summary of what that app's rules say. See `docs/architecture.md` for the full design rationale.
+An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session whose working directory is that app's own root. A session working from somewhere else — a monorepo root, or any orchestrating cwd — never sees them, even though path-scoped rules and nested `CLAUDE.md` files do reach it. straw-boss closes that gap by dispatching the work itself into a session that actually lives in the target directory, instead of hand-maintaining a summary of what that app's rules say. This is the core of the plugin — routing across a monorepo's multiple apps (`work-on`) is an extra layer on top, not a precondition for the rest of it. See `docs/architecture.md` for the full design rationale.
 
 ## Requirements
 
