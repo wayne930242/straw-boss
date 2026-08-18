@@ -7,12 +7,13 @@ description: Starts, tracks, lists, and closes out the agents this plugin runs �
 
 **The unit this skill manages is the agent, not the app.** An app (`.claude/straw-boss/apps.json`, resolved upstream by `work-on`) is only *where* an agent is rooted — this skill starts the agent there, tracks it, and closes it out; it never itself decides which app a request belongs to. Every dispatched task is one agent, tracked as one instruction file under `~/.straw-boss/dispatch/` — the user's home directory, not the target project checkout (see `init`). This skill covers: **dispatch** a single agent (Tasks 1-5), **dispatch a plan** (Branch below, when `work-on` produced a multi-task dependency graph — one agent per task), **list**, and **wrap up**. Exact CLI/JSON syntax lives in `references/` — `dispatch-mechanics.md` (single-agent dispatch + permission-mode detection), `plan-mechanics.md` (plan/status schemas, worktree repair heredoc, zsh `Monitor` gotchas), `cross-session-coordination.md` (`SendMessage`/interrupt syntax) — read the relevant one for the exact command before running it. Every requirement below is real, not a pointer to go read something else first. For a specific agent's actual live content or progress — not just its status — invoke `peeking-work` instead of reading a pane/transcript inline here.
 
-Prerequisite: `~/.straw-boss/capability.json` must exist. If it doesn't, stop and tell the caller to run `init` first.
+`~/.straw-boss/capability.json` records whether herdr-backed dispatch is enabled on this machine, from `init`. Its absence is not a hard stop — see Task 1's no-`capability.json` handling; `claude-p` dispatch never needed it.
 
 ## Task 1: Choose the dispatch mode
 
 - **Self-contained, clear scope, no open question** → `claude-p`, regardless of herdr availability.
 - **Complex, error-prone, or likely to need back-and-forth** → `herdr-pane` is required, not preferred — a `claude -p` process cannot pause mid-task for a live reply, so `claude-p` silently forecloses asking instead of guessing. Requires BOTH `capability.json` says `herdr-enabled` AND this session's own `HERDR_ENV` is `1`. If either is false, tell the user headless dispatch can't ask mid-task questions for this one (it reports `failed` with the question stated instead of pausing) and let them decide.
+- **No `capability.json` at all** → treat herdr as not confirmed available: proceed with `claude-p` for a self-contained task same as above. For a task that would otherwise need `herdr-pane`, don't silently downgrade it to `claude-p` either — tell the user this task would benefit from herdr-backed dispatch, herdr enablement hasn't been recorded yet (`init` sets it up), and let them decide between running `init` first or accepting the `claude-p` limitation for this one dispatch.
 
 State the mode and why before doing anything else.
 
@@ -90,6 +91,7 @@ Scan `~/.straw-boss/dispatch/` (excluding `archive/`), report grouped by status.
 ## Red Flags
 
 - "No herdr session available, ask the user to open one anyway" — last resort only; default to `claude-p` first.
+- "No `capability.json`, stop and tell the user to run `init` first" — no, only relevant when a task actually needs `herdr-pane`; a self-contained task dispatches via `claude-p` same as always.
 - "Skip writing the instruction until dispatch succeeds" — no, write it `pending` first; a stray pending file on failure is signal, not noise.
 - "Reconstruct the herdr command sequence from memory" — no, always the reference.
 - "This agent's mode doesn't matter, use whatever's default" — no, mirror the boss's actual mode every time.

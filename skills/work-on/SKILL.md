@@ -9,9 +9,13 @@ App resolution and dispatch: figure out which app a request belongs to, then han
 
 Apps' own `.claude/rules/*.md`, `.claude/skills/`, and `.claude/settings.json` hooks only load fully for a session actually rooted in that app's directory — a session working from the project root never sees an app's own skills or hooks, even though path-scoped rules and nested `CLAUDE.md` do reach it reactively. Dispatching to a session that lives in the target app closes that gap instead of working around it with a hand-maintained summary.
 
-Locate the config with `git rev-parse --show-toplevel` from the current working directory, then read `<repo-root>/.claude/straw-boss/apps.json` — never assume the current directory is the repo root, and never search upward by hand. If it doesn't exist, stop and tell the caller to run `init` first — never guess an app list.
+Locate the config with `git rev-parse --show-toplevel` from the current working directory, then read `<repo-root>/.claude/straw-boss/apps.json` — never assume the current directory is the repo root, and never search upward by hand.
+
+**If it doesn't exist, that's not a hard stop — `init` is a convenience, not a precondition.** See Task 1's no-config handling below.
 
 ## Task 1: Resolve the target app
+
+**No `apps.json` at all:** don't block on this — check whether the repo itself reads as single-app (no `apps/`/`packages/`/`services/`-style directory holding more than one independent codebase at the repo root). If it does, treat the repo root itself as the one implicit app — name it from its `package.json` (or equivalent manifest) or, failing that, the repo root's own directory basename; `dir` is the repo root. Proceed with the rest of this skill exactly as if that were the sole `apps.json` entry. Mention once, briefly, that running `init` is available if they want to customize git-lifecycle behavior, local-only files, etc. — but never require it first. If the repo structure genuinely looks like a monorepo instead (more than one plausible app directory) and there's no config to say which is which, that's real ambiguity, not something to guess through — ask the user which directory this specific request targets, or suggest `init` if they'd rather configure it once than get asked every time.
 
 **Exactly one non-redirect app configured:** that's always the target — skip matching entirely, don't ask. straw-boss's dispatch model (worktree isolation, authorization-gated git lifecycle, watchable/background execution) is the point even for a single-app repo; routing across apps is an extra capability for monorepos, not a precondition for using the rest of this plugin.
 
@@ -64,7 +68,7 @@ For implementation work, this task's job ends at naming the resolved app(s) (and
 
 ## Out of scope
 
-- Apps not listed in `.claude/straw-boss/apps.json` — no dispatch target exists; say so. Only reachable with more than one app configured — see Task 1's single-app fast path.
+- Apps not listed in `.claude/straw-boss/apps.json` — no dispatch target exists; say so. Only reachable with more than one app configured — see Task 1's single-app fast path (a missing `apps.json` in a single-app-looking repo is not this case; see Task 1's no-config handling).
 - Infrastructure work outside any managed app's directory — no per-app agent system there.
 - Reads/explanations that don't change code — answer inline.
 
@@ -77,6 +81,8 @@ For implementation work, this task's job ends at naming the resolved app(s) (and
 - "This is just a read, dispatch it anyway to be consistent" — no, read-only work stays in-session; dispatching it adds friction for no benefit.
 - "The decomposition is obvious, skip grilling and just write the plan" — no, see Task 5: the user confirms the breakdown and every dependency edge before `plan.json` is written, every time.
 - "Found a related change, but it's obviously what the user meant, just proceed" — no, see Task 4: ask, don't assume, even when it seems obvious.
+- "No `apps.json`, stop and tell the user to run `init` first" — no, only for a repo that genuinely reads as a monorepo; a single-app-looking repo gets an implicit app and proceeds, per Task 1.
+- "No `apps.json` and the repo has an `apps/` directory, just guess which one" — no, that's real ambiguity; ask, or suggest `init`.
 
 ## References
 

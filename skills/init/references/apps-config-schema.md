@@ -51,4 +51,4 @@ The managed-apps list lives at `.claude/straw-boss/apps.json`, relative to the p
 - **`shipping-task`** reads `forbidDirectCommit` and `gitWorkflowSkill` per resolved app.
 - **`dispatching-work`**'s `references/plan-mechanics.md` reads `localFiles` for the worktree local-file-copy step.
 
-A skill that can't find `.claude/straw-boss/apps.json` at all tells the caller to run `init` first — it never falls back to guessing an app list.
+A skill that can't find `.claude/straw-boss/apps.json` at all never guesses a *multi*-app list — but a single-app-looking repo still resolves and proceeds without one, via `work-on`'s Task 1 no-config handling (an implicit single app, not a config file). `init` is what makes that app's config durable/customizable; it's not a precondition for a single-app repo to work at all.
