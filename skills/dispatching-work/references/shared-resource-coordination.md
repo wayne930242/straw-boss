@@ -24,6 +24,10 @@ It derives a starting candidate from `--key` (`hashlib.sha256`, not the randomiz
 
 **`claim-port` never waits — exhausting `--max-attempts` is a hard failure, by design, not a queue.** A flexible port's whole point is that another number works just as well, so it always prefers moving on over waiting; if every candidate in the derived band is genuinely held, the band is too narrow for how many worktrees are actually running at once — widen `--range` or raise `--max-attempts`, don't add a wait here. Waiting only ever makes sense for the fixed case below, where there's no alternate number to try.
 
+**This is a cooperative lock, not the OS's own accounting — nothing stops a process outside this script from already sitting on a port.** Every `acquire`/`wait`/`claim-port` call on a `port--<app>--<port-number>` resource probes the actual port first (bind-and-immediately-release, IPv4 only) before ever touching the lock file, and treats an externally-occupied port the same as a contended lock (`held_externally: true` in the result — `claim-port` moves to the next candidate, `wait` keeps polling). This is best-effort, not a guarantee: there's an unavoidable gap between this probe and whenever the agent actually binds for real a moment later, so a dispatch instruction that starts a dev server still needs to treat an actual bind failure as a real possibility despite a successful claim — the claim narrows the risk, it doesn't eliminate it.
+
+**The probe can't tell "someone else has it" from "I have it and I'm using it exactly as intended."** Never re-run `acquire`/`wait`/`claim-port` on the same port resource while your own dev server from an earlier successful claim is still bound to it — the probe will see your own listener as an external occupant and report it contended, indistinguishable from real contention. Claim once, run the server, `release` when done; don't loop back through the claim step mid-task.
+
 **Fixed (the port value itself is externally constrained — hardcoded app config, or another service's CORS allowlist expects an exact origin/port, even if the dev-server tool itself could technically bind elsewhere).** There is no alternate candidate to try — incrementing would just break CORS again. This is the agent's actual **request** for that exact port: it uses `wait` on `port--<app>--<port-number>` exactly like the DB case below, and if it's taken, waits rather than substitutes.
 
 ## Shared DB migrations — always the lock
@@ -71,6 +75,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" status --resou
 ```
 
 `list` is the live registry of every currently held lock — `resource`, `holder`, `holder_boss`, `age_seconds`, `expired`. This is the answer to "which port is currently assigned to which worker": read it, don't maintain a separate tracking file, and don't assume a resource is free just because no task in *this* boss's own plan claimed it — `list` covers every boss on the machine.
+
+**A stale lock that nobody ever re-contends for just sits there — `acquire`'s reactive reclaim only fires when someone actually asks.** That's not a correctness problem (`expired: true` in `list`/`status` already tells the truth about it, and it can never block anything that isn't itself contending for that exact resource), but it can clutter the picture over time. Run `uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" gc` occasionally to sweep every lock already past its own `ttl_seconds` regardless of contention — it never touches anything still within its ttl, so it can't remove a live lock by mistake.
 
 ## Boss-to-boss courtesy channel
 

@@ -40,6 +40,13 @@ fleet.
                 filtered by a resource-id prefix, e.g. "port--") -- this
                 is also the live record of which port/DB lock is
                 currently assigned to which worker.
+  gc         -- read-write, deletes every lock file already past its own
+                ttl_seconds, regardless of whether anyone is currently
+                contending for it. Not required for correctness (the
+                reactive reclaim inside `acquire` already handles that
+                the moment anyone asks again) -- purely housekeeping, so
+                `list` doesn't accumulate long-dead entries from tasks
+                that crashed and nothing ever re-contended for.
 
 `wait` and `claim-port` block/sleep internally, unlike the bare `acquire`
 primitive they're built on. This is deliberate here, unlike this plugin's
@@ -51,6 +58,16 @@ turn visibility into its own wait, so folding the loop into one blocking
 command is simpler and removes an entire class of hand-rolled-bash bugs
 (JSON parsing, integer-vs-float arithmetic, zsh quirks) that a dispatch
 instruction would otherwise have to get right verbatim.
+
+For a `port--<app>--<port-number>` resource, `acquire` also probes the
+actual OS-level port before ever touching the lock file -- this is a
+cooperative lock, and nothing stops a process outside this script from
+already sitting on that port. This is best-effort, not a guarantee: it's
+IPv4 only, and there's an unavoidable gap between the probe and whenever
+the caller actually binds for real a moment later. A dispatch instruction
+that starts a dev server still needs to handle an actual bind failure as
+a real possibility despite a successful claim, not assume the claim alone
+proves the port usable.
 """
 
 from __future__ import annotations
@@ -60,6 +77,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import sys
 import time
 from datetime import datetime, timezone
@@ -67,6 +85,7 @@ from pathlib import Path
 from typing import Any
 
 RESOURCE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+PORT_RESOURCE_RE = re.compile(r"^port--.+--(\d+)$")
 
 
 def mp_dev_root() -> Path:
@@ -83,6 +102,29 @@ def lock_path(resource: str) -> Path:
     return mp_dev_root() / "locks" / f"{resource}.json"
 
 
+def port_from_resource(resource: str) -> int | None:
+    m = PORT_RESOURCE_RE.match(resource)
+    return int(m.group(1)) if m else None
+
+
+def port_is_free(port: int) -> bool:
+    """Best-effort, IPv4 only. Deliberately no SO_REUSEADDR -- confirmed
+    empirically (macOS) that setting it lets a 0.0.0.0 probe and a
+    127.0.0.1 occupant (or vice versa) silently coexist, which would
+    defeat the point of this check. Binding 0.0.0.0, not 127.0.0.1, is
+    what actually catches an occupant regardless of which interface it
+    bound -- also confirmed empirically, a 127.0.0.1-only probe misses a
+    0.0.0.0-bound occupant."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("0.0.0.0", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
@@ -93,6 +135,25 @@ def age_seconds(acquired_at: str) -> float:
 
 
 def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, holder_boss: str | None) -> dict[str, Any]:
+    port = port_from_resource(resource)
+    if port is not None and not port_is_free(port):
+        # Something outside this script's own tracking already holds the OS
+        # port -- our lock file may well say "free", but it can't be granted.
+        # Reuses the same "not acquired" shape as a lock-file contention so
+        # every caller (wait's poll loop, claim-port's increment loop)
+        # handles it without a special case.
+        return {
+            "acquired": False,
+            "resource": resource,
+            "held_by": None,
+            "held_by_boss": None,
+            "held_note": "occupied by a process outside claim-resource.py's own tracking, not this plugin's lock",
+            "age_seconds": 0.0,
+            "held_ttl_seconds": 30,
+            "retry_after_seconds": 5,
+            "held_externally": True,
+        }
+
     path = lock_path(resource)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -169,7 +230,14 @@ def wait_for(
       churn.
     """
     started = time.monotonic()
-    max_ttl_seen = 0
+    # Seeded with this call's own ttl_seconds, not 0: the external-occupancy
+    # branch of acquire() reports a synthetic held_ttl_seconds of 30 (it has
+    # no real ttl to report), and letting that alone set the ceiling would
+    # cap every fixed-port wait against an untracked occupant at 90s
+    # (30 * WAIT_CHURN_MULTIPLIER) regardless of what --ttl-seconds asked
+    # for. Seeding with our own budget is a floor, never a shrink -- a real
+    # observed holder's larger ttl still raises it via the max() below.
+    max_ttl_seen = ttl_seconds
     while True:
         result = acquire(resource, holder, ttl_seconds, note, holder_boss)
         if result["acquired"]:
@@ -182,10 +250,11 @@ def wait_for(
         if max_wait_seconds is not None:
             deadline = min(deadline, max_wait_seconds)
         boss_bit = f" (boss {result['held_by_boss']!r})" if result.get("held_by_boss") else ""
+        who = "an untracked external process" if result.get("held_externally") else f"{result['held_by']!r}{boss_bit}"
         print(
-            f"waiting on {resource!r}, held by {result['held_by']!r}{boss_bit}, retrying in {retry}s "
-            f"({elapsed:.0f}s elapsed of {deadline:.0f}s budget; this holder's own ttl reclaimable in "
-            f"~{reclaimable_in:.0f}s if not released sooner)",
+            f"waiting on {resource!r}, held by {who}, retrying in {retry}s "
+            f"({elapsed:.0f}s elapsed of {deadline:.0f}s budget; reclaimable in "
+            f"~{reclaimable_in:.0f}s if not released/freed sooner)",
             file=sys.stderr,
         )
         if elapsed > deadline:
@@ -195,7 +264,7 @@ def wait_for(
                 else f"{WAIT_CHURN_MULTIPLIER}x the largest ttl_seconds observed ({max_ttl_seen}s) reached -- "
                 f"likely several different holders in a row rather than one slow one"
             )
-            raise ValueError(f"gave up waiting on {resource!r} after {elapsed:.0f}s -- still held by {result['held_by']!r} ({reason})")
+            raise ValueError(f"gave up waiting on {resource!r} after {elapsed:.0f}s -- still held by {who} ({reason})")
         time.sleep(retry)
 
 
@@ -282,6 +351,27 @@ def list_locks(prefix: str | None) -> dict[str, Any]:
     return {"locks": entries}
 
 
+def gc() -> dict[str, Any]:
+    """Deletes every lock already past its own ttl_seconds, regardless of
+    whether anyone is currently contending for it. `acquire` already
+    reclaims a stale lock reactively the moment anyone asks again -- this
+    is purely proactive housekeeping for a resource nobody has re-asked
+    for since it went stale, so `list` doesn't stay cluttered with
+    long-dead entries indefinitely. Never touches a lock still within its
+    own ttl, so it can't remove anything actually live."""
+    locks_dir = mp_dev_root() / "locks"
+    if not locks_dir.is_dir():
+        return {"removed": []}
+    removed = []
+    for path in sorted(locks_dir.glob("*.json")):
+        existing = load_json(path)
+        age = age_seconds(existing["acquired_at"])
+        if age > existing["ttl_seconds"]:
+            removed.append({"resource": path.stem, "holder": existing["holder"], "age_seconds": round(age, 1)})
+            path.unlink()
+    return {"removed": removed}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
@@ -343,6 +433,8 @@ def main() -> int:
     list_p = sub.add_parser("list", help="list current locks, optionally filtered by a resource-id prefix")
     list_p.add_argument("--prefix", default=None, help="only resources whose id starts with this, e.g. 'port--'")
 
+    sub.add_parser("gc", help="delete every lock already past its own ttl_seconds, whether or not anyone is waiting on it")
+
     args = parser.parse_args()
 
     try:
@@ -368,8 +460,10 @@ def main() -> int:
             result = release(args.resource, args.holder, args.force)
         elif args.action == "status":
             result = status(args.resource)
-        else:
+        elif args.action == "list":
             result = list_locks(args.prefix)
+        else:
+            result = gc()
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
