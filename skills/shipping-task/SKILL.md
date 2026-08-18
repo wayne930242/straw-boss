@@ -1,6 +1,6 @@
 ---
 name: shipping-task
-description: Carries one task through a standardized git lifecycle in one of the project's managed apps. Use when starting or continuing implementation work on a single task, e.g. "work on this", "let's implement this in <app>". Not for scoping/planning the task (your project's task-scoping skill), picking the app (`work-on`, invoked internally here), or many independent tasks at once (`boss-say`).
+description: Carries one task through a standardized git lifecycle in one of the project's managed apps. Normally invoked by `boss-say` once it has triaged a request down to a single unit of work; also usable directly when the user names it. Not for deciding how work gets dispatched (`boss-say` owns that), scoping/planning the task (your project's task-scoping skill), picking the app (`work-on`, invoked internally here), or many independent tasks at once (`boss-say`'s batch path).
 ---
 
 ## Overview
@@ -17,7 +17,7 @@ This spans many turns — dispatch now, develop over an unknown number of turns 
 
 ## Task 1: Resolve the app
 
-Invoke the `work-on` skill now if the target app isn't already established in this conversation — do not guess an app here, and do not treat resolution as something that already happened elsewhere. This skill is a primary entry point; it owns making sure resolution actually ran. `work-on` ends at naming the resolved app(s) for implementation work — it does not dispatch itself; that happens in Task 4 below, once this skill has assembled the full instruction.
+Invoke the `work-on` skill now if the target app isn't already established in this conversation — do not guess an app here, and do not treat resolution as something that already happened elsewhere. `boss-say` triages scale, not apps; this skill owns making sure resolution actually ran. `work-on` ends at naming the resolved app(s) for implementation work — it does not dispatch itself; that happens in Task 4 below, once this skill has assembled the full instruction.
 
 **Verification:** you can name the app and its directory, sourced from `work-on`.
 

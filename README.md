@@ -12,11 +12,12 @@ An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a
 
 ## Workflow highlights
 
+- **One door: `boss-say`** — hand over the work, whatever its size; the boss triages the scale and picks the dispatch shape itself. You never pick an entry skill.
 - **One epic, one boss** — a single orchestrating session coordinates the whole epic; it delegates, never implements.
 - **Per-task context** — each dispatch gets its own, scoped to one task, not the whole project.
 - **Worktree isolation** — parallel tasks run side by side without colliding.
 - **Cross-boss resource lock** — a file-based lock for ports and shared-DB migrations that worktrees can't isolate, across independent boss sessions.
-- **`/loop` for batches** — `boss-say` self-paces a batch of tasks across turns.
+- **Self-paced batches** — for a backlog too big for one turn, `boss-say` starts a `/loop` itself and refills its own dispatch slots.
 - **herdr for human-in-the-loop** — watch a dispatch, join it, or answer a question mid-task.
 
 ## Requirements
@@ -44,29 +45,36 @@ Then run once per project:
 | Skill | Description |
 |-------|-------------|
 | `init` | One-time setup: ask which apps to manage, write the config, sync root `CLAUDE.md`, offer to bootstrap a missing agent system per app; decide whether to enable herdr dispatch |
+| `boss-say` | **The entry point for all implementation work.** Triages the scale, then dispatches: one task through `shipping-task`, many independent tasks as a capped batch — in this turn, or under a `/loop` it starts itself |
 | `work-on` | Resolve a request to one of the configured apps, apply any legacy redirect; hand implementation requests to dispatch |
 | `dispatching-work` | Choose the dispatch mode (`claude-p` / `herdr-pane`), write the dispatch instruction, actually dispatch, list/wrap up existing dispatches |
-| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch one task, and get user authorization before every commit/push/merge |
-| `boss-say` | Drive a batch of independent tasks under a concurrency cap, refilling as items finish; runs as one long turn or repeatedly via `/loop` |
+| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch one task, and get user authorization before every commit/push/merge — driven by `boss-say` |
 | `peeking-work` | Read-only peek at one dispatch's live progress — herdr pane output, or a `claude-p` transcript tail — without joining or interrupting it |
 | `notifying-boss` | Used automatically by a dispatched agent to reach the boss with a purely informational question — herdr first, `SendMessage` as fallback |
 | `create-great-harness` | Lightweight agent-system bootstrap for an app with neither `CLAUDE.md` nor `.claude/` — a short `CLAUDE.md` plus one pipe-tested guard hook |
 | `inspecting-app` | Resolve the app, hand off to your own rules/conventions audit skill (read-only, no dispatch) |
 | `investigating-app` | Resolve the app, hand off to your own research skill (read-only, no dispatch) |
-| `troubleshooting-app` | Diagnose a reported failure — app-code vs. infrastructure — then hand off to `shipping-task` for the fix |
+| `troubleshooting-app` | Diagnose a reported failure — app-code vs. infrastructure — then hand the fix back to `boss-say` |
 
 ## Usage
 
-Once `init` has run, trigger whichever entry skill matches what you're doing:
+Once `init` has run, hand work to the boss — one task, five tasks, or a whole backlog:
 
-- Start implementing something → `shipping-task` (calls `work-on`, then dispatches)
-- Work through a batch of independent tasks → `boss-say` (one turn, or `/loop boss-say ...` to self-pace across many)
+```
+boss-say fix the login redirect
+boss-say work through docs/backlog.md
+```
+
+`boss-say` decides the rest: a single request goes through `shipping-task`'s git lifecycle, several independent items become a batch under a concurrency cap, and a batch too big for one turn gets a `/loop` that `boss-say` starts itself. You don't pick the shape — it states the one it picked, and you override it if you disagree.
+
+The remaining skills are for everything that isn't dispatching work:
+
 - Just want to know which app a request belongs to → `work-on`
 - Check on an agent before joining or interrupting it → `peeking-work`
 - Bootstrap a minimal agent system for an app that has none → `create-great-harness` (also offered automatically by `init`)
 - Audit existing code against your rules → `inspecting-app`
 - Research current behavior, no rule or failure in question → `investigating-app`
-- Something's broken, cause unknown → `troubleshooting-app`
+- Something's broken, cause unknown → `troubleshooting-app` (diagnoses, then hands the fix back to `boss-say`)
 - See what's currently dispatched, or close one out → `dispatching-work`
 
 ## Configuration

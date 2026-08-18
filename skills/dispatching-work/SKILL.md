@@ -1,6 +1,6 @@
 ---
 name: dispatching-work
-description: Starts, tracks, lists, and closes out the agents this plugin runs — one per dispatched task, each rooted in its resolved app's own directory. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app/boss-say, when the user asks what's currently dispatched, or when a dispatched task should be closed out. Not for one dispatch's live content (`peeking-work`).
+description: Starts, tracks, lists, and closes out the agents this plugin runs — one per dispatched task, each rooted in its resolved app's own directory. Use after work-on has resolved the target app(s) (or a plan) for boss-say or the shipping-task lifecycle it drives, when the user asks what's currently dispatched, or when a dispatched task should be closed out. Not for one dispatch's live content (`peeking-work`).
 ---
 
 ## Overview
