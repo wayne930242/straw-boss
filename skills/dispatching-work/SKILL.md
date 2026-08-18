@@ -1,6 +1,6 @@
 ---
 name: dispatching-work
-description: Dispatches a resolved app + task to a session actually rooted in that app's own directory. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app/boss-say, when the user asks what's currently dispatched (statuses, not live content), or when a dispatched task should be closed out. Not for a specific dispatch's live progress/content (`peeking-work`).
+description: Dispatches a resolved app + task to a session actually rooted in that app's own directory. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app/boss-say, when the user asks what's currently dispatched, or when a dispatched task should be closed out. Not for one dispatch's live content (`peeking-work`).
 ---
 
 ## Overview

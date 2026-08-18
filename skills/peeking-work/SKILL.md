@@ -1,6 +1,6 @@
 ---
 name: peeking-work
-description: Use when checking a dispatched task's live progress or recent activity without joining or interrupting it — "what's X doing", "peek at <task>'s pane", "check on this worker before I join it", or judging whether a `failed`/stuck task looks like a permission denial. Not for status alone (`dispatching-work`'s list branch) or answering a checkpoint (done directly in the worker's own pane).
+description: Use when checking a dispatched task's live progress without joining or interrupting it, or judging whether a stuck/failed task looks like a permission denial. Not for status alone (`dispatching-work`'s list branch).
 ---
 
 ## Overview
