@@ -15,6 +15,7 @@ An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a
 - **One epic, one boss** — a single orchestrating session coordinates the whole epic; it delegates, never implements.
 - **Per-task context** — each dispatch gets its own, scoped to one task, not the whole project.
 - **Worktree isolation** — parallel tasks run side by side without colliding.
+- **Cross-boss resource lock** — a file-based lock for ports and shared-DB migrations that worktrees can't isolate, across independent boss sessions.
 - **`/loop` for batches** — `boss-say` self-paces a batch of tasks across turns.
 - **herdr for human-in-the-loop** — watch a dispatch, join it, or answer a question mid-task.
 

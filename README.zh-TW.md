@@ -15,6 +15,7 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 - **一個 epic，一個 boss**——整個 epic 由單一協調 session 負責，只派工不動手實作。
 - **任務級 context**——每個派工都有自己的 context，只裝那一件任務要用的東西，不是整個專案。
 - **worktree 隔離**——多個任務平行跑，互不干擾。
+- **跨 boss 資源鎖**——worktree 隔離不到的 port、共用 DB migration，跨獨立 boss session 用檔案鎖排隊。
 - **`/loop` 處理批次**——`boss-say` 讓一批任務跨 turn 自己抓步調。
 - **herdr 隨時讓人介入**——旁觀、加入，或任務中途被問問題。
 
