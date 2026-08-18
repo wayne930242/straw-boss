@@ -1,14 +1,18 @@
-# Cross-session coordination (`herdr-pane` only)
+# Cross-session coordination
 
-Two capabilities, both live-tested against a real herdr-pane worker: a worker reaching the orchestrator, and the orchestrator interrupting a worker mid-task to inject an urgent correction. Neither applies to `claude-p` — a headless print-mode process exits after one turn, so there is never a live process on the other end to message or interrupt.
+Three capabilities, all live-tested: an agent reaching its boss (`herdr-pane` primary channel, `SendMessage` fallback and the only channel `claude-p` has), and the orchestrator interrupting an agent mid-task to inject an urgent correction (`herdr-pane` only — see "Mid-task interrupt and correction" below for why `claude-p` can't do this one).
 
-**A worker's own judgment rule and `SendMessage` mechanics for reaching the orchestrator live in `notifying-boss` — the worker-facing skill, not here.** This file covers only what the orchestrator itself must do: make itself addressable (below) and, separately, interrupt a worker mid-task. Confirmed live: a worker sent a genuine API-design trade-off (two viable directions, a real cost/benefit on each) via `SendMessage` instead of `awaiting-user-input` — the orchestrator could not have answered it either, so even a successful delivery wouldn't have resolved anything correctly. This is exactly the failure mode `notifying-boss`'s Task 1 exists to prevent — every dispatch instruction points the worker at that skill rather than restating its judgment rule inline.
+**An agent's own judgment rule and send mechanics for reaching its boss live in `notifying-boss` — the worker-facing skill, not here.** This file covers only what the orchestrator itself must do: make itself addressable, two ways (below), and, separately, interrupt an agent mid-task. Confirmed live: an agent sent a genuine API-design trade-off (two viable directions, a real cost/benefit on each) via `SendMessage` instead of `awaiting-user-input` — the orchestrator could not have answered it either, so even a successful delivery wouldn't have resolved anything correctly. This is exactly the failure mode `notifying-boss`'s Task 1 exists to prevent — every dispatch instruction points the agent at that skill rather than restating its judgment rule inline.
 
 ## Making the orchestrator addressable
 
-`SendMessage`/`ListAgents` address live sessions by an auto-derived peer name (`<cwd-basename>-<random-suffix>`, e.g. `web-04`) — confirmed live this is **not** the `session_id` UUID; a raw `--session-id` value is never a valid `SendMessage` `to` target. `ListAgents` also excludes the caller's own session (self-listing), so the orchestrator cannot look up its own peer name the way it can a worker's.
+Two independent addressing schemes, not interchangeable — an agent uses whichever one its own dispatch mode actually has:
 
-Confirmed live: the orchestrator can make its own name deterministic by running `/rename straw-boss-orchestrator` on itself once — this works even on an already-running session (not just at `claude` launch), takes effect immediately, and is idempotent (renaming to the same name again is harmless). Do this once per orchestrator session, before the first `herdr-pane` dispatch that might need it — not per-plan, not per-task. `/rename` does not persist across a session restart, so a freshly restarted orchestrator session needs to do this again before it's reachable.
+**herdr pane id (primary, `herdr-pane` agents only).** The orchestrator's own `$HERDR_PANE_ID` (e.g. `wF:p9`) is a valid `herdr agent get`/`herdr agent prompt` target regardless of whether that pane was ever named via `herdr agent start` — confirmed live: `herdr agent list`/`herdr agent get "$HERDR_PANE_ID"` return the orchestrator's own entry with no `name` field at all when it wasn't started that way, `pane_id` alone still resolves it. Nothing needs to be set up for this in advance; the orchestrator's dispatch instruction just states its own current `$HERDR_PANE_ID` value literally, resolved at instruction-assembly time (not the literal string `$HERDR_PANE_ID` — its actual value).
+
+**`SendMessage` peer name (fallback for `herdr-pane`, the only option for `claude-p`).** `SendMessage`/`ListAgents` address live sessions by an auto-derived peer name (`<cwd-basename>-<random-suffix>`, e.g. `web-04`) — confirmed live this is **not** the `session_id` UUID; a raw `--session-id` value is never a valid `SendMessage` `to` target. `ListAgents` also excludes the caller's own session (self-listing, unlike `herdr agent list`), so the orchestrator cannot look up its own peer name the way it can a worker's — it sets one instead.
+
+Confirmed live: the orchestrator can make its own peer name deterministic by running `/rename straw-boss-orchestrator` on itself once — this works even on an already-running session (not just at `claude` launch), takes effect immediately, and is idempotent (renaming to the same name again is harmless). Do this once per orchestrator session, before the first dispatch that might need this channel — not per-plan, not per-task. `/rename` does not persist across a session restart, so a freshly restarted orchestrator session needs to do this again before it's reachable.
 
 `/rename` is a Claude Code CLI slash command, not a tool call — the orchestrator cannot trigger it by emitting the text as part of its own response (that only reaches a human-typed input box, not the model's own output). Confirmed live: submit it to your own pane via `herdr agent prompt`, using the pane id `$HERDR_PANE_ID` already exported into the orchestrator's own environment:
 ```bash
@@ -16,7 +20,11 @@ herdr agent prompt "$HERDR_PANE_ID" "/rename straw-boss-orchestrator"
 ```
 This queues as input for after the current turn (submitting to a `working` pane doesn't interrupt it), so the rename takes effect once this turn ends — no `--wait` needed, and there is nothing further to check for confirmation until the *next* turn (`herdr agent get "$HERDR_PANE_ID"`'s `terminal_title` will read `straw-boss-orchestrator` once it has).
 
-Every `herdr-pane` dispatch instruction that might need this channel states: *"Your boss's peer name is `straw-boss-orchestrator` — use the `notifying-boss` skill if you need to reach it."* That's the whole instruction; `notifying-boss` itself carries the judgment rule and the never-authorization safety boundary, so it doesn't need restating here.
+**What the dispatch instruction states, per mode:**
+- `herdr-pane`: *"Your boss's herdr pane id is `<resolved $HERDR_PANE_ID value>` and its `SendMessage` peer name is `straw-boss-orchestrator` — use the `notifying-boss` skill if you need to reach it."*
+- `claude-p`: *"Your boss's `SendMessage` peer name is `straw-boss-orchestrator` — use the `notifying-boss` skill if you need to reach it, but you cannot wait for a reply before you exit."*
+
+That's the whole instruction either way; `notifying-boss` itself carries the judgment rule, the channel-selection logic, and the never-authorization safety boundary, so none of it needs restating here.
 
 ## Making a worker addressable
 
