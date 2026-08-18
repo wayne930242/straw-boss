@@ -95,6 +95,7 @@ cd "<app_dir>" && claude -p --session-id "<uuid from dispatch-task.py write>" $P
 - No trust-prompt handling needed: confirmed via `claude --help` that `-p`/print mode skips the workspace trust dialog automatically (non-interactive mode) — independent of whatever `$PERM_FLAGS` mirrors in.
 - `claude -p --output-format json` gives a single structured result if the caller needs to parse the outcome programmatically; plain text output is fine for a report-back-to-user case.
 - Once launched, confirm it per "Instruction file" above (`dispatch-task.py confirm --app <app> --slug <short-slug>`, no `--pane-id`/`--tab-id` needed for this mode) — the instruction should not sit `pending` after the process is actually running.
+- **Detecting the "ready to commit" checkpoint has no separate signal for a standalone `claude-p` dispatch — the process exiting *is* the signal.** Every dispatch instruction tells the agent to stop and report readiness rather than execute a commit/push/merge (see `shipping-task`'s Task 4), and `claude -p` processes exactly one turn then exits — so a foreground run returning, or a background run's harness-notification firing, both mean the agent either finished the whole task or hit that stop-and-report point; read its final output (already on stdout for a foreground run) to tell which. There is no plan-style status file for a non-plan dispatch to poll instead — don't go looking for one.
 
 ## `herdr-pane` dispatch
 
@@ -131,20 +132,22 @@ cd "<app_dir>" && claude -p --session-id "<uuid from dispatch-task.py write>" $P
    ```bash
    herdr agent send-keys "<unique-name>" enter
    ```
-   Then re-check `agent get` before proceeding — don't submit the task prompt while still `blocked`.
+   Then confirm it actually cleared before proceeding — don't submit the task prompt while still `blocked`. Use `herdr agent wait "<unique-name>" --until idle,blocked --timeout 15000` rather than a fixed `sleep` + single re-check: it's a real blocking primitive (`herdr agent --help`), returns the moment the state actually changes, and `--until blocked` still catches the (rare) case where clearing one prompt reveals a second one stacked behind it.
 6. **Submit the task:**
    ```bash
    herdr agent prompt "<unique-name>" "<task text>" --wait --timeout 120000
    ```
    Omit `--wait` when the caller doesn't need an immediate result (fire-and-forget into the pane; the user can check on it later) — in that case, skip step 6.5 too and let a later status check confirm delivery instead.
-6.5. **Confirm the task actually landed — do not trust the CLI's success return alone.** Confirmed live during testing: a first-run interruption (e.g. a one-time onboarding flow, or any other transient hiccup) can consume the submitted text while `herdr agent prompt --wait` still reports success and `agent_status` settles to `idle`. Check `herdr agent get "<unique-name>"`'s `terminal_title`: still the pane's generic default (e.g. `user@host: ~/path`) means the submission was likely swallowed; a task-derived summary (Claude Code renames the terminal title once it actually processes a real task) means it landed. If still generic, resubmit the prompt once (repeat step 6), then re-check. If still not confirmed after one retry, stop and tell the user rather than marking the instruction `in-progress`.
+
+   **Steps 6.5 through 8 are not optional follow-up — they finish this same dispatch.** An instruction left `pending` after its agent has visibly started working means one of them was skipped; don't treat "the task was submitted" as done.
+6.5. **Confirm the task actually landed — do not trust the CLI's success return alone.** Confirmed live during testing: a first-run interruption (e.g. a one-time onboarding flow, or any other transient hiccup) can consume the submitted text while `herdr agent prompt --wait` still reports success and `agent_status` settles to `idle`. **`terminal_title` cannot tell you this on its own** — step 4 always passes `--name`, and that alone renames the pane's terminal title away from its generic default the moment the agent starts, before any task is ever submitted (confirmed live: the title had already changed to the `--name` value while the pane was still sitting on the cleared trust prompt, with no task sent yet), so "no longer generic" proves the agent started, not that this task landed. Instead, `herdr agent read "<unique-name>" --lines 40` and confirm the transcript shows real assistant output that follows the submitted task text — not just the task text sitting unanswered, and not still the pre-task trust-prompt screen. If it doesn't, resubmit the prompt once (repeat step 6), then re-check. If still not confirmed after one retry, stop and tell the user rather than marking the instruction `in-progress`.
 7. **Cross-check the session id.** `herdr agent get "<unique-name>"` now returns `.result.agent.agent_session.value` (confirmed field path, present once the claude integration hook — see `init` — has reported in). Compare it to the session_id passed in step 4; if they don't match, flag this to the user rather than silently trusting either value.
 8. **Confirm the dispatch**, recording `herdr_pane_id`/`herdr_tab_id` and flipping the instruction to `in-progress`:
    ```bash
    uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" confirm \
      --app <app> --slug <short-slug> --pane-id <new_pane_id> --tab-id <tab_id>
    ```
-   Refuses if the instruction isn't still `pending` — don't call this before step 6.5 has actually confirmed delivery.
+   Refuses if the instruction isn't still `pending` — don't call this before step 6.5 has actually confirmed delivery. Do this immediately after step 7, in the same span of actions as steps 4-6 — not as a separate later chore; confirmed live during testing this is exactly the step that gets forgotten when it's treated as an afterthought.
 
 For `claude-p`, there's no pane/tab to record — call the same `confirm` without `--pane-id`/`--tab-id` once the process has actually been launched.
 

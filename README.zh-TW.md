@@ -40,6 +40,8 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 
 `init` 會問你要納管哪些 app（先掃一輪常見的 monorepo 結構當起點），寫進 `.claude/straw-boss/apps.json`，同步一段納管範圍摘要進專案根目錄的 `CLAUDE.md`，對沒有 `CLAUDE.md` 也沒有 `.claude/` 的 app 主動提議建立一套精簡的 agent system，另外也會問你要不要在這台機器啟用 herdr。
 
+單一 app 的 repo，`init` 只是錦上添花，不是前提——plugin 一裝好，`boss-say` 就能直接用，repo root 本身會被當成唯一的 app。想啟用 herdr、設定 `apps.json` 的個別選項（`forbidDirectCommit`、`localFiles` 等）、或設定 monorepo 的多個 app，才需要跑 `init`；不跑也能直接開始派工。
+
 ## Skills
 
 | Skill | 說明 |

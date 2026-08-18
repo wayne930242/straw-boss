@@ -40,6 +40,8 @@ Then run once per project:
 
 `init` asks which apps to manage (scanning for a common monorepo layout as a starting point), writes `.claude/straw-boss/apps.json`, syncs a managed-apps section into your project's root `CLAUDE.md`, offers a lightweight agent-system bootstrap for any app that has neither `CLAUDE.md` nor `.claude/`, and asks separately whether to enable herdr on this machine.
 
+For a single-app repo, `init` is a convenience, not a precondition — `boss-say` works the moment the plugin is installed, resolving the repo root itself as the one implicit app. Run `init` when you want herdr enabled, `apps.json`'s per-app options (`forbidDirectCommit`, `localFiles`, ...), or a monorepo's multiple apps configured; skip it to just start dispatching.
+
 ## Skills
 
 | Skill | Description |
