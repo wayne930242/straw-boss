@@ -40,6 +40,8 @@ A shared, stateful database can't be isolated by a formula the way a port can. A
 
 **`--ttl-seconds` is a crash-recovery timeout, not a work-duration budget — set it well above the expected duration of the work it guards, deliberately, at instruction-assembly time.** It exists only so a lock survives a boss/agent that crashes or gets killed without releasing; it is not a queueing fairness mechanism, and there is no renewal. A task still legitimately working when its TTL lapses gets its lock silently reclaimed by the next waiter — the boss states a realistic number, not the `1800` default by reflex, when it knows this task's migration/verification normally runs longer.
 
+**The claiming task is told this, not left to remember its own `--ttl-seconds` flag.** Every successful `acquire`/`wait`/`claim-port` echoes `ttl_seconds` back in its own JSON result, plus a `note_to_holder` spelling out that it's reclaimable after that long without a release — the dispatch instruction doesn't need to separately remind the agent, the tool's own output does.
+
 The DB case, and the fixed-port case, both use `wait`:
 
 ```bash

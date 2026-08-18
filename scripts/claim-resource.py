@@ -131,7 +131,18 @@ def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, hold
         else:
             with os.fdopen(fd, "w") as f:
                 f.write(json.dumps(payload, indent=2) + "\n")
-            return {"acquired": True, "resource": resource, "holder": holder, "reclaimed_stale": attempt > 0}
+            return {
+                "acquired": True,
+                "resource": resource,
+                "holder": holder,
+                "ttl_seconds": ttl_seconds,
+                "reclaimed_stale": attempt > 0,
+                "note_to_holder": (
+                    f"you hold this until you release it, or until {ttl_seconds}s pass without a release -- "
+                    f"whichever first. Past that, anyone else can reclaim it out from under you. Release it "
+                    f"yourself as soon as you're done, don't rely on the ttl as a normal end-of-use signal."
+                ),
+            }
 
     raise ValueError(
         f"could not acquire lock on {resource!r} -- contended again immediately after reclaiming a stale entry, try again"
