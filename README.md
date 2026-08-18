@@ -2,26 +2,26 @@
 
 English | [繁體中文](./README.zh-TW.md)
 
-A Claude Code plugin that dispatches implementation work into a session rooted in your app's own directory — a headless `claude -p` process, or an interactive [herdr](https://github.com/herdrdev/herdr) pane you can watch and join — with a standardized git lifecycle and an authorization gate on every commit/push/merge. Works directly in a single-app repo; in a monorepo, it also routes each request to the right app first.
+Dispatch implementation work into a session that actually lives in your app's directory — headless `claude -p`, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane — with a standardized git lifecycle and an authorization gate on every commit/push/merge. Works in a single-app repo out of the box; routes across a monorepo's apps too.
 
-The name is a ranch term: the straw boss is the crew foreman who works alongside the hands, not from an office. That's the job here — get each task into the right hands, in the right place, and stay close enough to unblock it.
+Named after the ranch foreman who works the ground alongside the crew, not from an office. Same job here: get each task into the right hands, in the right place, and stay close enough to unblock it.
 
 ## Why
 
-An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session whose working directory is that app's own root. A session working from somewhere else — a monorepo root, or any orchestrating cwd — never sees them, even though path-scoped rules and nested `CLAUDE.md` files do reach it. straw-boss closes that gap by dispatching the work itself into a session that actually lives in the target directory, instead of hand-maintaining a summary of what that app's rules say. This is the core of the plugin — routing across a monorepo's multiple apps (`work-on`) is an extra layer on top, not a precondition for the rest of it. See `docs/architecture.md` for the full design rationale.
+An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session whose working directory is that app's own root — a monorepo root, or any orchestrating cwd, never sees them. straw-boss dispatches the work itself into a session that actually lives there, instead of hand-maintaining a summary of what the app's rules say. Routing across a monorepo's apps (`work-on`) is a bonus on top, not a prerequisite. Full design rationale: `docs/architecture.md`.
 
-What holds this together:
+## Workflow highlights
 
-- **One coordinator.** A single orchestrating session keeps the overall workflow coherent — it delegates, it doesn't implement.
-- **Context sized to the task.** Each dispatched session gets its own context, scoped to the one task it's doing — not the whole project.
-- **Parallel work via worktree isolation.** Multiple tasks run side by side, each in its own git worktree, without stepping on each other.
-- **`/loop` for batches.** `boss-say` drives a batch of independent tasks across many turns, self-pacing via `/loop` instead of holding one long turn open.
-- **herdr puts a human in the loop wherever one's needed.** Watch a dispatch live, join it, or get asked a question mid-task — whatever the moment actually calls for.
+- **One coordinator** — delegates, doesn't implement.
+- **Per-task context** — each dispatch gets its own, scoped to one task, not the whole project.
+- **Worktree isolation** — parallel tasks run side by side without colliding.
+- **`/loop` for batches** — `boss-say` self-paces a batch of tasks across turns.
+- **herdr for human-in-the-loop** — watch a dispatch, join it, or answer a question mid-task.
 
 ## Requirements
 
 - Claude Code, with plugins enabled.
-- [herdr](https://github.com/herdrdev/herdr) (recommended, optional). Without it, every dispatch runs as a headless `claude -p` process — no live pane, no mid-task questions. With it, straw-boss can open an interactive pane you can watch, join, and get asked mid-task questions in. `init` checks for it and lets you enable it, or skip it and stay `claude-p`-only.
+- [herdr](https://github.com/herdrdev/herdr) (recommended, optional). Without it, dispatch runs headless `claude -p` — no live pane, no mid-task questions. With it, you get a watchable, joinable pane. `init` checks for it and lets you enable or skip it.
 
 ## Install
 
@@ -30,13 +30,13 @@ What holds this together:
 /plugin install straw-boss@straw-boss
 ```
 
-Then run `init` once per project:
+Then run once per project:
 
 ```
 /straw-boss:init
 ```
 
-`init` asks which apps you want to manage (scanning for a common monorepo layout as a starting point), writes `.claude/straw-boss/apps.json`, and syncs a managed-apps section into your project's root `CLAUDE.md`. It also asks, separately, whether to enable herdr-backed dispatch on this machine.
+`init` asks which apps to manage (scanning for a common monorepo layout as a starting point), writes `.claude/straw-boss/apps.json`, syncs a managed-apps section into your project's root `CLAUDE.md`, and asks separately whether to enable herdr on this machine.
 
 ## Skills
 
@@ -55,8 +55,8 @@ Then run `init` once per project:
 
 Once `init` has run, trigger whichever entry skill matches what you're doing:
 
-- Start implementing something → `shipping-task` (internally calls `work-on`, then dispatches)
-- Work through a batch of independent tasks → `boss-say` (one turn, or `/loop boss-say ...` to self-pace across many turns)
+- Start implementing something → `shipping-task` (calls `work-on`, then dispatches)
+- Work through a batch of independent tasks → `boss-say` (one turn, or `/loop boss-say ...` to self-pace across many)
 - Just want to know which app a request belongs to → `work-on`
 - Audit existing code against your rules → `inspecting-app`
 - Research current behavior, no rule or failure in question → `investigating-app`
@@ -65,7 +65,7 @@ Once `init` has run, trigger whichever entry skill matches what you're doing:
 
 ## Configuration
 
-Everything project-specific — which apps exist, how to route to them, per-app git-lifecycle quirks, legacy redirects, cross-app coordination pointers — lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). `init` also keeps a short managed-apps summary (names and directories only) synced into your project's root `CLAUDE.md` — kept deliberately terse, since a monorepo root `CLAUDE.md` is inherited by every nested app session, not just straw-boss's own.
+Everything project-specific — apps, routing, per-app git-lifecycle quirks, legacy redirects, cross-app coordination — lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). `init` also keeps a terse managed-apps summary (names and directories only) synced into your project's root `CLAUDE.md`, since a monorepo root `CLAUDE.md` is inherited by every nested app session, not just straw-boss's own.
 
 ## License
 
