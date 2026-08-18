@@ -1,6 +1,6 @@
 ---
 name: investigating-app
-description: Use when the user wants to understand how something currently works or is structured, scoped to one of the project's managed apps, with no rule violation or reported failure in question, e.g. "how does X work here", "understand how Y is implemented" — not for auditing against rules (inspecting-app), diagnosing a reported failure (troubleshooting-app), or implementing a fix (shipping-task).
+description: Use when the user wants to understand how something currently works or is structured, scoped to one of the project's managed apps, with no rule violation or reported failure in question, e.g. "how does X work here", "understand how Y is implemented" — not for auditing against rules (inspecting-app), diagnosing a reported failure (troubleshooting-app), or implementing a fix (`boss-say`).
 ---
 
 ## Overview

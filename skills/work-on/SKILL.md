@@ -1,6 +1,6 @@
 ---
 name: work-on
-description: Determines which of the project's managed apps a request belongs to. Use when straw-boss's other entry skills (shipping-task, inspecting-app, investigating-app, troubleshooting-app, boss-say) need to resolve their target app as a shared first step, or when you just need to know which app a request belongs to without starting one of those flows.
+description: Determines which of the project's managed apps a request belongs to. Use when straw-boss's other skills (boss-say and the shipping-task lifecycle it drives, inspecting-app, investigating-app, troubleshooting-app) need to resolve their target app as a shared first step, or when you just need to know which app a request belongs to without starting one of those flows.
 ---
 
 ## Overview
@@ -62,7 +62,7 @@ Invoke `grilling` (or this project's equivalent decomposition-confirmation skill
 
 Read-only and audit-only requests (`inspecting-app`, `investigating-app`, and `troubleshooting-app`'s diagnosis phase) do not dispatch — they continue directly in this session using the resolved app's directory, since reading isn't limited by the skills/hooks gap this dispatch model exists to close.
 
-For implementation work, this task's job ends at naming the resolved app(s) (and, if Task 5 ran, the plan) — it does not call `dispatching-work` itself. The caller (`shipping-task` after it has decided the git-lifecycle flow, or `troubleshooting-app` once root cause and fix scope are known) assembles the actual task description(s) and invokes `dispatching-work` — with the plan when Task 5 produced one, or a single instruction otherwise. Whatever Task 4 found (an existing change to continue, or nothing) travels with that hand-off — the caller doesn't re-derive it.
+For implementation work, this task's job ends at naming the resolved app(s) (and, if Task 5 ran, the plan) — it does not call `dispatching-work` itself. The caller (`shipping-task` after it has decided the git-lifecycle flow, or `boss-say` for a batch item) assembles the actual task description(s) and invokes `dispatching-work` — with the plan when Task 5 produced one, or a single instruction otherwise. Whatever Task 4 found (an existing change to continue, or nothing) travels with that hand-off — the caller doesn't re-derive it.
 
 **Verification:** for implementation work, this task ends with the resolved app(s) (and plan, if any) named and control returned to the caller, not with `dispatching-work` already invoked here; for read-only work, no dispatch happens at all and the resolved app's directory is read directly instead.
 
