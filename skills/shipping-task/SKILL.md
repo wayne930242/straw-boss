@@ -84,4 +84,4 @@ If the task originated from a tracker ticket, this skill (not the dispatched ses
 
 ## References
 
-- `../init/references/apps-config-schema.md` — `forbidDirectCommit`/`gitWorkflowSkill` field definitions.
+- `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md` — `forbidDirectCommit`/`gitWorkflowSkill` field definitions.

@@ -9,7 +9,7 @@ App resolution and dispatch: figure out which app a request belongs to, then han
 
 Apps' own `.claude/rules/*.md`, `.claude/skills/`, and `.claude/settings.json` hooks only load fully for a session actually rooted in that app's directory — a session working from the project root never sees an app's own skills or hooks, even though path-scoped rules and nested `CLAUDE.md` do reach it reactively. Dispatching to a session that lives in the target app closes that gap instead of working around it with a hand-maintained summary.
 
-If `.claude/straw-boss/apps.json` doesn't exist, stop and tell the caller to run `init` first — never guess an app list.
+Locate the config with `git rev-parse --show-toplevel` from the current working directory, then read `<repo-root>/.claude/straw-boss/apps.json` — never assume the current directory is the repo root, and never search upward by hand. If it doesn't exist, stop and tell the caller to run `init` first — never guess an app list.
 
 ## Task 1: Resolve the target app
 
@@ -78,4 +78,4 @@ For implementation work, this task's job ends at naming the resolved app(s) (and
 
 ## References
 
-- `../init/references/apps-config-schema.md` — exact `apps.json` field names and shapes.
+- `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md` — exact `apps.json` field names and shapes.

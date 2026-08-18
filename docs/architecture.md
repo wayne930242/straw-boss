@@ -36,7 +36,7 @@ Read-only requests (`inspecting-app`, `investigating-app`, `troubleshooting-app`
 
 ## Why the app list is project config, not plugin code
 
-Everything that used to be hardcoded per app (the routing table, legacy redirects, forbid-direct-commit rules, per-app git-workflow skills, gitignored local files a worktree needs, cross-app coordination pointers) is real knowledge about *your* project, not about straw-boss. `init` asks for it once and writes it to `.claude/straw-boss/apps.json` (schema: `skills/init/references/apps-config-schema.md`) plus a synced section in your project's root `CLAUDE.md`. The plugin ships with no apps configured — every routing decision comes from your project's own config, never a default guess.
+Everything that used to be hardcoded per app (the routing table, legacy redirects, forbid-direct-commit rules, per-app git-workflow skills, gitignored local files a worktree needs, cross-app coordination pointers) is real knowledge about *your* project, not about straw-boss. `init` asks for it once and writes it to `.claude/straw-boss/apps.json` (schema: `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md`) plus a synced section in your project's root `CLAUDE.md`. The plugin ships with no apps configured — every routing decision comes from your project's own config, never a default guess.
 
 ## State: project config vs. machine state
 

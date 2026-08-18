@@ -16,7 +16,7 @@ An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a
 ## Install
 
 ```
-/plugin marketplace add https://github.com/<your-github-user>/straw-boss
+/plugin marketplace add https://github.com/wayne930242/straw-boss
 /plugin install straw-boss@straw-boss
 ```
 
@@ -53,7 +53,7 @@ Once `init` has run, trigger whichever entry skill matches what you're doing:
 
 ## Configuration
 
-Everything project-specific — which apps exist, how to route to them, per-app git-lifecycle quirks, legacy redirects, cross-app coordination pointers — lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: `skills/init/references/apps-config-schema.md`.
+Everything project-specific — which apps exist, how to route to them, per-app git-lifecycle quirks, legacy redirects, cross-app coordination pointers — lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). `init` also keeps a short managed-apps summary (names and directories only) synced into your project's root `CLAUDE.md` — kept deliberately terse, since a monorepo root `CLAUDE.md` is inherited by every nested app session, not just straw-boss's own.
 
 ## License
 
