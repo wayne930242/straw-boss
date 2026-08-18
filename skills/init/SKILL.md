@@ -34,14 +34,14 @@ Write the result to `<repo-root>/.claude/straw-boss/apps.json` (same repo-root r
 
 ## Task 3: Offer to bootstrap a missing agent system, per app
 
-For each app resolved in Task 2 (newly added or already-configured — this check is about the app's own directory, not about whether `apps.json` itself changed this run), check whether it already has any agent system at all: does `<app-dir>/CLAUDE.md` and/or `<app-dir>/.claude/` exist?
+For each app resolved in Task 2 (newly added or already-configured — this check is about the app's own directory, not about whether `apps.json` itself changed this run), check whether it already has any agent system at all: does `<app-dir>/CLAUDE.md` exist, **or** does `<app-dir>/.claude/` contain any of `skills/`, `rules/`, `hooks/`? A `.claude/` holding only `settings.json` is not an agent system — permissions/plugin config alone isn't guidance or enforcement, so it doesn't count as exempt.
 
-- **Either exists:** nothing to do for this app — some agent system is already there, even a minimal one; this task doesn't second-guess its adequacy.
-- **Neither exists:** tell the user this app has no agent system yet, and ask whether to bootstrap a lightweight one now — a `CLAUDE.md` plus one basic guard hook, via the `create-great-harness` skill — or skip it. Ask per app, not once for the whole batch; a vendored or generated app, for instance, may deliberately warrant none.
+- **Either condition met:** nothing to do for this app — some agent system is already there, even a minimal one; this task doesn't second-guess its adequacy.
+- **Neither:** tell the user this app has no agent system yet, and ask whether to bootstrap a lightweight one now — a `CLAUDE.md` plus one basic guard hook, via the `create-great-harness` skill — or skip it. Ask per app, not once for the whole batch; a vendored or generated app, for instance, may deliberately warrant none.
   - **Yes:** invoke `create-great-harness` for that app's directory, then move to the next app.
-  - **Skip:** move on. This check is live, not a remembered decision — a future `init` run checks again, but stops asking the moment `CLAUDE.md`/`.claude/` exists, however it got there.
+  - **Skip:** move on. This check is live, not a remembered decision — a future `init` run checks again, but stops asking the moment the exemption condition is actually met, however it got there.
 
-**Verification:** every app from Task 2 was checked for `CLAUDE.md`/`.claude/` existence; an app that already had either was never asked; an app with neither got an explicit yes/skip answer before this task moved on.
+**Verification:** every app from Task 2 was checked against the exemption condition above, not just "does `.claude/` exist"; an app that already met it was never asked; an app that didn't got an explicit yes/skip answer before this task moved on.
 
 ## Task 4: Sync the managed-apps section in root CLAUDE.md
 
@@ -114,7 +114,8 @@ Ask the user whether to enable herdr-backed dispatch (`herdr-pane` mode). Explai
 - "The user said yes to herdr, persist it now" — no, Task 8 still has to confirm the server and integration are actually there.
 - "Integration install is just a config tweak, no need to call out the global scope" — no, it's a machine-wide hook; say so every time it's about to run, not just the first.
 - "Just set crossSessionInbound to accept, it's obviously useful" — no, Task 9 still explains what it does and asks first, same as every other setting change in this skill.
-- "An app has neither CLAUDE.md nor .claude/, but it's probably fine, skip asking" — no, Task 3 asks explicitly per app; only an app that already has one is exempt.
+- "An app has neither CLAUDE.md nor .claude/, but it's probably fine, skip asking" — no, Task 3 asks explicitly per app; only an app that meets the exemption condition is skipped.
+- "The app has a `.claude/settings.json` with a couple of permission rules, that counts as having an agent system" — no, Task 3: settings alone isn't guidance or enforcement; the exemption needs `CLAUDE.md` or actual `skills/`/`rules/`/`hooks/` content.
 - "Ask once for the whole app list whether to bootstrap agent systems" — no, Task 3: per app, since a vendored/generated app may deliberately warrant none.
 
 ## References
