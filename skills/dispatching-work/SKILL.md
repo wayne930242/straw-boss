@@ -1,11 +1,11 @@
 ---
 name: dispatching-work
-description: Dispatches a resolved app + task to a session actually rooted in that app's own directory. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app/boss-say, when the user asks what's currently dispatched or how a plan is progressing, or when a dispatched task should be closed out.
+description: Dispatches a resolved app + task to a session actually rooted in that app's own directory. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app/boss-say, when the user asks what's currently dispatched (statuses, not live content), or when a dispatched task should be closed out. Not for a specific dispatch's live progress/content (`peeking-work`).
 ---
 
 ## Overview
 
-Every dispatched task is tracked as one instruction file under `~/.straw-boss/dispatch/` — the user's home directory, not the target project checkout (see `init`). This skill covers: **dispatch** a single task (Tasks 1-5), **dispatch a plan** (Branch below, when `work-on` produced a multi-task dependency graph), **list**, and **wrap up**. Exact CLI/JSON syntax lives in `references/` — `dispatch-mechanics.md` (single-task + permission-mode detection), `plan-mechanics.md` (plan/status schemas, worktree repair heredoc, zsh `Monitor` gotchas), `cross-session-coordination.md` (`SendMessage`/interrupt syntax) — read the relevant one for the exact command before running it. Every requirement below is real, not a pointer to go read something else first.
+Every dispatched task is tracked as one instruction file under `~/.straw-boss/dispatch/` — the user's home directory, not the target project checkout (see `init`). This skill covers: **dispatch** a single task (Tasks 1-5), **dispatch a plan** (Branch below, when `work-on` produced a multi-task dependency graph), **list**, and **wrap up**. Exact CLI/JSON syntax lives in `references/` — `dispatch-mechanics.md` (single-task + permission-mode detection), `plan-mechanics.md` (plan/status schemas, worktree repair heredoc, zsh `Monitor` gotchas), `cross-session-coordination.md` (`SendMessage`/interrupt syntax) — read the relevant one for the exact command before running it. Every requirement below is real, not a pointer to go read something else first. For a specific dispatch's actual live content or progress — not just its status — invoke `peeking-work` instead of reading a pane/transcript inline here.
 
 Prerequisite: `~/.straw-boss/capability.json` must exist. If it doesn't, stop and tell the caller to run `init` first.
 

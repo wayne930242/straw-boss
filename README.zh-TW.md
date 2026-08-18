@@ -47,6 +47,7 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 | `dispatching-work` | 選派工模式（`claude-p` / `herdr-pane`）、寫派工指令、實際派工、列出/收尾既有派工 |
 | `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工單一任務、每次 commit/push/merge 前找你授權 |
 | `boss-say` | 在固定並行上限下跑一批獨立任務，一有空位就補下一個；可以一次跑完，也可以搭配 `/loop` 反覆調用 |
+| `peeking-work` | 唯讀查看某個派工目前在做什麼——herdr pane 的輸出，或 `claude-p` 的 transcript tail——不加入、不打斷 |
 | `inspecting-app` | 對應出目標 app，交給你自己的規則/慣例稽核 skill（唯讀，不派工） |
 | `investigating-app` | 對應出目標 app，交給你自己的研究型 skill（唯讀，不派工） |
 | `troubleshooting-app` | 診斷回報的故障——app 程式碼還是基礎設施出包——再交給 `shipping-task` 修 |
@@ -58,6 +59,7 @@ app 自己的 `.claude/skills/` 和 `.claude/settings.json` hooks，只有工作
 - 開始實作 → `shipping-task`（會先呼叫 `work-on`，再派工）
 - 處理一批獨立任務 → `boss-say`（一次跑完，或 `/loop boss-say ...` 讓它自己抓步調跨多個 turn）
 - 只是想知道某個請求歸哪個 app 管 → `work-on`
+- 想在加入或打斷之前先看某個工人做到哪 → `peeking-work`
 - 對照規則稽核現有程式碼 → `inspecting-app`
 - 研究目前行為，沒有規則或故障要查 → `investigating-app`
 - 東西壞了，原因不明 → `troubleshooting-app`

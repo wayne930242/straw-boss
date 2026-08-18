@@ -47,6 +47,7 @@ Then run once per project:
 | `dispatching-work` | Choose the dispatch mode (`claude-p` / `herdr-pane`), write the dispatch instruction, actually dispatch, list/wrap up existing dispatches |
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch one task, and get user authorization before every commit/push/merge |
 | `boss-say` | Drive a batch of independent tasks under a concurrency cap, refilling as items finish; runs as one long turn or repeatedly via `/loop` |
+| `peeking-work` | Read-only peek at one dispatch's live progress — herdr pane output, or a `claude-p` transcript tail — without joining or interrupting it |
 | `inspecting-app` | Resolve the app, hand off to your own rules/conventions audit skill (read-only, no dispatch) |
 | `investigating-app` | Resolve the app, hand off to your own research skill (read-only, no dispatch) |
 | `troubleshooting-app` | Diagnose a reported failure — app-code vs. infrastructure — then hand off to `shipping-task` for the fix |
@@ -58,6 +59,7 @@ Once `init` has run, trigger whichever entry skill matches what you're doing:
 - Start implementing something → `shipping-task` (calls `work-on`, then dispatches)
 - Work through a batch of independent tasks → `boss-say` (one turn, or `/loop boss-say ...` to self-pace across many)
 - Just want to know which app a request belongs to → `work-on`
+- Check on a worker before joining or interrupting it → `peeking-work`
 - Audit existing code against your rules → `inspecting-app`
 - Research current behavior, no rule or failure in question → `investigating-app`
 - Something's broken, cause unknown → `troubleshooting-app`
