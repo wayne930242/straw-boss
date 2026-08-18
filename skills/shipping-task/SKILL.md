@@ -1,6 +1,6 @@
 ---
 name: shipping-task
-description: Carries a task through a standardized git lifecycle in one of the project's managed apps, end-to-end from first commit to merged and archived, by dispatching it into a session rooted in that app. Use when starting or continuing implementation work end-to-end, e.g. "work on this", "let's implement this in <app>". Does not scope or plan the task (your project's task-scoping skill) or pick the app (`work-on`, invoked internally here).
+description: Carries one task through a standardized git lifecycle in one of the project's managed apps. Use when starting or continuing implementation work on a single task, e.g. "work on this", "let's implement this in <app>". Not for scoping/planning the task (your project's task-scoping skill), picking the app (`work-on`, invoked internally here), or many independent tasks at once (`boss-say`).
 ---
 
 ## Overview

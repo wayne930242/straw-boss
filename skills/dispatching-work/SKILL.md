@@ -1,6 +1,6 @@
 ---
 name: dispatching-work
-description: Dispatches a resolved app + task to a session actually rooted in that app's own directory (headless claude -p, or an interactive herdr pane), instead of working in the caller's own session against a summary. Also drives a whole plan's wave-by-wave dispatch when work-on produced one, lists outstanding dispatches, and wraps one up when it's done. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app, when the user asks what's currently dispatched or how a plan is progressing, or when a dispatched task should be closed out.
+description: Dispatches a resolved app + task to a session actually rooted in that app's own directory. Use after work-on has resolved the target app(s) (or a plan) for shipping-task/troubleshooting-app/boss-say, when the user asks what's currently dispatched or how a plan is progressing, or when a dispatched task should be closed out.
 ---
 
 ## Overview

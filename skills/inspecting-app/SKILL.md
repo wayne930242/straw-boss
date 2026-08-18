@@ -1,6 +1,6 @@
 ---
 name: inspecting-app
-description: Resolves the app and gate for a compliance check scoped to one of the project's managed apps, then hands off to the inspecting skill. Use when the user wants to check or audit something against existing rules or conventions, e.g. "audit this module", "check if X follows the rules" — not for open-ended research into how something currently behaves with no rule in question (investigating-app), diagnosing a reported failure (troubleshooting-app), or implementing a fix (shipping-task).
+description: Use when the user wants to check or audit something against existing rules or conventions, scoped to one of the project's managed apps, e.g. "audit this module", "check if X follows the rules" — not for open-ended research into how something currently behaves with no rule in question (investigating-app), diagnosing a reported failure (troubleshooting-app), or implementing a fix (shipping-task).
 ---
 
 ## Overview

@@ -1,6 +1,6 @@
 ---
 name: init
-description: One-time (or occasional) setup for straw-boss in a project — asks which apps to manage and writes `.claude/straw-boss/apps.json` plus a managed-apps section in root `CLAUDE.md`, then decides whether herdr-backed dispatch is available on this machine. Use when the user says "straw-boss init", runs it for the first time in a repo, or another straw-boss skill reports no apps config or no capability record exists yet.
+description: One-time (or occasional) setup for straw-boss in a project. Use when the user says "straw-boss init", runs it for the first time in a repo, or another straw-boss skill reports no apps config or no capability record exists yet.
 ---
 
 ## Overview

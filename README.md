@@ -35,7 +35,8 @@ Then run `init` once per project:
 | `init` | One-time setup: ask which apps to manage, write the config, sync root `CLAUDE.md`; decide whether to enable herdr dispatch |
 | `work-on` | Resolve a request to one of the configured apps, apply any legacy redirect; hand implementation requests to dispatch |
 | `dispatching-work` | Choose the dispatch mode (`claude-p` / `herdr-pane`), write the dispatch instruction, actually dispatch, list/wrap up existing dispatches |
-| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch the work, and get user authorization before every commit/push/merge |
+| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch one task, and get user authorization before every commit/push/merge |
+| `boss-say` | Drive a batch of independent tasks under a concurrency cap, refilling as items finish; runs as one long turn or repeatedly via `/loop` |
 | `inspecting-app` | Resolve the app, hand off to your own rules/conventions audit skill (read-only, no dispatch) |
 | `investigating-app` | Resolve the app, hand off to your own research skill (read-only, no dispatch) |
 | `troubleshooting-app` | Diagnose a reported failure — app-code vs. infrastructure — then hand off to `shipping-task` for the fix |
@@ -45,6 +46,7 @@ Then run `init` once per project:
 Once `init` has run, trigger whichever entry skill matches what you're doing:
 
 - Start implementing something → `shipping-task` (internally calls `work-on`, then dispatches)
+- Work through a batch of independent tasks → `boss-say` (one turn, or `/loop boss-say ...` to self-pace across many turns)
 - Just want to know which app a request belongs to → `work-on`
 - Audit existing code against your rules → `inspecting-app`
 - Research current behavior, no rule or failure in question → `investigating-app`

@@ -1,6 +1,6 @@
 ---
 name: work-on
-description: Determines which of the project's managed apps (from `.claude/straw-boss/apps.json`, set up by `init`) a request belongs to — applying any configured legacy redirect — and, for implementation work, hands off to dispatch. Use when straw-boss's other entry skills (shipping-task, inspecting-app, investigating-app, troubleshooting-app) need to resolve their target app as a shared first step, or when you just need to know which app a request belongs to without starting one of those flows.
+description: Determines which of the project's managed apps a request belongs to. Use when straw-boss's other entry skills (shipping-task, inspecting-app, investigating-app, troubleshooting-app, boss-say) need to resolve their target app as a shared first step, or when you just need to know which app a request belongs to without starting one of those flows.
 ---
 
 ## Overview
@@ -19,7 +19,7 @@ Locate the config with `git rev-parse --show-toplevel` from the current working 
 
 If the request clearly spans more than one app, name every app it touches — don't force a single answer. Each app is routed, gated, and later shipped independently; `shipping-task` runs them as separate per-app worktree/MR/review cycles, not one blended change.
 
-If the request doesn't match any row and isn't infrastructure/read-only (see Out of scope), say plainly that it falls outside the project's managed-app scope rather than guessing.
+In the multi-app case, if the request doesn't match any row and isn't infrastructure/read-only (see Out of scope), say plainly that it falls outside the project's managed-app scope rather than guessing. This branch is unreachable in the single-app case — with exactly one app configured, every request resolves to it.
 
 **Verification:** you can name the exact target directory (or directories), or you've asked a clarifying question because the name was ambiguous, or you've stated the request is out of scope.
 
@@ -64,7 +64,7 @@ For implementation work, this task's job ends at naming the resolved app(s) (and
 
 ## Out of scope
 
-- Apps not listed in `.claude/straw-boss/apps.json` — no dispatch target exists; say so.
+- Apps not listed in `.claude/straw-boss/apps.json` — no dispatch target exists; say so. Only reachable with more than one app configured — see Task 1's single-app fast path.
 - Infrastructure work outside any managed app's directory — no per-app agent system there.
 - Reads/explanations that don't change code — answer inline.
 

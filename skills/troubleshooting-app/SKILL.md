@@ -1,6 +1,6 @@
 ---
 name: troubleshooting-app
-description: Diagnoses a reported live issue (error, crash, unexpected behavior) against one of the project's managed apps, read-only, distinguishing an app-code cause from an infrastructure one before handing off to a fix. Use when something is broken and the cause is unknown, e.g. "X is failing", "500 in production for <app>" — not for a known task with a clear fix already in mind (shipping-task), a rule/convention audit (inspecting-app), or open-ended research into current behavior with no reported failure (investigating-app).
+description: Use when something is broken and the cause is unknown, scoped to one of the project's managed apps, e.g. "X is failing", "500 in production for <app>" — not for a known task with a clear fix already in mind (shipping-task), a rule/convention audit (inspecting-app), or open-ended research into current behavior with no reported failure (investigating-app).
 ---
 
 ## Overview
