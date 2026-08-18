@@ -10,6 +10,14 @@ The name is a ranch term: the straw boss is the crew foreman who works alongside
 
 An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session whose working directory is that app's own root. A session working from somewhere else — a monorepo root, or any orchestrating cwd — never sees them, even though path-scoped rules and nested `CLAUDE.md` files do reach it. straw-boss closes that gap by dispatching the work itself into a session that actually lives in the target directory, instead of hand-maintaining a summary of what that app's rules say. This is the core of the plugin — routing across a monorepo's multiple apps (`work-on`) is an extra layer on top, not a precondition for the rest of it. See `docs/architecture.md` for the full design rationale.
 
+What holds this together:
+
+- **One coordinator.** A single orchestrating session keeps the overall workflow coherent — it delegates, it doesn't implement.
+- **Context sized to the task.** Each dispatched session gets its own context, scoped to the one task it's doing — not the whole project.
+- **Parallel work via worktree isolation.** Multiple tasks run side by side, each in its own git worktree, without stepping on each other.
+- **`/loop` for batches.** `boss-say` drives a batch of independent tasks across many turns, self-pacing via `/loop` instead of holding one long turn open.
+- **herdr puts a human in the loop wherever one's needed.** Watch a dispatch live, join it, or get asked a question mid-task — whatever the moment actually calls for.
+
 ## Requirements
 
 - Claude Code, with plugins enabled.
