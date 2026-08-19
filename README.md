@@ -2,7 +2,7 @@
 
 English | [繁體中文](./README.zh-TW.md)
 
-You're the boss. Say the word, and `boss-say` dispatches it — to whoever's the right fit: a plain subagent for something simple, or a session rooted in the app's own directory (headless `claude -p`, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane) for anything that needs the app's own setup. Works in one app out of the box, coordinates across a whole monorepo too. You can always see what's actually happening.
+You call the shots. Say the word, and `boss-say` dispatches it — to whoever's the right fit: a plain subagent for something simple, or a session rooted in the app's own directory (headless `claude -p`, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane) for anything that needs the app's own setup. Works in one app out of the box, coordinates across a whole monorepo too. You can always see what's actually happening.
 
 Named after the ranch foreman who works the ground alongside the crew, not from an office.
 
@@ -14,9 +14,9 @@ An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a
 
 - **One door: `boss-say`** — hand over the work; it decides the scale and how to dispatch. You never pick an entry skill.
 - **Two tiers** — a subagent when the app's own setup isn't needed, a dispatched agent when it is, judged per item.
-- **One epic, one boss** — a single session coordinates the whole epic; it delegates, never implements.
+- **One epic, one main agent** — a single session coordinates the whole epic; it delegates, never implements.
 - **Worktree isolation** — parallel tasks run side by side.
-- **Cross-boss resource lock** — a file lock for ports and shared-DB migrations worktrees can't isolate.
+- **Cross-main-agent resource lock** — a file lock for ports and shared-DB migrations worktrees can't isolate.
 - **Self-paced batches** — a backlog too big for one turn gets its own `/loop`, started by `boss-say` itself.
 - **herdr for human-in-the-loop** — watch it, join it, answer a question mid-task; the default whenever it's available.
 
@@ -52,7 +52,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `dispatching-work` | Internal dispatch machinery — picks the transport (`herdr-pane` when available, `claude-p` as the fallback), writes the instruction, dispatches, lists/wraps up existing dispatches |
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit freely, get authorization before every push/merge |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
-| `notifying-boss` | Used by a dispatched agent to reach the boss with a purely informational report or question |
+| `notifying-boss` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `create-great-harness` | Bootstrap a minimal agent system for an app that has none — a short `CLAUDE.md` plus one guard hook |
 | `inspecting-app` | Resolve the app, run your own rules-audit skill — solo or dispatched |
 | `investigating-app` | Resolve the app, run your own research skill — solo or dispatched |
@@ -60,7 +60,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 
 ## Usage
 
-Once `init`'s run, hand everything to the boss:
+Once `init`'s run, hand everything to the main agent:
 
 ```
 boss-say fix the login redirect

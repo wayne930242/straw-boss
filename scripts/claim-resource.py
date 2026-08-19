@@ -3,17 +3,17 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Cross-boss mutual exclusion for a shared external resource -- a port
+"""Cross-main-agent mutual exclusion for a shared external resource -- a port
 that can't be parameterized, or a database migrations are verified
 against -- something a git worktree cannot isolate because it lives
 outside any one checkout. See
 skills/dispatching-work/references/shared-resource-coordination.md.
 
 Lock files live at <home>/.straw-boss/locks/<resource>.json, one per
-resource identity, independent of any single boss's own dispatch state --
+resource identity, independent of any single main agent's own dispatch state --
 this is the one piece of straw-boss state genuinely shared and contended
-across multiple concurrent boss sessions, not just within one boss's own
-fleet.
+across multiple concurrent main-agent sessions, not just within one main
+agent's own fleet.
 
   acquire    -- atomically create the lock if free. If held and not yet
                 expired (age has not yet reached the current holder's own
@@ -51,8 +51,8 @@ fleet.
 
 `wait` and `claim-port` block/sleep internally, unlike the bare `acquire`
 primitive they're built on. This is deliberate here, unlike this plugin's
-boss-level Monitor-based polling loops (see plan-mechanics.md), which
-stay external because the boss needs to remain responsive and observable
+main-agent-level Monitor-based polling loops (see plan-mechanics.md), which
+stay external because the main agent needs to remain responsive and observable
 while watching several tasks at once. A single dispatched task waiting on
 one resource has no such audience -- nothing outside it needs turn-by-
 turn visibility into its own wait, so folding the loop into one blocking
@@ -375,7 +375,7 @@ def wait_for(
         if max_wait_seconds is not None:
             deadline = min(deadline, max_wait_seconds)
         remaining_budget = deadline - elapsed
-        boss_bit = f" (boss {result['held_by_boss']!r})" if result.get("held_by_boss") else ""
+        boss_bit = f" (main agent {result['held_by_boss']!r})" if result.get("held_by_boss") else ""
         if result.get("held_externally"):
             who = "an untracked external process"
             # The 30s held_ttl_seconds acquire() reports for this case is a
@@ -585,7 +585,7 @@ def main() -> int:
     acquire_p.add_argument(
         "--requester-boss",
         default=None,
-        help="the dispatching boss's own herdr pane id or SendMessage peer name -- lets a stuck waiter's boss reach out directly instead of guessing",
+        help="the dispatching main agent's own herdr pane id or SendMessage peer name -- lets a stuck waiter's main agent reach out directly instead of guessing",
     )
 
     wait_p = sub.add_parser("wait", help="block until the resource is free, then acquire it")

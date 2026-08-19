@@ -5,7 +5,7 @@ description: The single entry point for handing any work to straw-boss — imple
 
 ## Overview
 
-**Everything comes through here — not just implementation.** The boss decides how work gets done — the user hands over the work, not the shape or the tier. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one, but they are not the front door.
+**Everything comes through here — not just implementation.** The main agent decides how work gets done — the user hands over the work, not the shape or the tier. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one, but they are not the front door.
 
 Three things this skill owns that nothing else does:
 
@@ -17,7 +17,7 @@ No type of work is excluded here: an audit, open-ended research, or an unexplain
 
 ## Task 1: Triage scale and execution tier, then pick the dispatch shape
 
-First collect the work items: inline in the invocation, or from a file (checklist, tracker export) named in it. Then decide the shape — **this is the boss's call, made and stated, not a question put to the user.** The user may override after hearing it; don't ask them to choose up front.
+First collect the work items: inline in the invocation, or from a file (checklist, tracker export) named in it. Then decide the shape — **this is the main agent's call, made and stated, not a question put to the user.** The user may override after hearing it; don't ask them to choose up front.
 
 - **One logical item** — a single task, or one request that decomposes into phases or spans several apps but is still one unit of work → invoke the matching specialist skill (`shipping-task` for implementation, `inspecting-app`/`investigating-app`/`troubleshooting-app` for audit/research/diagnosis) and stop here. It owns its own domain methodology, `work-on` (including its own Plan mechanism for a multi-phase request), the execution-tier call below, and the dispatch. Do not write a batch plan for a single item.
 - **Several independent items, and the batch plausibly finishes inside this turn** — roughly the concurrency cap or a small multiple of it, each item short → **one-shot batch** (Task 6, `Monitor`-driven).
@@ -26,7 +26,7 @@ First collect the work items: inline in the invocation, or from a file (checklis
 
 State the chosen shape and the reason in one line before doing anything else.
 
-**Then, per item, decide the execution tier — also the boss's call, not the user's, and not a per-skill-type default:**
+**Then, per item, decide the execution tier — also the main agent's call, not the user's, and not a per-skill-type default:**
 
 - **Doesn't need the target app's own harness at all** — a self-contained question, a lookup, something a plain capable agent can just do without the app's own skills/hooks/rules loaded → a plain subagent (this session's own `Agent` tool). No app-dir rooting, `dispatching-work` never invoked.
 - **Needs the app's own skills/hooks/rules to actually load** — real code changes, an audit against the app's real rule source, research into its actual current behavior, diagnosis using its own logs/tests → a dispatched agent via `dispatching-work`, which picks the transport itself (its own Task 1).
@@ -70,9 +70,11 @@ Default cap: 4 in-flight at once. The caller may set a different cap explicitly 
 3. **Slice** the ready set to `cap - in-flight`, dispatch only that slice — one task at a time through `dispatching-work`'s Tasks 1-5 (mode selection, instruction write, dispatch, confirm), never through its "Branch: Dispatch a plan" as a whole, since that branch's contract is "dispatch every ready task at once," which is exactly what the cap exists to prevent. The rest of the ready set stays queued for the next refill.
 4. On a `done`/`failed` notification for any in-flight task: auto-detach it (same rules as `dispatching-work`'s plan branch — close its pane/tab if `herdr-pane`, remove its worktree if full-flow, call `wrap-up-task.py`), then repeat from step 1 — a freed slot gets backfilled from the queue immediately, not batched up for later.
 5. `awaiting-authorization`/`awaiting-user-input` are not terminal and do not free a slot — report them the same way `dispatching-work`'s plan branch does (name the task, point at where to authorize or answer it), then leave them alone.
-6. **Stalled batch:** if in-flight equals the cap and every one of those in-flight tasks is `awaiting-authorization`/`awaiting-user-input` — nothing can be dispatched and nothing will free a slot without the user — say so explicitly: name every stalled task and what each is waiting on (from its status file's `note`; if that isn't enough to explain it, invoke `peeking-work` on that task rather than reading its pane/transcript inline here). This is not a quiet tick; always surface it (see Task 6's `/loop` handling).
+6. **Idle in-flight tasks — peek, don't just trust the note.** Whenever every currently in-flight task is `awaiting-authorization`/`awaiting-user-input` — not only once in-flight reaches the cap — proactively invoke `peeking-work` on each one rather than waiting for its status file's `note` to fall short first. A static note can't tell "genuinely still waiting on the user" apart from "went silent — pane died, connection dropped, whatever — without ever reporting failure"; `peeking-work`'s live read can. Report every one by name and what the peek found. This is not a quiet tick; always surface it (see Task 6's `/loop` handling). If in-flight also equals the cap, call that out too — a **fully stalled batch**: nothing can be dispatched and nothing will free a slot without the user.
 
-**Verification:** in-flight count never exceeds the cap; a freed slot is refilled before anything else happens for that tick; the plan branch's "whole ready wave at once" behavior was never invoked directly on the full batch; a fully stalled batch is reported, not silently waited on.
+**Don't re-peek a task that hasn't changed since its last peek.** Once a task has been peeked and reported, a later notification carrying the exact same unchanged `awaiting-*` state and note is confirmation, not a fresh trigger — skip the peek and repeat the prior finding instead. Peek it again only when something about it actually changes (a new note, a status transition), or — self-paced batches only — on a later `/loop` tick; never tighten `ScheduleWakeup`'s own pacing just to check an idle task sooner. Within a single one-shot turn, this means each idle task gets peeked once per continuous stretch of idleness, not once per Monitor notification.
+
+**Verification:** in-flight count never exceeds the cap; a freed slot is refilled before anything else happens for that tick; the plan branch's "whole ready wave at once" behavior was never invoked directly on the full batch; every idle in-flight task gets a `peeking-work` check once per stretch of idleness, not only once the batch is fully saturated at cap, and never repeatedly for the same unchanged state; a fully stalled batch is reported, not silently waited on.
 
 ## Task 6: Run the batch — one-shot, or self-paced
 
@@ -82,7 +84,7 @@ Which of these applies was already decided in Task 1. The one thing to check her
 
 **Self-paced batch, first turn:** after Task 4 writes `plan.json`, dispatch the first fill per Task 5, then start the loop yourself — invoke the `loop` skill with the prompt `boss-say <batch-slug>` and no interval, so it runs in dynamic-pacing mode and each tick re-enters this skill with the slug. Tell the user the loop is running and how to stop it. Starting the loop is this skill's job; never end a turn having told the user to type `/loop` themselves.
 
-**Self-paced batch, on a tick:** don't start a new batch — use the batch slug carried in the wake-up prompt to find and read the existing `plan.json` and `status/` for the batch already in progress; never guess the slug and never start a second `plan.json` for what might be the same batch. Run one round of Task 5 (refill up to the cap from whatever's ready). If Task 5 found a fully stalled batch, report it plainly and set `noop: false` — a stall is news, not quiet. Otherwise call `ScheduleWakeup` (same batch-slug prompt) to pace the next tick — `noop: true` only if nothing changed this tick (no new dispatch, no new terminal state, no new stall), `noop: false` otherwise. Once every task in the plan is terminal, report the final summary and call `ScheduleWakeup({stop: true})` — don't leave the loop running once the batch is actually done.
+**Self-paced batch, on a tick:** don't start a new batch — use the batch slug carried in the wake-up prompt to find and read the existing `plan.json` and `status/` for the batch already in progress; never guess the slug and never start a second `plan.json` for what might be the same batch. Run one round of Task 5 (refill up to the cap from whatever's ready). If Task 5 step 6 found any idle in-flight tasks, report what the `peeking-work` check found and set `noop: false` — this is news, not quiet, whether or not the batch is fully stalled at cap. Otherwise call `ScheduleWakeup` (same batch-slug prompt) to pace the next tick — `noop: true` only if nothing changed this tick (no new dispatch, no new terminal state, no new stall), `noop: false` otherwise. Once every task in the plan is terminal, report the final summary and call `ScheduleWakeup({stop: true})` — don't leave the loop running once the batch is actually done.
 
 **Verification:** `ScheduleWakeup` is called only on a confirmed `/loop` tick (per the detection rule above), never in a one-shot batch or on the turn that starts the loop; every `ScheduleWakeup` prompt carries the batch slug; a tick that starts a second, duplicate `plan.json` for the same batch is a defect — always resume the existing one; a fully stalled batch is never reported as a quiet `noop: true` tick.
 
@@ -99,8 +101,8 @@ Not new triage — "what's currently running", or "close out `<task>`" for a sin
 ## Red Flags
 
 - "The user only gave one task, so this skill doesn't apply — go straight to the specialist skill" — no, one item still comes through here; Task 1 routes it to the matching specialist skill after triage. Triage is what this skill is for.
-- "This batch is too big for one turn, tell the user to run `/loop boss-say ...`" — no, Task 6: the boss starts the loop itself.
-- "Ask the user whether they want a one-shot run or a loop" — no, Task 1: the boss decides the shape and states it; the user overrides if they disagree.
+- "This batch is too big for one turn, tell the user to run `/loop boss-say ...`" — no, Task 6: the main agent starts the loop itself.
+- "Ask the user whether they want a one-shot run or a loop" — no, Task 1: the main agent decides the shape and states it; the user overrides if they disagree.
 - "20 independent items, hand the whole ready wave to `dispatching-work`'s plan branch like normal" — no, that branch dispatches everything at once; the cap exists specifically to slice it.
 - "Ask each item whether it wants light or full flow, to be thorough" — no, Task 3: once for the whole batch, `forbidDirectCommit` items excepted.
 - "This item actually needs its own dependency graph, just add depends_on edges into the batch plan" — no, a batch item is never allowed to depend on another; pull it out and route it through the matching specialist skill instead.
@@ -108,7 +110,8 @@ Not new triage — "what's currently running", or "close out `<task>`" for a sin
 - "A tick came back and the batch plan already exists, just start a fresh one to be safe" — no, always resume the existing `plan.json` for that batch slug.
 - "One item finished, wait for a few more before dispatching the next queued one" — no, Task 5: refill immediately, every time a slot frees.
 - "Report the batch done once most items finished" — no, Task 7: every task terminal, not most.
-- "All slots are stuck on authorization and nothing changed, mark this tick `noop: true` and stay quiet" — no, Task 5 step 6: a fully stalled batch is always surfaced, `noop: false`, naming what's waiting on the user.
+- "All slots are stuck on authorization and nothing changed, mark this tick `noop: true` and stay quiet" — no, Task 5 step 6: any tick where every in-flight task is idle is always surfaced, `noop: false`, naming what's waiting on the user and what `peeking-work` found — not only once the batch is fully stalled at cap.
+- "Still idle, peek it again to be safe" on every Monitor notification or `/loop` tick where nothing about the task actually changed — no, Task 5 step 6: peek once per stretch of idleness and repeat the prior finding for an unchanged state; re-peeking on every notification is an unbounded loop, not thoroughness.
 
 ## References
 

@@ -2,7 +2,7 @@
 
 [English](./README.md) | 繁體中文
 
-你是 Boss。你說一聲，`boss-say` 立刻幫你派工——分給最適合的 agent：簡單的丟一般 subagent，要動到 app 自己環境的就派進那個 app 目錄下的 session（headless 的 `claude -p`，或能旁觀、能加入的 [herdr](https://github.com/herdrdev/herdr) pane）。單一 app 直接用，monorepo 也接得住跨 app 協作。你隨時看得到現在在發生什麼事。
+一切由你做主。你說一聲，`boss-say` 立刻幫你派工——分給最適合的 agent：簡單的丟一般 subagent，要動到 app 自己環境的就派進那個 app 目錄下的 session（headless 的 `claude -p`，或能旁觀、能加入的 [herdr](https://github.com/herdrdev/herdr) pane）。單一 app 直接用，monorepo 也接得住跨 app 協作。你隨時看得到現在在發生什麼事。
 
 名字來自牧場工頭：跟牛仔一起在現場做事，不是坐辦公室發號施令。
 
@@ -14,9 +14,9 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 
 - **一個入口：`boss-say`**——工作丟給他，規模跟怎麼派都是他決定，你不用先挑 skill。
 - **兩層執行**——不需要 app 環境的用 subagent，需要的就派進去，逐項判斷。
-- **一個 epic，一個 boss**——一個 session 統籌整個 epic，只派工不動手。
+- **一個 epic，一個 main agent**——一個 session 統籌整個 epic，只派工不動手。
 - **worktree 隔離**——平行任務互不干擾。
-- **跨 boss 資源鎖**——worktree 隔不到的 port、共用 DB migration，跨 session 排隊。
+- **跨 main agent 資源鎖**——worktree 隔不到的 port、共用 DB migration，跨 session 排隊。
 - **批次自己抓步調**——backlog 做不完一個 turn，`boss-say` 自己開 `/loop`。
 - **herdr 隨時介入**——旁觀、加入、中途回答問題；環境支援就是預設。
 
@@ -52,7 +52,7 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 | `dispatching-work` | 內部派工機制——選派工方式（herdr 可用就用 `herdr-pane`，不可用才退回 `claude-p`）、寫指令、實際派工、列出/收尾既有派工 |
 | `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工、commit 自由，push/merge 前找你授權 |
 | `peeking-work` | 唯讀看一個派工現在在做什麼，不加入、不打斷 |
-| `notifying-boss` | 派出去的 agent 用來聯絡 boss、回報或問純資訊性問題 |
+| `notifying-boss` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
 | `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——一份 `CLAUDE.md` 加一個 guard hook |
 | `inspecting-app` | 對應出 app，跑你自己的規則稽核 skill——單獨做或派工 |
 | `investigating-app` | 對應出 app，跑你自己的研究 skill——單獨做或派工 |
@@ -60,7 +60,7 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 
 ## 怎麼用
 
-`init` 跑完，工作全丟給 boss：
+`init` 跑完，工作全丟給 main agent：
 
 ```
 boss-say 修掉登入後導向錯的問題

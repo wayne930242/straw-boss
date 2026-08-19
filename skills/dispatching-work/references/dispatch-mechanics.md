@@ -65,9 +65,9 @@ Prints `{"session_id": "...", "instruction_path": "..."}` — use that `session_
 
 Archived (wrapped-up) instructions move to `<home>/.straw-boss/dispatch/archive/<app>--<short-slug>.json`, same shape — see "Closing a herdr-pane instruction" below for how that move happens.
 
-## Detecting the boss's own permission mode
+## Detecting the main agent's own permission mode
 
-SKILL.md's Task 4 requires mirroring this onto every agent. `$CLAUDE_PID` is already exported into the boss's own environment:
+SKILL.md's Task 4 requires mirroring this onto every agent. `$CLAUDE_PID` is already exported into the main agent's own environment:
 
 ```bash
 ORCH_ARGS=$(ps -p "$CLAUDE_PID" -ww -o args= 2>/dev/null)
@@ -82,7 +82,7 @@ case "$ORCH_ARGS" in
 esac
 ```
 
-**Always produce a single token, never a bare `--permission-mode value` pair.** This environment's `Bash`/`Monitor` tools run under zsh, which does not word-split an unquoted variable the way bash does — `$PERM_FLAGS` expanding to two space-separated words would arrive at `claude`/`herdr` as one literal argument, not two, and fail to parse. `--permission-mode=<value>` (confirmed live to work identically to the two-word form) sidesteps this entirely by staying one token regardless of shell. Confirmed live: this detection correctly caught a real case a boss would otherwise have no reason to suspect — this session was itself running with `--dangerously-skip-permissions`. Only catches an *explicit* CLI flag; when `$PERM_FLAGS` comes back empty, the agent gets the CLI's own default (`auto`) and that's correct — there was nothing explicit to mirror. Append `$PERM_FLAGS` to the agent's launch command in both dispatch modes below, exactly where `--session-id`/`--name` already go.
+**Always produce a single token, never a bare `--permission-mode value` pair.** This environment's `Bash`/`Monitor` tools run under zsh, which does not word-split an unquoted variable the way bash does — `$PERM_FLAGS` expanding to two space-separated words would arrive at `claude`/`herdr` as one literal argument, not two, and fail to parse. `--permission-mode=<value>` (confirmed live to work identically to the two-word form) sidesteps this entirely by staying one token regardless of shell. Confirmed live: this detection correctly caught a real case a main agent would otherwise have no reason to suspect — this session was itself running with `--dangerously-skip-permissions`. Only catches an *explicit* CLI flag; when `$PERM_FLAGS` comes back empty, the agent gets the CLI's own default (`auto`) and that's correct — there was nothing explicit to mirror. Append `$PERM_FLAGS` to the agent's launch command in both dispatch modes below, exactly where `--session-id`/`--name` already go.
 
 ## `claude-p` dispatch
 
@@ -95,12 +95,12 @@ cd "<app_dir>" && claude -p --session-id "<uuid from dispatch-task.py write>" $P
 - No trust-prompt handling needed: confirmed via `claude --help` that `-p`/print mode skips the workspace trust dialog automatically (non-interactive mode) — independent of whatever `$PERM_FLAGS` mirrors in.
 - `claude -p --output-format json` gives a single structured result if the caller needs to parse the outcome programmatically; plain text output is fine for a report-back-to-user case.
 - Once launched, confirm it per "Instruction file" above (`dispatch-task.py confirm --app <app> --slug <short-slug>`, no `--pane-id`/`--tab-id` needed for this mode) — the instruction should not sit `pending` after the process is actually running.
-- If the boss itself is running inside a herdr pane, launching `claude -p` from it (even via `Bash`) overwrites that pane's own `agent_session` in `herdr pane list`/`agent list` to the subprocess's session id — cosmetic only, confirmed live, nothing documented here reads it, but don't use it to check "is this still my own pane."
+- If the main agent itself is running inside a herdr pane, launching `claude -p` from it (even via `Bash`) overwrites that pane's own `agent_session` in `herdr pane list`/`agent list` to the subprocess's session id — cosmetic only, confirmed live, nothing documented here reads it, but don't use it to check "is this still my own pane."
 - **Detecting the "ready to push/merge" checkpoint has no separate signal for a standalone `claude-p` dispatch — the process exiting *is* the signal.** On the full flow, the dispatch instruction tells the agent to stop and report readiness rather than execute a push/merge (see `shipping-task`'s Task 4) — commit itself needs no authorization and never stops the agent. `claude -p` processes exactly one turn then exits — so a foreground run returning, or a background run's harness-notification firing, means the agent either finished the whole task or (full flow only) hit that stop-and-report point; read its final output (already on stdout for a foreground run) to tell which. On the light flow there's no stop-and-report point at all — a `claude -p` process exiting always means the task actually finished (committed and done), never a checkpoint. There is no plan-style status file for a non-plan dispatch to poll instead — don't go looking for one.
 
 ## `herdr-pane` dispatch
 
-0. **Ensure the boss itself is addressable — once per boss session, before the first `herdr-pane` dispatch, never skipped as "probably still fine from last time."** `/rename` does not persist across a session restart (see `cross-session-coordination.md` "Making the boss addressable"), so a freshly restarted boss is not addressable even if a prior session already did this. Check first rather than re-running blindly: `ListAgents` excludes the caller's own session, so there is no direct self-lookup — instead, treat "have I renamed myself this session" as a fact to track once and remember, not something to re-derive by calling any inspection command. If unrenamed, run the self-rename now, before writing any dispatch instruction that might need this channel.
+0. **Ensure the main agent itself is addressable — once per main-agent session, before the first `herdr-pane` dispatch, never skipped as "probably still fine from last time."** `/rename` does not persist across a session restart (see `cross-session-coordination.md` "Making the main agent addressable"), so a freshly restarted main agent is not addressable even if a prior session already did this. Check first rather than re-running blindly: `ListAgents` excludes the caller's own session, so there is no direct self-lookup — instead, treat "have I renamed myself this session" as a fact to track once and remember, not something to re-derive by calling any inspection command. If unrenamed, run the self-rename now, before writing any dispatch instruction that might need this channel.
 
 1. **Resolve the tab.** Default to accumulating dispatched panes into the caller's own currently active tab (`$HERDR_TAB_ID`) rather than always opening a new one — this matches herdr's own guidance to default to a sibling pane in the current tab, and the 2x2-then-new-tab layout this was designed around.
    - If the instruction has a `batch` and another in-progress instruction with the same batch recorded a `herdr_tab_id`, check that tab still exists and has fewer than 4 panes (`herdr tab get <tab_id>` / `herdr pane list --workspace <id>` filtered to that tab) — prefer reusing it over the caller's own tab, so a multi-app batch's panes stay together.
@@ -120,11 +120,15 @@ cd "<app_dir>" && claude -p --session-id "<uuid from dispatch-task.py write>" $P
    herdr pane split --pane <target_pane_id> --direction right --cwd "<app_dir>" --no-focus
    ```
    Read the new pane id from `.result.pane.pane_id`.
-4. **Start the claude agent with the session_id `dispatch-task.py write` printed:**
+4. **Validate `<unique-name>`, then start the claude agent with the session_id `dispatch-task.py write` printed:**
+   ```bash
+   herdr agent list | uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/check-agent-name.py" --name <unique-name>
+   ```
+   Exits non-zero with the reason if the candidate is malformed or already taken by a live agent — pick a different name and re-check rather than guessing past it. Once it passes:
    ```bash
    herdr agent start "<unique-name>" --kind claude --pane <new_pane_id> -- --session-id "<uuid from dispatch-task.py write>" --name "<unique-name>" $PERM_FLAGS
    ```
-   `<unique-name>` must match `[a-z][a-z0-9_-]{0,31}` and be unique among live agents (check `herdr agent list` first if unsure) — use the *same* value for herdr's own agent handle (the first argument) and the trailing `claude --name` flag. The former is herdr's own control handle (`herdr agent get/prompt/read/send-keys`); the latter is what makes this session addressable via `SendMessage`/`ListAgents` (confirmed live: without it, the session gets an auto-derived `<cwd-basename>-<suffix>` name instead) — see `references/cross-session-coordination.md`. Passing both costs nothing even when this dispatch never ends up using cross-session messaging.
+   Use the *same* validated value for herdr's own agent handle (the first argument) and the trailing `claude --name` flag. The former is herdr's own control handle (`herdr agent get/prompt/read/send-keys`); the latter is what makes this session addressable via `SendMessage`/`ListAgents` (confirmed live: without it, the session gets an auto-derived `<cwd-basename>-<suffix>` name instead) — see `references/cross-session-coordination.md`. Passing both costs nothing even when this dispatch never ends up using cross-session messaging.
 5. **Handle the first-run trust prompt.** Check status:
    ```bash
    herdr agent get "<unique-name>"

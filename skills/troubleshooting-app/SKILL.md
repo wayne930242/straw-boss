@@ -43,6 +43,6 @@ Once root cause is known — from your own diagnosis, or a dispatched worker's c
 
 - "It's probably infra, I'll just say that without checking" — Task 2's verification requires stated evidence, not a guess.
 - "I found the cause, let me just fix it now" — no, see Task 4. Diagnosis and fix are different skills for a reason: the fix needs a worktree and review gate.
-- "Small fix, I'll edit directly instead of handing it to `boss-say`" — no, every code change goes back through the boss for dispatch.
-- "The fix is obviously one task, call `shipping-task` directly and skip `boss-say`" — no, dispatch triage is the boss's, even when the answer is 'one task'.
+- "Small fix, I'll edit directly instead of handing it to `boss-say`" — no, every code change goes back through the main agent for dispatch.
+- "The fix is obviously one task, call `shipping-task` directly and skip `boss-say`" — no, dispatch triage is the main agent's, even when the answer is 'one task'.
 - "The dispatched diagnosis found root cause, have it call `boss-say`/`shipping-task` itself to save a round trip" — no, a worker only reports (its own completion, or `notifying-boss`); deciding what happens with a root cause, including handing off to `boss-say`, stays with the session that dispatched it.
