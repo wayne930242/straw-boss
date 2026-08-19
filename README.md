@@ -2,29 +2,28 @@
 
 English | [繁體中文](./README.zh-TW.md)
 
-Hand any piece of work — implementation, audit, research, or diagnosis — to a boss that decides how it gets done: a plain subagent for what doesn't need your app's own setup, or a session that actually lives in your app's directory — headless `claude -p`, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane — for what does. Code commits freely; every push and merge gets an authorization gate. Works in a single-app repo out of the box; routes across a monorepo's apps too.
+You're the boss. Say the word, and `boss-say` dispatches it — to whoever's the right fit: a plain subagent for something simple, or a session rooted in the app's own directory (headless `claude -p`, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane) for anything that needs the app's own setup. Works in one app out of the box, coordinates across a whole monorepo too. Commit freely; push and merge wait for your nod. You can always see what's actually happening.
 
-Named after the ranch foreman who works the ground alongside the crew, not from an office. Same job here: get each task into the right hands, in the right place, and stay close enough to unblock it.
+Named after the ranch foreman who works the ground alongside the crew, not from an office.
 
 ## Why
 
-An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session whose working directory is that app's own root — a monorepo root, or any cwd a boss runs from, never sees them. straw-boss dispatches the work itself into a session that actually lives there, instead of hand-maintaining a summary of what the app's rules say — for a code change, an audit, a piece of research, or a diagnosis alike, whenever the work actually needs that harness. Routing across a monorepo's apps (`work-on`) is a bonus on top, not a prerequisite. Full design rationale: `docs/architecture.md`.
+An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session actually rooted in that app's directory. straw-boss dispatches the work into a session that lives there, instead of hand-maintaining a summary of what the app's rules say — for a code change, an audit, research, or a diagnosis alike. Routing across a monorepo's apps (`work-on`) is a bonus, not a requirement. Full rationale: `docs/architecture.md`.
 
-## Workflow highlights
+## Highlights
 
-- **One door: `boss-say`** — hand over any work, whatever its size or shape; the boss triages scale and picks the execution tier itself. You never pick an entry skill.
-- **Two tiers, judged per item** — a plain subagent for something that doesn't need your app's own setup, a dispatched agent rooted in the app for something that does.
-- **One epic, one boss** — a single orchestrating session coordinates the whole epic; it delegates, never implements.
-- **Per-task context** — each dispatch gets its own, scoped to one task, not the whole project.
-- **Worktree isolation** — parallel tasks run side by side without colliding.
-- **Cross-boss resource lock** — a file-based lock for ports and shared-DB migrations that worktrees can't isolate, across independent boss sessions.
-- **Self-paced batches** — for a backlog too big for one turn, `boss-say` starts a `/loop` itself and refills its own dispatch slots.
-- **herdr for human-in-the-loop** — watch a dispatch, join it, or answer a question mid-task; it's the default transport whenever it's available.
+- **One door: `boss-say`** — hand over the work; it decides the scale and how to dispatch. You never pick an entry skill.
+- **Two tiers** — a subagent when the app's own setup isn't needed, a dispatched agent when it is, judged per item.
+- **One epic, one boss** — a single session coordinates the whole epic; it delegates, never implements.
+- **Worktree isolation** — parallel tasks run side by side.
+- **Cross-boss resource lock** — a file lock for ports and shared-DB migrations worktrees can't isolate.
+- **Self-paced batches** — a backlog too big for one turn gets its own `/loop`, started by `boss-say` itself.
+- **herdr for human-in-the-loop** — watch it, join it, answer a question mid-task; the default whenever it's available.
 
 ## Requirements
 
 - Claude Code, with plugins enabled.
-- [herdr](https://github.com/herdrdev/herdr) (recommended, optional). Without it, a dispatched agent runs headless `claude -p` — no live pane, no mid-task questions. With it, dispatch always uses a watchable, joinable pane. `init` checks for it and lets you enable or skip it.
+- [herdr](https://github.com/herdrdev/herdr) (recommended, optional). Without it, dispatch runs headless `claude -p` — no live view, no mid-task questions. `init` asks whether to enable it.
 
 ## Install
 
@@ -33,35 +32,35 @@ An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a
 /plugin install straw-boss@straw-boss
 ```
 
-Then run once per project:
+Run once per project:
 
 ```
 /straw-boss:init
 ```
 
-`init` asks which apps to manage (scanning for a common monorepo layout as a starting point), writes `.claude/straw-boss/apps.json`, syncs a managed-apps section into your project's root `CLAUDE.md`, offers a lightweight agent-system bootstrap for any app that has neither `CLAUDE.md` nor `.claude/`, and asks separately whether to enable herdr on this machine.
+`init` asks which apps to manage, writes `.claude/straw-boss/apps.json`, syncs your root `CLAUDE.md`, offers to bootstrap a missing agent system per app, and asks whether to enable herdr.
 
-For a single-app repo, `init` is a convenience, not a precondition — `boss-say` works the moment the plugin is installed, resolving the repo root itself as the one implicit app. Run `init` when you want herdr enabled, `apps.json`'s per-app options (`forbidDirectCommit`, `localFiles`, ...), or a monorepo's multiple apps configured; skip it to just start handing over work.
+For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it when you want herdr, per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 
 ## Skills
 
 | Skill | Description |
 |-------|-------------|
-| `init` | One-time setup: ask which apps to manage, write the config, sync root `CLAUDE.md`, offer to bootstrap a missing agent system per app; decide whether to enable herdr dispatch |
-| `boss-say` | **The entry point for everything.** Triages scale and, per item, the execution tier — a plain subagent, or a dispatched agent — then hands off to the matching specialist skill or its own capped-batch mechanics |
-| `work-on` | Resolve a request to one of the configured apps, apply any legacy redirect |
-| `dispatching-work` | Internal dispatch machinery, driven by `boss-say`'s specialists — picks the transport (`herdr-pane` whenever available, `claude-p` as the fallback), writes the dispatch instruction, actually dispatches, lists/wraps up existing dispatches |
-| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch one task, commit freely, and get user authorization before every push/merge — driven by `boss-say` |
-| `peeking-work` | Read-only peek at one dispatch's live progress — herdr pane output, or a `claude-p` transcript tail — without joining or interrupting it |
-| `notifying-boss` | Used automatically by a dispatched agent to reach the boss with a purely informational report or question — herdr first, `SendMessage` as fallback |
-| `create-great-harness` | Lightweight agent-system bootstrap for an app with neither `CLAUDE.md` nor `.claude/` — a short `CLAUDE.md` plus one pipe-tested guard hook |
-| `inspecting-app` | Resolve the app, then run your own rules/conventions audit skill — solo or dispatched, per `boss-say`'s tier call — driven by `boss-say` |
-| `investigating-app` | Resolve the app, then run your own research skill — solo or dispatched, same tier call — driven by `boss-say` |
-| `troubleshooting-app` | Diagnose a reported failure — app-code vs. infrastructure, solo or dispatched — then hand the fix back to `boss-say` |
+| `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
+| `boss-say` | **The entry point for everything.** Judges scale, judges solo-vs-dispatch per item, hands off to the matching specialist skill or its own batch mechanics |
+| `work-on` | Resolve a request to an app, apply any legacy redirect |
+| `dispatching-work` | Internal dispatch machinery — picks the transport (`herdr-pane` when available, `claude-p` as the fallback), writes the instruction, dispatches, lists/wraps up existing dispatches |
+| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit freely, get authorization before every push/merge |
+| `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
+| `notifying-boss` | Used by a dispatched agent to reach the boss with a purely informational report or question |
+| `create-great-harness` | Bootstrap a minimal agent system for an app that has none — a short `CLAUDE.md` plus one guard hook |
+| `inspecting-app` | Resolve the app, run your own rules-audit skill — solo or dispatched |
+| `investigating-app` | Resolve the app, run your own research skill — solo or dispatched |
+| `troubleshooting-app` | Diagnose a failure — app code or infrastructure, solo or dispatched — then hand the fix back to `boss-say` |
 
 ## Usage
 
-Once `init` has run, hand any work to the boss — implementation, an audit, some research, a diagnosis, one item or a whole backlog:
+Once `init`'s run, hand everything to the boss:
 
 ```
 boss-say fix the login redirect
@@ -69,22 +68,22 @@ boss-say audit the payments module against our rules
 boss-say work through docs/backlog.md
 ```
 
-`boss-say` decides the rest: it picks the execution tier per item — solo, or dispatched into the app — and the scale shape — one item through its matching specialist skill, several independent items as a capped batch, or a batch too big for one turn under a `/loop` it starts itself. You don't pick either — it states what it picked, and you override it in one sentence if you disagree.
+`boss-say` decides the rest — solo or dispatched, one task or a batch, `/loop` or not. It states what it picked; you override in one sentence if you disagree.
 
-Every specialist skill above is also directly invocable by name, if you'd rather trigger one yourself:
+Every specialist skill is also callable by name:
 
-- Just want to know which app a request belongs to → `work-on`
-- Check on an agent before joining or interrupting it → `peeking-work`
-- Bootstrap a minimal agent system for an app that has none → `create-great-harness` (also offered automatically by `init`)
-- Audit existing code against your rules → `inspecting-app`
-- Research current behavior, no rule or failure in question → `investigating-app`
-- Something's broken, cause unknown → `troubleshooting-app` (diagnoses, then hands the fix back to `boss-say`)
+- Which app owns this? → `work-on`
+- Peek before joining or interrupting → `peeking-work`
+- No agent system for an app yet → `create-great-harness`
+- Audit existing code → `inspecting-app`
+- Research how something works now → `investigating-app`
+- Something broke, cause unknown → `troubleshooting-app`
 
-A status question or a close-out for a specific dispatch also goes through `boss-say`, which reads straight from `dispatching-work`'s own tracking.
+A status question or closing out a dispatch also goes through `boss-say`.
 
 ## Configuration
 
-Everything project-specific — apps, routing, per-app git-lifecycle quirks, legacy redirects, cross-app coordination — lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). `init` also keeps a terse managed-apps summary (names and directories only) synced into your project's root `CLAUDE.md`, since a monorepo root `CLAUDE.md` is inherited by every nested app session, not just straw-boss's own.
+Everything project-specific lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). A terse summary also syncs into your root `CLAUDE.md`, since every nested app session inherits it.
 
 ## License
 
