@@ -2,7 +2,7 @@
 
 [English](./README.md) | 繁體中文
 
-你是 Boss。你說一聲，`boss-say` 立刻幫你派工——分給最適合的 agent：簡單的丟一般 subagent，要動到 app 自己環境的就派進那個 app 目錄下的 session（headless 的 `claude -p`，或能旁觀、能加入的 [herdr](https://github.com/herdrdev/herdr) pane）。單一 app 直接用，monorepo 也接得住跨 app 協作。commit 自由，push、merge 前都會找你點頭，你隨時看得到現在在發生什麼事。
+你是 Boss。你說一聲，`boss-say` 立刻幫你派工——分給最適合的 agent：簡單的丟一般 subagent，要動到 app 自己環境的就派進那個 app 目錄下的 session（headless 的 `claude -p`，或能旁觀、能加入的 [herdr](https://github.com/herdrdev/herdr) pane）。單一 app 直接用，monorepo 也接得住跨 app 協作。你隨時看得到現在在發生什麼事。
 
 名字來自牧場工頭：跟牛仔一起在現場做事，不是坐辦公室發號施令。
 

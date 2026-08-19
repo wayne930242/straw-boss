@@ -2,7 +2,7 @@
 
 English | [繁體中文](./README.zh-TW.md)
 
-You're the boss. Say the word, and `boss-say` dispatches it — to whoever's the right fit: a plain subagent for something simple, or a session rooted in the app's own directory (headless `claude -p`, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane) for anything that needs the app's own setup. Works in one app out of the box, coordinates across a whole monorepo too. Commit freely; push and merge wait for your nod. You can always see what's actually happening.
+You're the boss. Say the word, and `boss-say` dispatches it — to whoever's the right fit: a plain subagent for something simple, or a session rooted in the app's own directory (headless `claude -p`, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane) for anything that needs the app's own setup. Works in one app out of the box, coordinates across a whole monorepo too. You can always see what's actually happening.
 
 Named after the ranch foreman who works the ground alongside the crew, not from an office.
 
