@@ -1,6 +1,6 @@
 ---
 name: dispatching-work
-description: Starts, tracks, lists, and closes out the agents this plugin runs — one per dispatched task, each rooted in its resolved app's own directory. Use after work-on has resolved the target app(s) (or a plan) for boss-say or the shipping-task lifecycle it drives, when the user asks what's currently dispatched, or when a dispatched task should be closed out. Not for one dispatch's live content (`peeking-work`).
+description: Internal machinery that starts, tracks, lists, and closes out the agents this plugin runs — one per dispatched task, each rooted in its resolved app's own directory. Use after `boss-say`'s execution-tier call has landed on dispatch, for any of its specialist skills (`shipping-task`, `inspecting-app`, `investigating-app`, `troubleshooting-app`), once `work-on` has resolved the target app(s) (or a plan). Not this skill's to front directly — a user's status question ("what's running", "wrap this up") goes through `boss-say`, which calls the List/Wrap-up branches below. Not for one dispatch's live content (`peeking-work`).
 ---
 
 ## Overview
@@ -11,15 +11,16 @@ description: Starts, tracks, lists, and closes out the agents this plugin runs �
 
 ## Task 1: Choose the dispatch mode
 
-- **Self-contained, clear scope, no open question** → `claude-p`, regardless of herdr availability.
-- **Complex, error-prone, or likely to need back-and-forth** → `herdr-pane` is required, not preferred — a `claude -p` process cannot pause mid-task for a live reply, so `claude-p` silently forecloses asking instead of guessing. Requires BOTH `capability.json` says `herdr-enabled` AND this session's own `HERDR_ENV` is `1`. If either is false, tell the user headless dispatch can't ask mid-task questions for this one (it reports `failed` with the question stated instead of pausing) and let them decide.
-- **No `capability.json` at all** → treat herdr as not confirmed available: proceed with `claude-p` for a self-contained task same as above. For a task that would otherwise need `herdr-pane`, don't silently downgrade it to `claude-p` either — tell the user this task would benefit from herdr-backed dispatch, herdr enablement hasn't been recorded yet (`init` sets it up), and let them decide between running `init` first or accepting the `claude-p` limitation for this one dispatch.
+Whether to dispatch into the app at all, versus handling something with a plain subagent, is `boss-say`'s call (its Task 1) — by the time this skill runs, that decision is already made. What's left here is transport, and it's an environment check, not a per-task judgment — never pick `claude-p` because a task "looks" self-contained or simple.
+
+- **herdr available** (`capability.json` says `herdr-enabled` AND this session's own `HERDR_ENV` is `1`) → `herdr-pane`, always. `claude -p` is a black box with no way to pause for a live reply — there's no task shape that makes it the better choice once herdr exists.
+- **herdr not available** (either `capability.json` is missing or says disabled, or `HERDR_ENV` isn't `1` this session) → `claude-p` is the only option. If the task looks likely to need mid-task clarification, say so — headless dispatch can't ask mid-task questions (it reports `failed` with the question stated instead of pausing), and running `init` would enable herdr-backed dispatch — but still proceed with `claude-p` if the user doesn't want to set that up now.
 
 State the mode and why before doing anything else.
 
 **Before the first `herdr-pane` dispatch in this boss session** (not per-dispatch, not per-plan), ensure the boss itself is addressable — see `references/cross-session-coordination.md` "Making the boss addressable" for the exact mechanism. Skipping this is not a cosmetic gap: `SendMessage` does not fail loudly when an agent guesses the wrong target — it silently delivers to whatever session across the account happens to share a similar auto-derived title, which can be a stale, unrelated, offline session. Confirmed live: exactly this happened — an agent's coordination question was reported "sent" and was never seen again, no error anywhere.
 
-**Verification:** mode stated with a reason; `herdr-pane` never chosen without checking both conditions; a task likely to need clarification never silently went to `claude-p` when herdr was available; before the first `herdr-pane` dispatch this session, the boss's own addressability was checked, not assumed.
+**Verification:** mode stated with a reason; `herdr-pane` used whenever both capability conditions hold; `claude-p` used only because herdr genuinely wasn't available, never because the task looked simple; before the first `herdr-pane` dispatch this session, the boss's own addressability was checked, not assumed.
 
 ## Task 2: Resolve batch membership
 
@@ -62,7 +63,7 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 **Three checkpoint types — never conflate them:**
 | Status | For | Answered by | Terminal? |
 |---|---|---|---|
-| `awaiting-authorization` | commit/push/merge | User, relayed through the boss (`shipping-task`) | No — boss resumes after authorizing |
+| `awaiting-authorization` | push/merge (full flow only — light flow's commit needs no authorization) | User, relayed through the boss (`shipping-task`) | No — boss resumes after authorizing |
 | `awaiting-user-input` | work-content question needing human judgment | User, directly in the agent's own pane — boss only points at it | No — agent continues on its own once answered |
 | `SendMessage` to the boss | informational question the boss can answer from what it already knows | Boss itself, no human needed (`references/cross-session-coordination.md`) | Not a status transition at all |
 
@@ -91,7 +92,7 @@ Scan `~/.straw-boss/dispatch/` (excluding `archive/`), report grouped by status.
 ## Red Flags
 
 - "No herdr session available, ask the user to open one anyway" — last resort only; default to `claude-p` first.
-- "No `capability.json`, stop and tell the user to run `init` first" — no, only relevant when a task actually needs `herdr-pane`; a self-contained task dispatches via `claude-p` same as always.
+- "No `capability.json`, stop and tell the user to run `init` first" — no, that just means herdr isn't confirmed available; dispatch via `claude-p` same as any other herdr-unavailable case, regardless of what the task looks like.
 - "Skip writing the instruction until dispatch succeeds" — no, write it `pending` first; a stray pending file on failure is signal, not noise.
 - "Reconstruct the herdr command sequence from memory" — no, always the reference.
 - "This agent's mode doesn't matter, use whatever's default" — no, mirror the boss's actual mode every time.
@@ -100,7 +101,7 @@ Scan `~/.straw-boss/dispatch/` (excluding `archive/`), report grouped by status.
 - "3 ready tasks, dispatch one at a time to keep it simple" — no, all at once, always.
 - "This idle finished session could take the next ready task" — no, unless it's literally the same task's next phase.
 - "First task in the plan finished, mark the plan done" — no, only once every task is terminal.
-- "Task might need clarification but herdr's available, use claude-p to keep it simple" — no, herdr-pane is required in that case.
+- "This task looks simple/self-contained, use `claude-p` even though herdr's available" — no, mode is an environment check, not a task judgment; `herdr-pane` is used whenever it's available, full stop.
 - "The task's mid-flight question, relay it like an authorization checkpoint" — no, `awaiting-user-input` is answered directly in the pane; a question the boss can itself answer goes through `SendMessage` instead, not a status transition.
 - "Skip the worktree verify-repair step, herdr worktree create usually works fine" — no, the `config.worktree` bug happens with *any* creation method on a repo with `extensions.worktreeConfig`; verify every time.
 - "Dispatch the herdr-pane task first, worry about boss addressability if an agent actually needs it" — no, Task 1 requires this checked *before* the first herdr-pane dispatch this session; an agent that needs the channel and finds it unaddressed doesn't get an error, it gets silent misdelivery to an unrelated session.

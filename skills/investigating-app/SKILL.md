@@ -5,7 +5,7 @@ description: Use when the user wants to understand how something currently works
 
 ## Overview
 
-Thin wrapper: resolve the app, then let the general-purpose `investigating` skill (not part of straw-boss — this hands off to whatever research skill is already in your own setup) do the actual research. This skill doesn't reimplement investigation methodology, and doesn't dispatch: research is a read-only activity that doesn't need a session actually rooted in the app, so this stays in the current session.
+Resolve the app, decide the execution tier (`boss-say`'s Task 1 — a plain subagent running your own `investigating` skill, or a dispatched agent rooted in the app), then let the actual research run. This skill doesn't reimplement investigation methodology either way.
 
 ## Task 1: Resolve the app
 
@@ -16,14 +16,18 @@ Invoke `work-on` now. Do not proceed without the target app.
 
 **Verification:** the target app(s) are established before Task 2, or you've surfaced `work-on`'s clarifying question / out-of-scope result instead of proceeding.
 
-## Task 2: Hand off
+## Task 2: Decide the tier, then hand off
 
-Invoke your `investigating` skill for the actual research (once per resolved app if `work-on` named more than one), giving it the resolved app's directory as known context. Do not run a parallel or simplified investigation yourself instead of handing off.
+Apply `boss-say`'s execution-tier judgment (its Task 1), per app: does this research need the app's own harness, or is your own global `investigating` skill, run right here, enough?
 
-**Verification:** the research ran against the app's actual current code, not a summary of it.
+- **Solo:** invoke your `investigating` skill directly in this session (once per resolved app if `work-on` named more than one), giving it the resolved app's directory as known context.
+- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory. The worker decides for itself whether to run an app-local research skill or your global `investigating` skill — that's the worker's call, not something to dictate in the dispatch instruction.
+
+Either way, do not run a parallel or simplified investigation yourself instead of handing off to the real methodology.
+
+**Verification:** the research ran against the app's actual current code, not a summary of it; the tier was judged, not defaulted to "always solo" because this is a read.
 
 ## Red Flags
 
 - "I already know how this works, skip investigating" — no, tracing the actual current behavior is the point, not a recollection of it.
 - "work-on asked a clarifying question, I'll just pick the more likely app" — no, surface the question, don't guess.
-- "This is just research, dispatch it into the app's own workspace anyway" — no, research doesn't need a session rooted there; dispatch is for work that needs the app's skills/hooks to actually load.

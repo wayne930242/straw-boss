@@ -5,7 +5,7 @@ description: Use when something is broken and the cause is unknown, scoped to on
 
 ## Overview
 
-Diagnosis only, read-only, no worktree opened yet, no dispatch yet — the cause is unknown, so there's nothing to branch for and nothing to dispatch. Diagnosis is read-only and stays in this session; once root cause is known, hand off to `boss-say` for the actual fix, which triages it and dispatches.
+No worktree opened yet, no fix made yet — the cause is unknown, so there's nothing to branch for and nothing to patch. Diagnosis (Task 3) is read-only either way; whether it stays solo in this session or dispatches to a worker rooted in the app is `boss-say`'s execution-tier judgment. Once root cause is known, hand off to `boss-say` for the actual fix, which triages it and makes its own tier call.
 
 ## Task 1: Resolve the app
 
@@ -24,13 +24,18 @@ Before debugging application code, rule out an infrastructure cause: deployment 
 
 ## Task 3: Diagnose
 
-Read-only: reproduce, isolate, trace to a root cause using the app's own code, logs, and tests. Do not fix anything here — this task ends at "here's the root cause," not at a patch.
+Apply `boss-say`'s execution-tier judgment (its Task 1): does root-causing this need the app's own harness (its logs, tests, actual code loaded in a session rooted there), or can you reproduce, isolate, and trace it well enough from here?
 
-**Verification:** you can state a specific root cause (not just a symptom) or that you've exhausted read-only diagnosis and need to say so explicitly.
+- **Solo:** read-only, in this session — reproduce, isolate, trace to a root cause using the app's own code, logs, and tests.
+- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory, diagnosis only — the dispatch instruction states the task ends at a stated root cause, not a patch. The worker reports its root cause the normal way (its `done` status and note, or `notifying-boss` if it needs to flag something before finishing) — it never invokes `boss-say` or dispatches anything itself; deciding what happens with the root cause stays with this skill, back in your own session, not the worker's.
+
+Do not fix anything here — this task ends at "here's the root cause," not at a patch, on either tier.
+
+**Verification:** you can state a specific root cause (not just a symptom) or that you've exhausted diagnosis and need to say so explicitly; a dispatched diagnosis never escalated to a fix on its own.
 
 ## Task 4: Hand off to the fix
 
-Once root cause is known, tell the user and hand off to `boss-say` for the actual fix — it triages the fix (normally one task, so it routes straight to `shipping-task`) and dispatches. Don't start editing files in the current, non-worktree checkout, and don't call `shipping-task` around `boss-say`.
+Once root cause is known — from your own diagnosis, or a dispatched worker's completion report — tell the user and hand off to `boss-say` for the actual fix — it triages the fix (normally one item, so it routes straight to `shipping-task`) and makes its own execution-tier call for it. Don't start editing files in the current, non-worktree checkout, and don't call `shipping-task` around `boss-say`.
 
 **Verification:** any code change is handed to `boss-say`, not made inline here.
 
@@ -40,3 +45,4 @@ Once root cause is known, tell the user and hand off to `boss-say` for the actua
 - "I found the cause, let me just fix it now" — no, see Task 4. Diagnosis and fix are different skills for a reason: the fix needs a worktree and review gate.
 - "Small fix, I'll edit directly instead of handing it to `boss-say`" — no, every code change goes back through the boss for dispatch.
 - "The fix is obviously one task, call `shipping-task` directly and skip `boss-say`" — no, dispatch triage is the boss's, even when the answer is 'one task'.
+- "The dispatched diagnosis found root cause, have it call `boss-say`/`shipping-task` itself to save a round trip" — no, a worker only reports (its own completion, or `notifying-boss`); deciding what happens with a root cause, including handing off to `boss-say`, stays with the session that dispatched it.

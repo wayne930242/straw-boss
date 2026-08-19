@@ -58,13 +58,11 @@ Invoke `grilling` (or this project's equivalent decomposition-confirmation skill
 
 **Verification:** a multi-task request has a confirmed-with-the-user dependency graph before `plan.json` is written; a single-task request never creates a plan.
 
-## Task 6: Hand off to dispatch, or stay in-session
+## Task 6: Hand off
 
-Read-only and audit-only requests (`inspecting-app`, `investigating-app`, and `troubleshooting-app`'s diagnosis phase) do not dispatch — they continue directly in this session using the resolved app's directory, since reading isn't limited by the skills/hooks gap this dispatch model exists to close.
+This task's job ends at naming the resolved app(s) (and, if Task 5 ran, the plan) — it does not call `dispatching-work` itself and does not decide whether to dispatch. That call — a plain subagent versus a dispatched agent rooted in the app — is `boss-say`'s execution-tier triage (its Task 1), made per item regardless of whether the work is implementation, audit, research, or diagnosis; it is never fixed by this skill or by which caller invoked it. The caller (the specialist skill that invoked this, after applying `boss-say`'s tier call) assembles the actual task description(s) and invokes `dispatching-work` if the tier call landed on dispatch — with the plan when Task 5 produced one, or a single instruction otherwise. Whatever Task 4 found (an existing change to continue, or nothing) travels with that hand-off — the caller doesn't re-derive it.
 
-For implementation work, this task's job ends at naming the resolved app(s) (and, if Task 5 ran, the plan) — it does not call `dispatching-work` itself. The caller (`shipping-task` after it has decided the git-lifecycle flow, or `boss-say` for a batch item) assembles the actual task description(s) and invokes `dispatching-work` — with the plan when Task 5 produced one, or a single instruction otherwise. Whatever Task 4 found (an existing change to continue, or nothing) travels with that hand-off — the caller doesn't re-derive it.
-
-**Verification:** for implementation work, this task ends with the resolved app(s) (and plan, if any) named and control returned to the caller, not with `dispatching-work` already invoked here; for read-only work, no dispatch happens at all and the resolved app's directory is read directly instead.
+**Verification:** this task ends with the resolved app(s) (and plan, if any) named and control returned to the caller, not with `dispatching-work` already invoked here and not with a dispatch-or-not decision made here.
 
 ## Out of scope
 
@@ -78,7 +76,6 @@ For implementation work, this task's job ends at naming the resolved app(s) (and
 - "It's legacy but the user probably wants it fixed there" — redirect and say so; let the user override explicitly.
 - "A configured cross-app skill exists but describing the flow myself is simpler" — no, name the skill explicitly.
 - "It's basically all one change, route as a single app" — a multi-app request gets every app named and dispatched separately.
-- "This is just a read, dispatch it anyway to be consistent" — no, read-only work stays in-session; dispatching it adds friction for no benefit.
 - "The decomposition is obvious, skip grilling and just write the plan" — no, see Task 5: the user confirms the breakdown and every dependency edge before `plan.json` is written, every time.
 - "Found a related change, but it's obviously what the user meant, just proceed" — no, see Task 4: ask, don't assume, even when it seems obvious.
 - "No `apps.json`, stop and tell the user to run `init` first" — no, only for a repo that genuinely reads as a monorepo; a single-app-looking repo gets an implicit app and proceeds, per Task 1.

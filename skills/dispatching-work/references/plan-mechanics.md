@@ -47,9 +47,9 @@ or
 ```json
 {"status": "failed", "note": "what went wrong, and whether it looks like a permission denial", "timestamp": "..."}
 ```
-or, for a full-flow task that reached a commit/push/merge checkpoint (see "Authorization checkpoints" below):
+or, for a full-flow task that reached a push/merge checkpoint (see "Authorization checkpoints" below):
 ```json
-{"status": "awaiting-authorization", "note": "what it's ready to do -- e.g. \"ready to commit 3 files\"", "timestamp": "..."}
+{"status": "awaiting-authorization", "note": "what it's ready to do -- e.g. \"ready to push branch fix-foo and open an MR\"", "timestamp": "..."}
 ```
 or, for a task that hit a substantive work-content question, not a git mutation (see "User-clarification checkpoints" below):
 ```json
@@ -59,13 +59,13 @@ or, for a task that hit a substantive work-content question, not a git mutation 
 
 ## Authorization checkpoints (full flow only)
 
-An agent must stop and report readiness rather than execute any commit/push/merge — the boss (in practice, `shipping-task`, not `dispatching-work` itself) obtains authorization and resumes it. Within a plan, that checkpoint is reported the same way completion is: the dispatch instruction for every full-flow task MUST tell the agent to call the status script with `--status awaiting-authorization` (not just stop silently) the moment it's ready to commit/push/merge, before it actually stops. This is what makes the checkpoint visible to `Monitor` — without it, a task waiting on authorization looks identical to a task still working, which is exactly the "silence is not success" failure `Monitor`'s coverage requirement exists to prevent.
+An agent must stop and report readiness rather than execute any push/merge — the boss (in practice, `shipping-task`, not `dispatching-work` itself) obtains authorization and resumes it. Commit itself needs no authorization and reaches no checkpoint here. Within a plan, that checkpoint is reported the same way completion is: the dispatch instruction for every full-flow task MUST tell the agent to call the status script with `--status awaiting-authorization` (not just stop silently) the moment it's ready to push or merge, before it actually stops. This is what makes the checkpoint visible to `Monitor` — without it, a task waiting on authorization looks identical to a task still working, which is exactly the "silence is not success" failure `Monitor`'s coverage requirement exists to prevent.
 
 `dispatching-work`'s own plan-dispatch loop (wave computation, parallel dispatch, auto-detach) treats `awaiting-authorization` as "leave this task alone, it isn't done or failed" — it does **not** attempt to authorize or resume it. That's `shipping-task`'s job (or whichever caller assembled the instruction and owns the authorization gate for it), watching the same `Monitor` notifications and, on an `awaiting-authorization` event for one of its tasks, doing what `shipping-task`'s own authorization step already does: state what's about to happen, get explicit authorization, resume the session to actually execute it. Once resumed, the task continues and eventually reports a real terminal state (`done`/`failed`).
 
 ## User-clarification checkpoints (`herdr-pane` only)
 
-Different from an authorization checkpoint on every axis that matters: it isn't a mutation gate, and the boss doesn't act as an intermediary. A dispatched task's instruction MUST also tell it: if it hits a substantive question about the *work itself* — which of several valid approaches to take, how to interpret an ambiguous requirement, whether an existing OpenSpec change it found mid-task should be extended or left alone — that isn't a commit/push/merge decision, it calls the status script with `--status awaiting-user-input` and the question in `--note`, then asks the question directly in its own pane and waits there. The user can answer it directly in that pane — the boss does not need to relay the question or the answer, and should not try to guess the answer on the task's behalf.
+Different from an authorization checkpoint on every axis that matters: it isn't a mutation gate, and the boss doesn't act as an intermediary. A dispatched task's instruction MUST also tell it: if it hits a substantive question about the *work itself* — which of several valid approaches to take, how to interpret an ambiguous requirement, whether an existing OpenSpec change it found mid-task should be extended or left alone — that isn't a push/merge decision, it calls the status script with `--status awaiting-user-input` and the question in `--note`, then asks the question directly in its own pane and waits there. The user can answer it directly in that pane — the boss does not need to relay the question or the answer, and should not try to guess the answer on the task's behalf.
 
 On an `awaiting-user-input` notification, the boss's job is narrow: tell the user which task is asking and which pane/tab to go answer it in (from the dispatch instruction's recorded `herdr_pane_id`/`herdr_tab_id`), then leave it alone — same as `awaiting-authorization`, `dispatching-work`'s plan loop does not treat this as done, failed, or ready-for-a-new-wave, and does not auto-detach it. Once the user has answered directly in the pane, the task continues on its own and eventually reports a real terminal state or another checkpoint — the boss does not need to explicitly "resume" it the way it does for an authorization checkpoint, because the conversation already happened directly in the pane.
 

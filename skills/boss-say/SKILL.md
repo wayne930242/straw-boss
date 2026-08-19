@@ -1,31 +1,41 @@
 ---
 name: boss-say
-description: The single entry point for handing implementation work to straw-boss. Use whenever the user hands work over to be done — one task, a handful, or a whole backlog — e.g. "boss say <...>", "work on this", "implement X in <app>", "work through this backlog", "fix these N tickets". This skill judges the scale itself and picks the dispatch shape (one task via `shipping-task`, a capped batch in this turn, or a self-paced `/loop` batch). Not for read-only work (`inspecting-app`, `investigating-app`, `troubleshooting-app`).
+description: The single entry point for handing any work to straw-boss — implementation, audit, research, or diagnosis. Use whenever the user hands work over or asks for something to be looked into — one item, a handful, or a whole backlog — e.g. "boss say <...>", "work on this", "implement X in <app>", "audit this module", "how does X work here", "X is failing", "work through this backlog". This skill judges the scale and, per item, the execution tier (a plain subagent, or a dispatched agent rooted in the app) and picks the dispatch shape (one item via a specialist skill, a capped batch in this turn, or a self-paced `/loop` batch).
 ---
 
 ## Overview
 
-**Everything implementation-shaped comes through here.** The boss decides how work gets dispatched — the user hands over the work, not the dispatch shape. `shipping-task` (one task's git lifecycle), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one, but they are not the front door.
+**Everything comes through here — not just implementation.** The boss decides how work gets done — the user hands over the work, not the shape or the tier. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one, but they are not the front door.
 
-Two things this skill owns that nothing else does:
+Three things this skill owns that nothing else does:
 
-1. **Scale triage** (Task 1) — one task, a batch that fits this turn, or a batch big enough to self-pace across turns.
-2. **Batch dispatch under a concurrency cap** (Tasks 4-6) — a batch is a `dispatching-work` plan where every task's `depends_on` is empty, so `dispatching-work`'s own rule ("dispatch every ready task at once") would fire the whole thing in one wave. Slicing that wave under a cap and refilling as items finish is this skill's reason to exist; everything else reuses `dispatching-work`'s per-task mechanics unmodified.
+1. **Scale triage** (Task 1) — one item, a batch that fits this turn, or a batch big enough to self-pace across turns.
+2. **Execution-tier triage** (Task 1) — per item, whether it needs the target app's own harness (its actual skills/hooks/rules) at all. If not, a plain subagent handles it — no app-dir rooting, `dispatching-work` never involved. If it does, it's a dispatched agent — `dispatching-work` picks the actual transport itself (herdr-pane whenever available, `claude-p` only as an environment fallback; see its own Task 1 — that choice is never made here).
+3. **Batch dispatch under a concurrency cap** (Tasks 4-6) — a batch is a `dispatching-work` plan where every task's `depends_on` is empty, so `dispatching-work`'s own rule ("dispatch every ready task at once") would fire the whole thing in one wave. Slicing that wave under a cap and refilling as items finish is this skill's reason to exist; everything else reuses `dispatching-work`'s per-task mechanics unmodified.
 
-Read-only requests are not this skill's: an audit goes to `inspecting-app`, open-ended research to `investigating-app`, an unexplained failure to `troubleshooting-app` (which comes back here once it has a root cause).
+No type of work is excluded here: an audit, open-ended research, or an unexplained failure comes through this skill exactly like implementation does, judged by the same scale and execution-tier questions. The specialist skills (`inspecting-app`, `investigating-app`, `troubleshooting-app`) still own their own domain methodology — what this skill decides is whether an item goes solo or gets dispatched, not how the work itself gets done.
 
-## Task 1: Triage the scale, then pick the dispatch shape
+## Task 1: Triage scale and execution tier, then pick the dispatch shape
 
 First collect the work items: inline in the invocation, or from a file (checklist, tracker export) named in it. Then decide the shape — **this is the boss's call, made and stated, not a question put to the user.** The user may override after hearing it; don't ask them to choose up front.
 
-- **One logical request** — a single task, or one request that decomposes into phases or spans several apps but is still one unit of work → invoke `shipping-task` and stop here. It owns the flow question, `work-on` (including `work-on`'s own Plan mechanism for a multi-phase request), and the dispatch. Do not write a batch plan for a single request.
+- **One logical item** — a single task, or one request that decomposes into phases or spans several apps but is still one unit of work → invoke the matching specialist skill (`shipping-task` for implementation, `inspecting-app`/`investigating-app`/`troubleshooting-app` for audit/research/diagnosis) and stop here. It owns its own domain methodology, `work-on` (including its own Plan mechanism for a multi-phase request), the execution-tier call below, and the dispatch. Do not write a batch plan for a single item.
 - **Several independent items, and the batch plausibly finishes inside this turn** — roughly the concurrency cap or a small multiple of it, each item short → **one-shot batch** (Task 6, `Monitor`-driven).
 - **A batch clearly bigger or longer than one turn** — many items, or items long enough that in-flight slots will keep turning over for a while → **self-paced batch**: this skill starts the `/loop` itself (Task 6), it does not tell the user to type `/loop` and come back.
-- **Mixed input** — a backlog that also contains one item needing its own dependency graph: the batch items stay here, that item comes out and goes through `shipping-task` separately. Say which item you pulled out and why.
+- **Mixed input** — a backlog that also contains one item needing its own dependency graph: the batch items stay here, that item comes out and goes through the matching specialist skill separately. Say which item you pulled out and why.
 
 State the chosen shape and the reason in one line before doing anything else.
 
-**Verification:** the shape was decided here and stated out loud, with a reason; a single request was never turned into a batch plan; the user was not asked to pick the dispatch shape.
+**Then, per item, decide the execution tier — also the boss's call, not the user's, and not a per-skill-type default:**
+
+- **Doesn't need the target app's own harness at all** — a self-contained question, a lookup, something a plain capable agent can just do without the app's own skills/hooks/rules loaded → a plain subagent (this session's own `Agent` tool). No app-dir rooting, `dispatching-work` never invoked.
+- **Needs the app's own skills/hooks/rules to actually load** — real code changes, an audit against the app's real rule source, research into its actual current behavior, diagnosis using its own logs/tests → a dispatched agent via `dispatching-work`, which picks the transport itself (its own Task 1).
+
+This call is made by task type never having a fixed answer — an audit or a piece of research is not automatically "stays solo" any more than a code change is automatically "always dispatch." Judge the actual item.
+
+**The only real mistake here is underestimating an item's complexity and going solo — in this session, without the app's harness — on something that actually needed a dispatched agent.** Second-guessing a call that turned out fine either way is not the point: dispatching something that turns out trivial, or keeping something solo that turns out to need more digging than expected, are not defects. Going solo on something that needed the harness this session doesn't have is the one thing that costs something.
+
+**Verification:** the shape was decided here and stated out loud, with a reason; a single item was never turned into a batch plan; the user was not asked to pick the dispatch shape or the execution tier; the execution tier was judged per item, not defaulted from the item's type.
 
 ## Task 2: Resolve each item's app
 
@@ -39,7 +49,7 @@ For each item, extract a task description and, if the project has more than one 
 
 ## Task 3: Decide the batch-wide flow default
 
-Per resolved app, `forbidDirectCommit: true` forces the full flow for that item automatically — no question. For everything else, ask **once** for the whole batch — light flow or full flow default — never per item; fifty identical prompts is a defect, not thoroughness. A mixed batch (some apps forced to full flow, others taking the batch default) is expected and fine.
+Per resolved app, `forbidDirectCommit: true` forces the full flow for that item automatically — no question. For everything else, ask **once** for the whole batch — light flow or full flow default — never per item; fifty identical prompts is a defect, not thoroughness. A mixed batch (some apps forced to full flow, others taking the batch default) is expected and fine. This single answer is the only human checkpoint a light-flow item in the batch ever gets — its commit itself needs no authorization, so Task 5 step 6's stalled-batch detection never fires for it.
 
 **Verification:** the flow question was asked at most once per batch invocation, not once per item.
 
@@ -82,14 +92,18 @@ Once every task in the plan is terminal, report a summary: how many `done`, how 
 
 **Verification:** the batch is reported complete only once every task's status is `done` or `failed`, never earlier.
 
+## Branch: Status query, or closing out one dispatch
+
+Not new triage — "what's currently running", or "close out `<task>`" for a single dispatched instruction, is a passthrough to `dispatching-work`'s own List / Wrap-up branches (not this skill's Task 7, which is about reporting a *batch* this skill itself started). Invoke `dispatching-work` directly for the read or the close-out; don't reimplement the scan or the confirm-then-archive steps here.
+
 ## Red Flags
 
-- "The user only gave one task, so this skill doesn't apply — go straight to `shipping-task`" — no, one task still comes through here; Task 1 routes it to `shipping-task` after triage. Triage is what this skill is for.
+- "The user only gave one task, so this skill doesn't apply — go straight to the specialist skill" — no, one item still comes through here; Task 1 routes it to the matching specialist skill after triage. Triage is what this skill is for.
 - "This batch is too big for one turn, tell the user to run `/loop boss-say ...`" — no, Task 6: the boss starts the loop itself.
 - "Ask the user whether they want a one-shot run or a loop" — no, Task 1: the boss decides the shape and states it; the user overrides if they disagree.
 - "20 independent items, hand the whole ready wave to `dispatching-work`'s plan branch like normal" — no, that branch dispatches everything at once; the cap exists specifically to slice it.
 - "Ask each item whether it wants light or full flow, to be thorough" — no, Task 3: once for the whole batch, `forbidDirectCommit` items excepted.
-- "This item actually needs its own dependency graph, just add depends_on edges into the batch plan" — no, a batch item is never allowed to depend on another; pull it out and route it through `shipping-task` instead.
+- "This item actually needs its own dependency graph, just add depends_on edges into the batch plan" — no, a batch item is never allowed to depend on another; pull it out and route it through the matching specialist skill instead.
 - "Finished this tick, call `ScheduleWakeup` to check again later" when this was a one-shot batch — no, `ScheduleWakeup` belongs to an actual `/loop` tick; a one-shot batch uses `Monitor` within the same turn instead.
 - "A tick came back and the batch plan already exists, just start a fresh one to be safe" — no, always resume the existing `plan.json` for that batch slug.
 - "One item finished, wait for a few more before dispatching the next queued one" — no, Task 5: refill immediately, every time a slot frees.
