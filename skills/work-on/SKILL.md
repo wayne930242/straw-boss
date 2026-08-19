@@ -5,6 +5,8 @@ description: Determines which of the project's managed apps a request belongs to
 
 ## Overview
 
+See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
+
 App resolution and dispatch: figure out which app a request belongs to, then hand the actual work to a session rooted in that app's own directory instead of working on it here. Does not develop the fix or feature itself.
 
 Apps' own `.claude/rules/*.md`, `.claude/skills/`, and `.claude/settings.json` hooks only load fully for a session actually rooted in that app's directory — a session working from the project root never sees an app's own skills or hooks, even though path-scoped rules and nested `CLAUDE.md` do reach it reactively. Dispatching to a session that lives in the target app closes that gap instead of working around it with a hand-maintained summary.

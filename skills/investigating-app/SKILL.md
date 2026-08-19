@@ -5,6 +5,8 @@ description: Use when the user wants to understand how something currently works
 
 ## Overview
 
+See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
+
 Resolve the app, decide the execution tier (`boss-say`'s Task 1 — a plain subagent running your own `investigating` skill, or a dispatched agent rooted in the app), then let the actual research run. This skill doesn't reimplement investigation methodology either way.
 
 ## Task 1: Resolve the app

@@ -1,9 +1,11 @@
 ---
-name: notifying-boss
+name: notifying-main-agent
 description: Use when you are a dispatched agent with a purely informational question for the main-agent session that dispatched you. Not for a work-content judgment call — use `awaiting-user-input` instead.
 ---
 
 ## Overview
+
+See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
 
 Your dispatch instruction states how to reach your main agent — a herdr pane id (if you're `herdr-pane`) and/or a `SendMessage` peer name — use those values exactly as given, never guess them from your own cwd or task. This channel is for questions your main agent already has the state to answer (another task's status, which apps are in scope, whether a related change was already confirmed) — not for anything requiring judgment about the work itself.
 

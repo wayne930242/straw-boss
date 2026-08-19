@@ -10,6 +10,13 @@ skills/dispatching-work/references/plan-mechanics.md). Writes only this
 task's own status file -- never plan.json, never another task's file --
 so concurrent reports from different tasks never contend for the same
 path.
+
+--status cancelled is the one exception to "given to the task": the main
+agent calls this itself, for a task it is ending because the dispatch
+was wrong, not because the task reported on itself (see
+skills/dispatching-work/references/cross-session-coordination.md's
+Cancel section) -- a dispatched task never reports its own cancellation,
+since it never sees this happen.
 """
 
 from __future__ import annotations
@@ -29,7 +36,7 @@ def status_path(plan_slug: str, task_id: str) -> Path:
     return plans_root() / plan_slug / "status" / f"{task_id}.json"
 
 
-VALID_STATUSES = ("done", "failed", "awaiting-authorization", "awaiting-user-input")
+VALID_STATUSES = ("done", "failed", "awaiting-authorization", "awaiting-user-input", "cancelled")
 
 
 def report_status(plan_slug: str, task_id: str, status: str, note: str) -> Path:

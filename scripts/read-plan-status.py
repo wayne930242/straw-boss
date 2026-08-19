@@ -10,12 +10,13 @@ narrowest query that answers the actual question: --task for one task,
 --not-done, --in-flight, or --ready for a filtered list. --full is for
 the rare case of actually wanting the whole plan.
 
---not-done includes every task that isn't done/failed yet, including ones
-never dispatched at all (still `planned`). --in-flight is narrower: only
-tasks actually occupying a concurrency-cap slot (dispatched, not yet
-terminal) -- use this one, not --not-done, for any cap/slot-counting
-math (e.g. boss-say's batch dispatch); --not-done's count includes the
-ready queue itself and overcounts in-flight by exactly its size.
+--not-done includes every task that isn't terminal yet (done/failed/
+cancelled), including ones never dispatched at all (still `planned`).
+--in-flight is narrower: only tasks actually occupying a concurrency-cap
+slot (dispatched, not yet terminal) -- use this one, not --not-done, for
+any cap/slot-counting math (e.g. boss-say's batch dispatch); --not-done's
+count includes the ready queue itself and overcounts in-flight by
+exactly its size.
 """
 
 from __future__ import annotations
@@ -50,9 +51,11 @@ def load_task_status_file(plan_slug: str, task_id: str) -> dict[str, Any] | None
 
 
 def effective_status(plan_slug: str, task: dict[str, Any]) -> str:
-    """The status file (done/failed), if it exists, is authoritative --
-    it reflects what the dispatched task itself reported. Otherwise fall
-    back to plan.json's own tracked status (planned/dispatched)."""
+    """The status file (done/failed/cancelled), if it exists, is
+    authoritative -- it reflects what the dispatched task itself
+    reported, or, for cancelled, what the main agent recorded on its
+    behalf. Otherwise fall back to plan.json's own tracked status
+    (planned/dispatched)."""
     reported = load_task_status_file(plan_slug, task["task_id"])
     if reported is not None:
         return str(reported["status"])
@@ -71,11 +74,14 @@ def ready_wave(plan_slug: str, plan: dict[str, Any]) -> list[dict[str, Any]]:
     return wave
 
 
+TERMINAL_STATUSES = ("done", "failed", "cancelled")
+
+
 def not_done(plan_slug: str, plan: dict[str, Any]) -> list[dict[str, Any]]:
     result = []
     for t in plan["tasks"]:
         status = effective_status(plan_slug, t)
-        if status not in ("done", "failed"):
+        if status not in TERMINAL_STATUSES:
             result.append({**t, "status": status})
     return result
 
@@ -93,7 +99,7 @@ def in_flight(plan_slug: str, plan: dict[str, Any]) -> list[dict[str, Any]]:
         if t["status"] != "dispatched":
             continue
         status = effective_status(plan_slug, t)
-        if status not in ("done", "failed"):
+        if status not in TERMINAL_STATUSES:
             result.append({**t, "status": status})
     return result
 

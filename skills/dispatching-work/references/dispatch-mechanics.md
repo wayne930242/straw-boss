@@ -166,7 +166,7 @@ For `claude-p`, there's no pane/tab to record — call the same `confirm` withou
   uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/wrap-up-task.py" \
     --app <app> --slug <short-slug> [--plan <plan-slug> --task-id <task_id>]
   ```
-  For a plan task, this reads the task's own status file and refuses to archive unless it reports a terminal state (`done`/`failed`) — it will not wrap up a task that's `awaiting-authorization` or `awaiting-user-input`, matching `plan-mechanics.md`'s auto-detach rule. It never touches a pane, tab, or worktree itself — those stay the live tool calls above and in `plan-mechanics.md`'s "Worktree ownership."
+  For a plan task, this reads the task's own status file and refuses to archive unless it reports a terminal state (`done`/`failed`/`cancelled`) — it will not wrap up a task that's `awaiting-authorization` or `awaiting-user-input`, matching `plan-mechanics.md`'s auto-detach rule. It never touches a pane, tab, or worktree itself — those stay the live tool calls above and in `plan-mechanics.md`'s "Worktree ownership."
 
 ## No `herdr group` primitive
 

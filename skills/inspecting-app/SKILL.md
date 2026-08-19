@@ -5,6 +5,8 @@ description: Use when the user wants to check or audit something against existin
 
 ## Overview
 
+See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
+
 Resolve the app, decide the execution tier (`boss-say`'s Task 1 — a plain subagent running your own `inspecting` skill, or a dispatched agent rooted in the app), then let the actual audit run. This skill doesn't reimplement audit methodology either way.
 
 ## Task 1: Resolve the app

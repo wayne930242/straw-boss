@@ -1,8 +1,8 @@
 # Cross-session coordination
 
-Three capabilities, all live-tested: an agent reaching its main agent (`herdr-pane` primary channel, `SendMessage` fallback and the only channel `claude-p` has), and the main agent interrupting an agent mid-task to inject an urgent correction (`herdr-pane` only — see "Mid-task interrupt and correction" below for why `claude-p` can't do this one).
+Several capabilities, all live-tested: an agent reaching its main agent (`herdr-pane` primary channel, `SendMessage` fallback and the only channel `claude-p` has), and the main agent's three-tier authority over a task it already dispatched — see `docs/roles.md` for the cast/naming/authority framework these implement, not redefined here — **inform** (below), **redirect** (below, `herdr-pane` only), and **cancel** (below, both modes).
 
-**An agent's own judgment rule and send mechanics for reaching its main agent live in `notifying-boss` — the agent-facing skill, not here.** This file covers only what the main agent itself must do: make itself addressable, two ways (below), and, separately, interrupt an agent mid-task. Confirmed live: an agent sent a genuine API-design trade-off (two viable directions, a real cost/benefit on each) via `SendMessage` instead of `awaiting-user-input` — the main agent could not have answered it either, so even a successful delivery wouldn't have resolved anything correctly. This is exactly the failure mode `notifying-boss`'s Task 1 exists to prevent — every dispatch instruction points the agent at that skill rather than restating its judgment rule inline.
+**An agent's own judgment rule and send mechanics for reaching its main agent live in `notifying-main-agent` — the agent-facing skill, not here.** This file covers only what the main agent itself must do: make itself addressable, two ways (below), and, separately, interrupt an agent mid-task. Confirmed live: an agent sent a genuine API-design trade-off (two viable directions, a real cost/benefit on each) via `SendMessage` instead of `awaiting-user-input` — the main agent could not have answered it either, so even a successful delivery wouldn't have resolved anything correctly. This is exactly the failure mode `notifying-main-agent`'s Task 1 exists to prevent — every dispatch instruction points the agent at that skill rather than restating its judgment rule inline.
 
 ## Making the main agent addressable
 
@@ -21,18 +21,30 @@ herdr agent prompt "$HERDR_PANE_ID" "/rename straw-boss-orchestrator"
 This queues as input for after the current turn (submitting to a `working` pane doesn't interrupt it), so the rename takes effect once this turn ends — no `--wait` needed, and there is nothing further to check for confirmation until the *next* turn (`herdr agent get "$HERDR_PANE_ID"`'s `terminal_title` will read `straw-boss-orchestrator` once it has).
 
 **What the dispatch instruction states, per mode:**
-- `herdr-pane`: *"Your main agent's herdr pane id is `<resolved $HERDR_PANE_ID value>` and its `SendMessage` peer name is `straw-boss-orchestrator` — use the `notifying-boss` skill if you need to reach it."*
-- `claude-p`: *"Your main agent's `SendMessage` peer name is `straw-boss-orchestrator` — use the `notifying-boss` skill if you need to reach it, but you cannot wait for a reply before you exit."*
+- `herdr-pane`: *"Your main agent's herdr pane id is `<resolved $HERDR_PANE_ID value>` and its `SendMessage` peer name is `straw-boss-orchestrator` — use the `notifying-main-agent` skill if you need to reach it."*
+- `claude-p`: *"Your main agent's `SendMessage` peer name is `straw-boss-orchestrator` — use the `notifying-main-agent` skill if you need to reach it, but you cannot wait for a reply before you exit."*
 
-That's the whole instruction either way; `notifying-boss` itself carries the judgment rule, the channel-selection logic, and the never-authorization safety boundary, so none of it needs restating here.
+That's the whole instruction either way; `notifying-main-agent` itself carries the judgment rule, the channel-selection logic, and the never-authorization safety boundary, so none of it needs restating here.
 
 ## Making an agent addressable
 
 `herdr agent start`'s trailing `-- --name <name>` flag (passed through to the underlying `claude` process, distinct from herdr's own `<unique-name>` control handle that's the command's first argument) sets the exact name that shows up in `ListAgents`/is reachable via `SendMessage`, overriding the auto-derived `<cwd-basename>-<suffix>` default entirely. `dispatch-mechanics.md`'s `herdr agent start` command already passes the same `plan_id`/`task_id`-derived value for both — no separate naming decision needed here.
 
-## Mid-task interrupt and correction
+## Inform
 
-Confirmed live: `herdr agent send-keys "<name>" esc` interrupts a currently-`working` turn and drops the agent back to `idle`, ready for a new prompt — matches Claude Code's own interactive Escape-to-interrupt behavior. Use this when the main agent learns of an urgent requirement change mid-task (from the user, typically) and needs to redirect an agent before it finishes its current turn, rather than waiting for it to finish first:
+Send a dispatched agent an FYI about something the main agent discovered, without interrupting its current turn. Confirmed live via the `/rename` bootstrap above: `herdr agent prompt "<name>" "<message>"` **without** `send-keys esc` first, sent to a `working` pane, queues as input for after the current turn ends rather than interrupting it — the pane keeps working uninterrupted and picks the message up once it's naturally free.
+
+```bash
+herdr agent prompt "<name>" "[from main agent] <informational message>"
+```
+
+No `--wait` — the agent is still `working` on its current turn, so `--wait` would match that unrelated turn finishing, not acknowledgment of this message. This action never changes the agent's terminal status.
+
+**Not available for `claude-p`.** A headless one-shot process has no live pane to queue input into — there's nothing to inform mid-run. Use `notifying-main-agent`'s own reverse-direction channel (agent → main agent) for that direction instead; there's no main-agent → `claude-p` equivalent.
+
+## Redirect
+
+Confirmed live: `herdr agent send-keys "<name>" esc` interrupts a currently-`working` turn and drops the agent back to `idle`, ready for a new prompt — matches Claude Code's own interactive Escape-to-interrupt behavior. Use this when the main agent learns of an urgent requirement change mid-task (from the user, typically, or from its own autonomous judgment per `docs/roles.md`'s autonomy boundary) and the task itself is still right but needs adjusting before it finishes its current turn, rather than waiting for it to finish first:
 
 ```bash
 herdr agent send-keys "<name>" esc
@@ -41,4 +53,23 @@ herdr agent prompt "<name>" "<corrected instruction, stating what changed and wh
 
 Confirm the interrupt actually landed (`herdr agent get "<name>"` reports `idle`, not still `working`) before sending the correction — sending a new prompt while the prior turn is still finishing queues behind it rather than replacing it.
 
-**`claude-p` cannot be interrupted mid-flight.** There is no live process to send a key to once it's running — the only options are to let it finish and redispatch with corrected instructions afterward, or `TaskStop` the background task outright (discarding whatever it was mid-way through) and redispatch fresh. If a task dispatched as `claude-p` seems likely to need a mid-task correction, that's itself a reason to have used `herdr-pane` instead — see `dispatching-work`'s Task 1 mode-selection criteria.
+**`claude-p` cannot be interrupted mid-flight.** There is no live process to send a key to once it's running — the only options are to let it finish and redispatch with corrected instructions afterward, or `TaskStop` the background task outright (discarding whatever it was mid-way through) and redispatch fresh — the latter is mechanically the same action as Cancel below, just followed by a fresh dispatch instead of recording `cancelled`. If a task dispatched as `claude-p` seems likely to need a mid-task correction, that's itself a reason to have used `herdr-pane` instead — see `dispatching-work`'s Task 1 mode-selection criteria.
+
+## Cancel
+
+End a dispatched task outright because the main agent judges the dispatch itself — not the agent's execution of it — was wrong (wrong app, wrong scope, superseded by new information). Unlike Redirect, there's no corrected instruction to send; the task is simply over.
+
+**`herdr-pane`:** interrupt, then close without expecting further output:
+```bash
+herdr agent send-keys "<name>" esc
+herdr pane close <pane_id>   # + herdr tab close <tab_id> if it was the last pane in it, + git worktree remove if full-flow
+```
+Then, for a plan task, call `report-task-status.py --plan <plan-slug> --task <task-id> --status cancelled --note "<why the dispatch itself was wrong>"` yourself — same script every dispatched task uses to report on itself, just invoked by the main agent this one time, since the agent never sees this happen and can't report it. Never hand-write the status JSON. For a non-plan (standalone) dispatch, there is no status file to begin with — just wrap it up directly.
+
+**`claude-p`:** `TaskStop` the backgrounded process — the same mechanism Redirect above already uses to abort an undeliverable correction, repurposed here to end the dispatch instead of redispatching fresh:
+```bash
+TaskStop  # on the backgrounded claude-p task's id
+```
+Then, for a plan task, call `report-task-status.py --status cancelled` yourself, same as the `herdr-pane` case above. For a standalone (non-plan) dispatch there's no status file at all — per `dispatch-mechanics.md`, a bare `claude-p` dispatch was never given one — just wrap it up directly. Discards whatever the process was mid-way through either way; there is no partial-output recovery.
+
+**Cancelling a task other tasks `depends_on` strands them — decide their fate at cancel time, don't leave it implicit.** `read-plan-status.py`'s ready-wave computation only treats a prerequisite as satisfied when it's `done`; `cancelled` (like `failed`) never satisfies a dependent, so a dependent of a cancelled task sits `planned` forever — never ready, never in-flight, but also never terminal, so the plan can never complete. Unlike a `failed` prerequisite (which arrives via a Monitor notification a human ends up reacting to), a `cancelled` one is authored by the main agent inline with no notification, so nothing else prompts a look at its dependents. Before or immediately after cancelling a task with dependents, the main agent decides what happens to them — cancel them too, or re-dispatch the prerequisite under a corrected spec — rather than leaving them queued against a prerequisite that will never arrive.

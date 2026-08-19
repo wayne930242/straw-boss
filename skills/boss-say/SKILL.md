@@ -5,6 +5,8 @@ description: The single entry point for handing any work to straw-boss — imple
 
 ## Overview
 
+See `docs/roles.md` for the cast of characters and the authority framework the main agent acts under — not redefined here.
+
 **Everything comes through here — not just implementation.** The main agent decides how work gets done — the user hands over the work, not the shape or the tier. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one, but they are not the front door.
 
 Three things this skill owns that nothing else does:
@@ -65,10 +67,10 @@ Confirm the resolved item list, each one's app, the chosen flow default, and the
 
 Default cap: 4 in-flight at once. The caller may set a different cap explicitly at invocation; if machine load looks like an issue mid-batch, lowering it for the rest of the batch is a judgment call to surface to the user, not something to change silently.
 
-1. Compute in-flight count: every task whose plan status is `dispatched` and whose status file is not `done`/`failed` (`read-plan-status.py --in-flight`) — **not** `--not-done`, which also counts every still-`planned` task in the ready queue itself and overcounts in-flight by exactly that amount, silently starving the refill this whole task exists to do. This includes `awaiting-authorization` and `awaiting-user-input` — their pane/worktree is still open, so they still hold a slot.
+1. Compute in-flight count: every task whose plan status is `dispatched` and whose status file is not terminal (`done`/`failed`/`cancelled`) (`read-plan-status.py --in-flight`) — **not** `--not-done`, which also counts every still-`planned` task in the ready queue itself and overcounts in-flight by exactly that amount, silently starving the refill this whole task exists to do. This includes `awaiting-authorization` and `awaiting-user-input` — their pane/worktree is still open, so they still hold a slot.
 2. Compute the ready set (`read-plan-status.py --ready`).
 3. **Slice** the ready set to `cap - in-flight`, dispatch only that slice — one task at a time through `dispatching-work`'s Tasks 1-5 (mode selection, instruction write, dispatch, confirm), never through its "Branch: Dispatch a plan" as a whole, since that branch's contract is "dispatch every ready task at once," which is exactly what the cap exists to prevent. The rest of the ready set stays queued for the next refill.
-4. On a `done`/`failed` notification for any in-flight task: auto-detach it (same rules as `dispatching-work`'s plan branch — close its pane/tab if `herdr-pane`, remove its worktree if full-flow, call `wrap-up-task.py`), then repeat from step 1 — a freed slot gets backfilled from the queue immediately, not batched up for later.
+4. On a `done`/`failed`/`cancelled` notification for any in-flight task: auto-detach it (same rules as `dispatching-work`'s plan branch — close its pane/tab if `herdr-pane`, remove its worktree if full-flow, call `wrap-up-task.py`), then repeat from step 1 — a freed slot gets backfilled from the queue immediately, not batched up for later. `cancelled` is the one status this skill may write itself, per `docs/roles.md`'s autonomy boundary — when it does, run this same step inline rather than waiting for a Monitor notification, which `cancelled` doesn't reliably produce (see `plan-mechanics.md`'s Monitor section).
 5. `awaiting-authorization`/`awaiting-user-input` are not terminal and do not free a slot — report them the same way `dispatching-work`'s plan branch does (name the task, point at where to authorize or answer it), then leave them alone.
 6. **Idle in-flight tasks — peek, don't just trust the note.** Whenever every currently in-flight task is `awaiting-authorization`/`awaiting-user-input` — not only once in-flight reaches the cap — proactively invoke `peeking-work` on each one rather than waiting for its status file's `note` to fall short first. A static note can't tell "genuinely still waiting on the user" apart from "went silent — pane died, connection dropped, whatever — without ever reporting failure"; `peeking-work`'s live read can. Report every one by name and what the peek found. This is not a quiet tick; always surface it (see Task 6's `/loop` handling). If in-flight also equals the cap, call that out too — a **fully stalled batch**: nothing can be dispatched and nothing will free a slot without the user.
 
@@ -80,7 +82,7 @@ Default cap: 4 in-flight at once. The caller may set a different cap explicitly 
 
 Which of these applies was already decided in Task 1. The one thing to check here is whether **this turn is itself a `/loop` tick**: it is only if the input this turn started with literally arrived as a `/loop` prompt carrying the batch slug. Anything else — a direct invocation, a plain mention of "boss-say" — is a fresh invocation, whatever Task 1 decided about pacing. Don't infer a tick from context or from the batch being large.
 
-**One-shot batch:** drive the batch as far as it goes within this turn. Use a real `Monitor` polling loop over the plan's `status/` directory (exact command in `plan-mechanics.md`) to detect `done`/`failed`/`awaiting-authorization`/`awaiting-user-input` events and react per Task 5. Continue until either every task is terminal, or the turn has to stop and hand something back to the user (an authorization or a question, including a fully stalled batch per Task 5 step 6). **Never call `ScheduleWakeup` in this shape** — there is no `/loop` iteration to schedule.
+**One-shot batch:** drive the batch as far as it goes within this turn. Use a real `Monitor` polling loop over the plan's `status/` directory (exact command in `plan-mechanics.md`) to detect `done`/`failed`/`cancelled`/`awaiting-authorization`/`awaiting-user-input` events and react per Task 5. Continue until either every task is terminal, or the turn has to stop and hand something back to the user (an authorization or a question, including a fully stalled batch per Task 5 step 6). **Never call `ScheduleWakeup` in this shape** — there is no `/loop` iteration to schedule.
 
 **Self-paced batch, first turn:** after Task 4 writes `plan.json`, dispatch the first fill per Task 5, then start the loop yourself — invoke the `loop` skill with the prompt `boss-say <batch-slug>` and no interval, so it runs in dynamic-pacing mode and each tick re-enters this skill with the slug. Tell the user the loop is running and how to stop it. Starting the loop is this skill's job; never end a turn having told the user to type `/loop` themselves.
 
@@ -90,9 +92,9 @@ Which of these applies was already decided in Task 1. The one thing to check her
 
 ## Task 7: Wrap up
 
-Once every task in the plan is terminal, report a summary: how many `done`, how many `failed` and why (from each failed task's status-file `note`). This is the same completion condition `dispatching-work`'s own plan branch uses — judged across all tasks, never on the first one finishing. Stop the `Monitor` (one-shot) or send the final `ScheduleWakeup({stop: true})` (self-paced) as the last step, not an afterthought.
+Once every task in the plan is terminal, report a summary: how many `done`, how many `failed` and why (from each failed task's status-file `note`), and how many `cancelled` and why (from each cancelled task's own note — the main agent's own reason for ending it). This is the same completion condition `dispatching-work`'s own plan branch uses — judged across all tasks, never on the first one finishing. Stop the `Monitor` (one-shot) or send the final `ScheduleWakeup({stop: true})` (self-paced) as the last step, not an afterthought.
 
-**Verification:** the batch is reported complete only once every task's status is `done` or `failed`, never earlier.
+**Verification:** the batch is reported complete only once every task's status is `done`, `failed`, or `cancelled`, never earlier; a `cancelled` task is counted and explained in the summary, not silently dropped from both the `done` and `failed` tallies.
 
 ## Branch: Status query, or closing out one dispatch
 

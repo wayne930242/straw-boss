@@ -52,7 +52,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `dispatching-work` | Internal dispatch machinery — picks the transport (`herdr-pane` when available, `claude-p` as the fallback), writes the instruction, dispatches, lists/wraps up existing dispatches |
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit freely, get authorization before every push/merge |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
-| `notifying-boss` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
+| `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `create-great-harness` | Bootstrap a minimal agent system for an app that has none — a short `CLAUDE.md` plus one guard hook |
 | `inspecting-app` | Resolve the app, run your own rules-audit skill — solo or dispatched |
 | `investigating-app` | Resolve the app, run your own research skill — solo or dispatched |

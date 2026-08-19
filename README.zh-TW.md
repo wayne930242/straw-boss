@@ -52,7 +52,7 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 | `dispatching-work` | 內部派工機制——選派工方式（herdr 可用就用 `herdr-pane`，不可用才退回 `claude-p`）、寫指令、實際派工、列出/收尾既有派工 |
 | `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工、commit 自由，push/merge 前找你授權 |
 | `peeking-work` | 唯讀看一個派工現在在做什麼，不加入、不打斷 |
-| `notifying-boss` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
+| `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
 | `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——一份 `CLAUDE.md` 加一個 guard hook |
 | `inspecting-app` | 對應出 app，跑你自己的規則稽核 skill——單獨做或派工 |
 | `investigating-app` | 對應出 app，跑你自己的研究 skill——單獨做或派工 |

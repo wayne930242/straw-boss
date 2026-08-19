@@ -9,12 +9,13 @@ See skills/dispatching-work/references/dispatch-mechanics.md (instruction
 lifecycle) and references/plan-mechanics.md (plan status). This script
 only moves/edits JSON bookkeeping files -- it never closes a herdr
 pane/tab and never removes a worktree, both of which stay live tool
-calls the orchestrator makes itself (they need live state checks this
+calls the main agent makes itself (they need live state checks this
 script has no way to perform).
 
 For a plan task, wrap-up only proceeds once the task's own status file
-reports a terminal state (done/failed) -- never on awaiting-authorization
-or awaiting-user-input, which need the session to stay alive.
+reports a terminal state (done/failed/cancelled) -- never on
+awaiting-authorization or awaiting-user-input, which need the session to
+stay alive.
 """
 
 from __future__ import annotations
@@ -69,10 +70,10 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
         if not status_path.is_file():
             raise ValueError(
                 f"no status file at {status_path} yet -- wrap up only applies once "
-                f"the task has reported a terminal status (done/failed)"
+                f"the task has reported a terminal status (done/failed/cancelled)"
             )
         plan_status = str(load_json(status_path)["status"])
-        if plan_status not in ("done", "failed"):
+        if plan_status not in ("done", "failed", "cancelled"):
             raise ValueError(
                 f"task {task_id!r} status is {plan_status!r}, not terminal -- refusing "
                 f"to wrap up a task that's still awaiting authorization or user input"
