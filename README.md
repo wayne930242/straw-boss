@@ -53,7 +53,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit freely, get authorization before every push/merge |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
-| `create-great-harness` | Bootstrap a minimal agent system for an app that has none — a short `CLAUDE.md` plus one guard hook |
+| `create-great-harness` | Bootstrap a minimal agent system for an app that has none — a short `CLAUDE.md`, one guard hook, and one live-fetched skill-authoring rule |
 | `inspecting-app` | Resolve the app, run your own rules-audit skill — solo or dispatched |
 | `investigating-app` | Resolve the app, run your own research skill — solo or dispatched |
 | `troubleshooting-app` | Diagnose a failure — app code or infrastructure, solo or dispatched — then hand the fix back to `boss-say` |

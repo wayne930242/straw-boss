@@ -53,7 +53,7 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 | `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工、commit 自由，push/merge 前找你授權 |
 | `peeking-work` | 唯讀看一個派工現在在做什麼，不加入、不打斷 |
 | `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
-| `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——一份 `CLAUDE.md` 加一個 guard hook |
+| `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——一份 `CLAUDE.md`、一個 guard hook，加一份即時抓取官方文件寫成的 skill 撰寫規範 |
 | `inspecting-app` | 對應出 app，跑你自己的規則稽核 skill——單獨做或派工 |
 | `investigating-app` | 對應出 app，跑你自己的研究 skill——單獨做或派工 |
 | `troubleshooting-app` | 診斷故障——app 程式碼還是基礎設施，單獨做或派工——再把修正交回 `boss-say` |
