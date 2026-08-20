@@ -8,7 +8,7 @@ Who the actors are, how they're named, and who decides what — read this before
 
 **Main agent** — the orchestrating Claude Code session, the "straw-boss"/foreman itself. Triages scale and execution tier, dispatches work, never touches app code directly. The canonical term used in skill prose.
 
-**Dispatched agent** — a session `dispatching-work` spawns, rooted in a target app's own directory, running through `herdr-pane` or `claude-p`. Does the actual work against the app's real harness (skills/hooks/rules).
+**Dispatched agent** — a session `dispatching-work` spawns, rooted in a target app's own directory, running through `herdr-pane` or `claude-p`, under a resolved agent kind (`claude` by default; `dispatching-work`'s own resolution can pick another where the app/task calls for it). A `claude`-kind dispatch does the actual work against the app's real harness (skills/hooks/rules); a different kind works from the task instruction and whatever the app itself gives it (e.g. its own `AGENTS.md`) instead, without that harness, and is standalone-only — never a plan or batch task.
 
 **Subagent** — an ephemeral `Agent`-tool call for self-contained work that doesn't need the target app's own harness. No app-dir rooting; `dispatching-work` is never invoked for one.
 

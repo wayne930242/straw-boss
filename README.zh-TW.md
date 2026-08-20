@@ -2,7 +2,7 @@
 
 [English](./README.md) | 繁體中文
 
-一切由你做主。你說一聲，`boss-say` 立刻幫你派工——分給最適合的 agent：簡單的丟一般 subagent，要動到 app 自己環境的就派進那個 app 目錄下的 session（headless 的 `claude -p`，或能旁觀、能加入的 [herdr](https://github.com/herdrdev/herdr) pane）。單一 app 直接用，monorepo 也接得住跨 app 協作。你隨時看得到現在在發生什麼事。
+一切由你做主。你說一聲，`boss-say` 立刻幫你派工——分給最適合的 agent：簡單的丟一般 subagent，要動到 app 自己環境的就派進那個 app 目錄下的 session（headless，或能旁觀、能加入的 [herdr](https://github.com/herdrdev/herdr) pane——預設跑 `claude`，設定過的話也能換成 `codex` 之類的其他 agent CLI）。單一 app 直接用，monorepo 也接得住跨 app 協作。你隨時看得到現在在發生什麼事。
 
 名字來自牧場工頭：跟牛仔一起在現場做事，不是坐辦公室發號施令。
 
@@ -46,10 +46,10 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 
 | Skill | 說明 |
 |-------|-------------|
-| `init` | 問要管哪些 app、寫設定、同步 root `CLAUDE.md`、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
+| `init` | 問要管哪些 app、寫設定、同步 root `CLAUDE.md`、詢問是否要設定額外的 agent kind 與其派工政策、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
 | `boss-say` | **所有事情的入口。**判斷規模、逐項判斷要單獨做還是派工，交給對應的專責 skill 或自己的批次機制 |
 | `work-on` | 把請求對應到某個 app，處理 legacy redirect |
-| `dispatching-work` | 內部派工機制——選派工方式（herdr 可用就用 `herdr-pane`，不可用才退回 `claude-p`）、寫指令、實際派工、列出/收尾既有派工 |
+| `dispatching-work` | 內部派工機制——選派工方式（herdr 可用就用 `herdr-pane`，不可用才退回 `claude-p`）跟 agent kind（預設 `claude`，或設定過的其他 kind）、寫指令、實際派工、列出/收尾既有派工 |
 | `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工、commit 自由，push/merge 前找你授權 |
 | `peeking-work` | 唯讀看一個派工現在在做什麼，不加入、不打斷 |
 | `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
@@ -84,6 +84,8 @@ boss-say 把 docs/backlog.md 做掉
 ## 設定
 
 app、路由、legacy redirect、跨 app 協調——全在 `init` 寫的 `.claude/straw-boss/apps.json`。Schema：[skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md)。root `CLAUDE.md` 也會同步一份精簡摘要，因為每個 app session 都會繼承到 monorepo 的 root `CLAUDE.md`。
+
+app 也可以設定預設用非 `claude` 的 agent kind（`agentKind`）。把特定「類型的工作」派給它、順便建議 model/effort，則是另一個獨立的專案層級政策，由 `init` 寫成 root `CLAUDE.md` 的文字說明，而不是塞進 per-app 的設定欄位。
 
 ## 授權條款
 

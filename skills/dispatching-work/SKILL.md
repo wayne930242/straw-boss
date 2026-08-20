@@ -11,7 +11,7 @@ See `docs/roles.md` for the cast of characters and the authority framework (info
 
 `~/.straw-boss/capability.json` records whether herdr-backed dispatch is enabled on this machine, from `init`. Its absence is not a hard stop — see Task 1's no-`capability.json` handling; `claude-p` dispatch never needed it.
 
-## Task 1: Choose the dispatch mode
+## Task 1: Choose the dispatch mode and agent kind
 
 Whether to dispatch into the app at all, versus handling something with a plain subagent, is `boss-say`'s call (its Task 1) — by the time this skill runs, that decision is already made. What's left here is transport, and it's an environment check, not a per-task judgment — never pick `claude-p` because a task "looks" self-contained or simple.
 
@@ -20,9 +20,11 @@ Whether to dispatch into the app at all, versus handling something with a plain 
 
 State the mode and why before doing anything else.
 
+**Resolve the agent kind independently of mode** — see `references/dispatch-mechanics.md`'s "Resolving the agent kind": the target app's `apps.json` `agentKind` (defaults to `claude`), overridden for this one dispatch only when the task's nature matches a rule in root `CLAUDE.md`'s agent-routing policy (written by `init`'s Task 3, if the project has one) or an explicit request. State the resolved kind and why, same as mode. For a plan or batch task, the resolved kind must be `claude` regardless of the app's own default — see the Red Flag below.
+
 **Before the first `herdr-pane` dispatch in this main-agent session** (not per-dispatch, not per-plan), ensure the main agent itself is addressable — see `references/cross-session-coordination.md` "Making the main agent addressable" for the exact mechanism. Skipping this is not a cosmetic gap: `SendMessage` does not fail loudly when an agent guesses the wrong target — it silently delivers to whatever session across the account happens to share a similar auto-derived title, which can be a stale, unrelated, offline session. Confirmed live: exactly this happened — an agent's coordination question was reported "sent" and was never seen again, no error anywhere.
 
-**Verification:** mode stated with a reason; `herdr-pane` used whenever both capability conditions hold; `claude-p` used only because herdr genuinely wasn't available, never because the task looked simple; before the first `herdr-pane` dispatch this session, the main agent's own addressability was checked, not assumed.
+**Verification:** mode stated with a reason; `herdr-pane` used whenever both capability conditions hold; `claude-p` used only because herdr genuinely wasn't available, never because the task looked simple; agent kind resolved and stated independently of mode; before the first `herdr-pane` dispatch this session, the main agent's own addressability was checked, not assumed.
 
 ## Task 2: Resolve batch membership
 
@@ -30,7 +32,7 @@ Several dispatches for one multi-app unit of work share a `batch` label (herdr-p
 
 ## Task 3: Write the instruction, before dispatching
 
-Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates the session_id, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Never hand-write the JSON or generate a second UUID — the script is what keeps a rejected dispatch from leaving a stray file behind.
+Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates the session_id, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the agent kind resolved in Task 1 as `--agent-kind` (and `--agent-model`/`--agent-effort` if that resolution chose an override) — the script itself refuses a non-`claude` kind for a plan/batch task and an unrecognized kind outright, so a mistake here surfaces immediately rather than silently. Never hand-write the JSON or generate a second UUID — the script is what keeps a rejected dispatch from leaving a stray file behind.
 
 **Verification:** instruction exists with `pending` status before any `claude`/`herdr` command runs.
 
@@ -38,13 +40,13 @@ Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) —
 
 Follow `references/dispatch-mechanics.md` for the exact `claude`/`herdr` command sequence — don't improvise it from general knowledge.
 
-**Mirror the main agent's own permission mode onto the agent.** Detect it from the main agent's own process args (`ps -p "$CLAUDE_PID" -ww -o args=`, exact detection in the reference) and pass the equivalent flag to the agent's launch command. An agent must never end up more tightly gated than the main agent dispatching it — never hardcode a specific mode here, and never omit this "to be safe."
+**Mirror the main agent's own permission mode onto the agent.** Detect it from the main agent's own process args (`ps -p "$CLAUDE_PID" -ww -o args=`, exact detection in the reference) and map it through the agent kind's own permission surface (`references/dispatch-mechanics.md`'s "Mapping permission mode across agent kinds" — a per-kind flag combo, not the identical flag string, for anything other than `claude`). An agent must never end up more tightly gated than the main agent dispatching it — never hardcode a specific mode here, and never omit this "to be safe."
 
-For `herdr-pane`, a `herdr agent prompt` success return is not proof of delivery — a first-run interruption can swallow the submission while the CLI still reports success. Confirm delivery (terminal-title check, in the reference) before proceeding.
+For `herdr-pane`, a `herdr agent prompt` success return is not proof of delivery — a first-run interruption can swallow the submission while the CLI still reports success. Confirm delivery (terminal-title check for claude, transcript check via `--source visible` for codex — both in the reference) before proceeding.
 
-Once dispatch succeeds and delivery is confirmed, call `dispatch-task.py confirm` — flips to `in-progress`, records pane/tab ids for `herdr-pane`.
+Once dispatch succeeds and delivery is confirmed, call `dispatch-task.py confirm` — flips to `in-progress`, records pane/tab ids for `herdr-pane`. For a kind that can't pre-assign a session id (e.g. `codex`), pass `--observed-session-id` with what the launched agent actually reported, per the reference's per-kind confirm step.
 
-**Verification:** status is `in-progress`; permission mode was detected and mirrored, not hardcoded or skipped; pane/tab ids recorded for `herdr-pane`; session_id cross-checked against what herdr reports.
+**Verification:** status is `in-progress`; permission mode was detected and mapped through the resolved agent kind's own permission surface, not hardcoded or skipped; pane/tab ids recorded for `herdr-pane`; session_id cross-checked against what herdr/the agent reports (or recorded from what it reported, for a kind that can't pre-assign one).
 
 ## Task 5: Report
 
@@ -110,3 +112,4 @@ Scan `~/.straw-boss/dispatch/` (excluding `archive/`), report grouped by status.
 - "This coordination question sounds like something the main agent could reasonably weigh in on, SendMessage it" — no, per `cross-session-coordination.md`: any trade-off or "which direction" call is `awaiting-user-input`, full stop, regardless of how qualified the main agent seems.
 - "The worktree isolates this task, so a shared-DB migration check can't collide with another main agent's task" — no, per `shared-resource-coordination.md`: worktree isolation is file-level only; a shared database is outside any one checkout and needs the lock regardless of worktree.
 - "Have the main agent pre-acquire the shared-resource lock before dispatching, so the agent starts already holding it" — no, the agent acquires it itself, right before it actually needs the resource; acquiring earlier holds it uselessly against other main agents during unrelated implementation work.
+- "This app's configured `agentKind` is `codex`, dispatch its plan/batch task under it directly" — no, "Resolving the agent kind"'s standalone-only rule: force that task to `claude` instead and state that the app's own default was overridden and why; a non-`claude` agent can't run `notifying-main-agent`, isn't reachable by name, and has no built-in way to honor the plan's status-file protocol.

@@ -35,6 +35,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+SUPPORTED_AGENT_KINDS = {"claude", "codex"}
+
 
 def mp_dev_root() -> Path:
     return Path.home() / ".straw-boss"
@@ -90,6 +92,9 @@ def write_instruction(
     batch: str | None,
     plan_slug: str | None,
     task_id: str | None,
+    agent_kind: str,
+    agent_model: str | None,
+    agent_effort: str | None,
 ) -> dict[str, Any]:
     path = instruction_path(app, slug)
     if path.exists():
@@ -98,6 +103,15 @@ def write_instruction(
         )
     if (plan_slug is None) != (task_id is None):
         raise ValueError("--plan and --task-id must be given together, or not at all")
+    if agent_kind not in SUPPORTED_AGENT_KINDS:
+        raise ValueError(
+            f"unrecognized --agent-kind {agent_kind!r} -- supported kinds are {sorted(SUPPORTED_AGENT_KINDS)}"
+        )
+    if plan_slug is not None and agent_kind != "claude":
+        raise ValueError(
+            f"--agent-kind {agent_kind!r} is not allowed for a plan/batch task -- "
+            f"non-claude dispatch is standalone-only, use --agent-kind claude for plan tasks"
+        )
     if plan_slug is not None:
         assert task_id is not None
         check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
@@ -109,6 +123,9 @@ def write_instruction(
         "mode": mode,
         "batch": batch,
         "session_id": session_id,
+        "agent_kind": agent_kind,
+        "agent_model": agent_model,
+        "agent_effort": agent_effort,
         "herdr_pane_id": None,
         "herdr_tab_id": None,
         "status": "pending",
@@ -129,7 +146,13 @@ def write_instruction(
     return {"session_id": session_id, "instruction_path": str(path)}
 
 
-def confirm_instruction(app: str, slug: str, pane_id: str | None, tab_id: str | None) -> dict[str, Any]:
+def confirm_instruction(
+    app: str,
+    slug: str,
+    pane_id: str | None,
+    tab_id: str | None,
+    observed_session_id: str | None,
+) -> dict[str, Any]:
     path = instruction_path(app, slug)
     if not path.is_file():
         raise ValueError(f"no instruction file at {path}")
@@ -144,6 +167,12 @@ def confirm_instruction(app: str, slug: str, pane_id: str | None, tab_id: str | 
         payload["herdr_pane_id"] = pane_id
     if tab_id is not None:
         payload["herdr_tab_id"] = tab_id
+    if observed_session_id is not None:
+        # Some agent kinds (e.g. codex) don't accept a caller-supplied session
+        # id -- the pre-generated one in `write`'s payload was never actually
+        # passed to the launch command, so it's replaced with what the agent
+        # itself reported, not asserted equal to it.
+        payload["session_id"] = observed_session_id
     dump_json(path, payload)
     return {"instruction_path": str(path)}
 
@@ -161,12 +190,31 @@ def main() -> int:
     write_p.add_argument("--batch", default=None)
     write_p.add_argument("--plan", default=None, help="plan slug, if this is a plan task")
     write_p.add_argument("--task-id", default=None, help="this task's task_id within the plan")
+    write_p.add_argument(
+        "--agent-kind",
+        default="claude",
+        help="which agent CLI runs this dispatch (default: claude); the caller resolves this "
+        "from apps.json's agentKind / an explicit override before calling this script",
+    )
+    write_p.add_argument(
+        "--agent-model", default=None, help="model override to record, if the caller chose one for this dispatch"
+    )
+    write_p.add_argument(
+        "--agent-effort",
+        default=None,
+        help="reasoning-effort override to record, if the caller chose one for this dispatch",
+    )
 
     confirm_p = sub.add_parser("confirm", help="mark the dispatch in-progress after it lands")
     confirm_p.add_argument("--app", required=True)
     confirm_p.add_argument("--slug", required=True)
     confirm_p.add_argument("--pane-id", default=None)
     confirm_p.add_argument("--tab-id", default=None)
+    confirm_p.add_argument(
+        "--observed-session-id",
+        default=None,
+        help="session id reported back by the launched agent, for a kind that can't pre-assign one",
+    )
 
     args = parser.parse_args()
 
@@ -181,9 +229,18 @@ def main() -> int:
                 batch=args.batch,
                 plan_slug=args.plan,
                 task_id=args.task_id,
+                agent_kind=args.agent_kind,
+                agent_model=args.agent_model,
+                agent_effort=args.agent_effort,
             )
         else:
-            result = confirm_instruction(app=args.app, slug=args.slug, pane_id=args.pane_id, tab_id=args.tab_id)
+            result = confirm_instruction(
+                app=args.app,
+                slug=args.slug,
+                pane_id=args.pane_id,
+                tab_id=args.tab_id,
+                observed_session_id=args.observed_session_id,
+            )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

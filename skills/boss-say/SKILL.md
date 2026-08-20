@@ -7,7 +7,7 @@ description: The single entry point for handing any work to straw-boss — imple
 
 See `docs/roles.md` for the cast of characters and the authority framework the main agent acts under — not redefined here.
 
-**Everything comes through here — not just implementation.** The main agent decides how work gets done — the user hands over the work, not the shape or the tier. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one, but they are not the front door.
+**Everything comes through here — not just implementation.** The main agent decides how work gets done — the user hands over the work, not the shape or the tier. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one — including right after the trigger phrase itself (see the branch below) — but they are not the front door.
 
 Three things this skill owns that nothing else does:
 
@@ -16,6 +16,17 @@ Three things this skill owns that nothing else does:
 3. **Batch dispatch under a concurrency cap** (Tasks 4-6) — a batch is a `dispatching-work` plan where every task's `depends_on` is empty, so `dispatching-work`'s own rule ("dispatch every ready task at once") would fire the whole thing in one wave. Slicing that wave under a cap and refilling as items finish is this skill's reason to exist; everything else reuses `dispatching-work`'s per-task mechanics unmodified.
 
 No type of work is excluded here: an audit, open-ended research, or an unexplained failure comes through this skill exactly like implementation does, judged by the same scale and execution-tier questions. The specialist skills (`inspecting-app`, `investigating-app`, `troubleshooting-app`) still own their own domain methodology — what this skill decides is whether an item goes solo or gets dispatched, not how the work itself gets done.
+
+## Branch: A skill is named right after the trigger phrase
+
+`boss say <slug> <rest>` — when the token right after the trigger phrase names a skill actually available this session (check the current skill listing: this plugin's own specialist skills, any other project skill, a user-level skill, or a plugin skill — `plugin:name` included), the user has already made the routing call themselves. Hand off directly — `Skill({skill: <slug>, args: <rest>})` — with the remainder of the invocation as its input, and skip Task 1's classification for it. This is not limited to the four specialist skills this plugin owns; any named, available skill qualifies, and the hand-off is unconditional once the name resolves — never re-litigate whether the named skill was the "right" choice.
+
+Two exceptions:
+
+- **The slug doesn't resolve.** It looks like a slug (kebab-case, possibly `plugin:name`) but matches nothing actually loaded this session — say so before falling through ("no skill named `<slug>` here — treating it as part of the task") rather than silently folding it into the task description, then run Task 1 as normal.
+- **The named skill is one of this plugin's own four specialists, but the input is actually a multi-item batch.** This branch is a single hand-off; a batch still needs Task 1's scale triage and Tasks 4-6's dispatch-under-cap machinery, which none of the four specialist skills own on their own. Run Task 1 as normal, using the named skill as every item's type instead of judging it per item.
+
+**Verification:** an available skill named right after the trigger is always honored, never silently re-triaged through Task 1; an unresolved slug-looking token is called out, not quietly absorbed into the task text; a genuine batch still gets Task 1-6's machinery even when a specialist skill was named.
 
 ## Task 1: Triage scale and execution tier, then pick the dispatch shape
 
@@ -31,7 +42,7 @@ State the chosen shape and the reason in one line before doing anything else.
 **Then, per item, decide the execution tier — also the main agent's call, not the user's, and not a per-skill-type default:**
 
 - **Doesn't need the target app's own harness at all** — a self-contained question, a lookup, something a plain capable agent can just do without the app's own skills/hooks/rules loaded → a plain subagent (this session's own `Agent` tool). No app-dir rooting, `dispatching-work` never invoked.
-- **Needs the app's own skills/hooks/rules to actually load** — real code changes, an audit against the app's real rule source, research into its actual current behavior, diagnosis using its own logs/tests → a dispatched agent via `dispatching-work`, which picks the transport itself (its own Task 1).
+- **Needs the app's real working directory** — real code changes, an audit against the app's real rule source, research into its actual current behavior, diagnosis using its own logs/tests → a dispatched agent via `dispatching-work`, which picks the transport itself (its own Task 1) and, independently, the agent kind (`dispatching-work`'s own agent-kind resolution — `claude` by default, which is also what makes the app's own skills/hooks/rules load; a differently-configured kind works from the task instruction and the app's own conventions instead, without that harness, per `docs/roles.md`).
 
 This call is made by task type never having a fixed answer — an audit or a piece of research is not automatically "stays solo" any more than a code change is automatically "always dispatch." Judge the actual item.
 
@@ -114,6 +125,7 @@ Not new triage — "what's currently running", or "close out `<task>`" for a sin
 - "Report the batch done once most items finished" — no, Task 7: every task terminal, not most.
 - "All slots are stuck on authorization and nothing changed, mark this tick `noop: true` and stay quiet" — no, Task 5 step 6: any tick where every in-flight task is idle is always surfaced, `noop: false`, naming what's waiting on the user and what `peeking-work` found — not only once the batch is fully stalled at cap.
 - "Still idle, peek it again to be safe" on every Monitor notification or `/loop` tick where nothing about the task actually changed — no, Task 5 step 6: peek once per stretch of idleness and repeat the prior finding for an unchanged state; re-peeking on every notification is an unbounded loop, not thoroughness.
+- "The token after the trigger phrase looks like a slug but doesn't match anything loaded, just quietly treat it as part of the task" — no, the resolve-failure branch: say so first, then fall through to Task 1.
 
 ## References
 

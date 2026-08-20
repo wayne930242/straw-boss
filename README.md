@@ -2,7 +2,7 @@
 
 English | [繁體中文](./README.zh-TW.md)
 
-You call the shots. Say the word, and `boss-say` dispatches it — to whoever's the right fit: a plain subagent for something simple, or a session rooted in the app's own directory (headless `claude -p`, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane) for anything that needs the app's own setup. Works in one app out of the box, coordinates across a whole monorepo too. You can always see what's actually happening.
+You call the shots. Say the word, and `boss-say` dispatches it — to whoever's the right fit: a plain subagent for something simple, or a session rooted in the app's own directory (headless, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane — `claude` by default, another agent CLI like `codex` where configured) for anything that needs the app's own setup. Works in one app out of the box, coordinates across a whole monorepo too. You can always see what's actually happening.
 
 Named after the ranch foreman who works the ground alongside the crew, not from an office.
 
@@ -46,10 +46,10 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 
 | Skill | Description |
 |-------|-------------|
-| `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
+| `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, offer additional agent kinds and their routing policy, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
 | `boss-say` | **The entry point for everything.** Judges scale, judges solo-vs-dispatch per item, hands off to the matching specialist skill or its own batch mechanics |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |
-| `dispatching-work` | Internal dispatch machinery — picks the transport (`herdr-pane` when available, `claude-p` as the fallback), writes the instruction, dispatches, lists/wraps up existing dispatches |
+| `dispatching-work` | Internal dispatch machinery — picks the transport (`herdr-pane` when available, `claude-p` as the fallback) and the agent kind (`claude` by default, or another configured kind), writes the instruction, dispatches, lists/wraps up existing dispatches |
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit freely, get authorization before every push/merge |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
@@ -84,6 +84,8 @@ A status question or closing out a dispatch also goes through `boss-say`.
 ## Configuration
 
 Everything project-specific lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). A terse summary also syncs into your root `CLAUDE.md`, since every nested app session inherits it.
+
+An app can also default to a non-`claude` agent kind (`agentKind`). Routing a specific *kind of work* to it — with a recommended model/effort — is a separate, project-wide policy `init` can write into root `CLAUDE.md` as prose, not a per-app config field.
 
 ## License
 
