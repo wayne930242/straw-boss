@@ -172,7 +172,7 @@ cd "<app_dir>" && codex exec --json <sandbox/approval flags from the mapping tab
    - Otherwise, check the caller's own current tab (`herdr pane list --workspace "$HERDR_WORKSPACE_ID"` filtered to `$HERDR_TAB_ID`): if it has fewer than 4 panes, use it.
    - Only create a new tab when neither applies (the caller's tab is already at 4 panes, or this is the overflow case below):
      ```bash
-     herdr tab create --workspace "$HERDR_WORKSPACE_ID" --label "<batch-or-task-label>" --no-focus
+     herdr tab create --workspace "$HERDR_WORKSPACE_ID" --label "<batch-or-task-label>"
      ```
      Read the new tab id from `.result.tab.tab_id` and the seed pane from `.result.root_pane.pane_id`.
 2. **Pick a split direction from the existing layout**, don't always split the same way:
@@ -182,7 +182,7 @@ cd "<app_dir>" && codex exec --json <sandbox/approval flags from the mapping tab
    Wide pane → `--direction right`; narrow/tall pane → `--direction down`. If the tab already has 4 panes (2x2), don't split again — create another tab instead, labeled with a `-2`/`-3` suffix on the same batch label.
 3. **Split and set cwd to the app directory:**
    ```bash
-   herdr pane split --pane <target_pane_id> --direction right --cwd "<app_dir>" --no-focus
+   herdr pane split --pane <target_pane_id> --direction right --cwd "<app_dir>"
    ```
    Read the new pane id from `.result.pane.pane_id`.
 

@@ -9,14 +9,16 @@ See `docs/roles.md` for the cast of characters and the authority framework (info
 
 **The unit this skill manages is the agent, not the app.** An app (`.claude/straw-boss/apps.json`, resolved upstream by `work-on`) is only *where* an agent is rooted — this skill starts the agent there, tracks it, and closes it out; it never itself decides which app a request belongs to. Every dispatched task is one agent, tracked as one instruction file under `~/.straw-boss/dispatch/` — the user's home directory, not the target project checkout (see `init`). This skill covers: **dispatch** a single agent (Tasks 1-5), **dispatch a plan** (Branch below, when `work-on` produced a multi-task dependency graph — one agent per task), **list**, and **wrap up**. Exact CLI/JSON syntax lives in `references/` — `dispatch-mechanics.md` (single-agent dispatch + permission-mode detection), `plan-mechanics.md` (plan/status schemas, worktree repair heredoc, zsh `Monitor` gotchas), `cross-session-coordination.md` (making the main agent addressable — herdr pane id primary, `SendMessage` fallback — plus mid-task interrupt syntax), `shared-resource-coordination.md` (a worktree isolates files, not a fixed port or a shared DB another *main agent's* task might collide on — one command per case: `claim-port` for a flexible port, `wait` for a fixed port or DB migration) — read the relevant one for the exact command before running it. Every requirement below is real, not a pointer to go read something else first. For a specific agent's actual live content or progress — not just its status — invoke `peeking-work` instead of reading a pane/transcript inline here.
 
-`~/.straw-boss/capability.json` records whether herdr-backed dispatch is enabled on this machine, from `init`. Its absence is not a hard stop — see Task 1's no-`capability.json` handling; `claude-p` dispatch never needed it.
+`~/.straw-boss/capability.json` records an explicit `claude-p-only` opt-out from `init`, if the user ever gave one. Its absence is not a hard stop and is not evidence herdr is unavailable — see Task 1's no-`capability.json` handling; `claude-p` dispatch never needed it.
 
 ## Task 1: Choose the dispatch mode and agent kind
 
 Whether to dispatch into the app at all, versus handling something with a plain subagent, is `boss-say`'s call (its Task 1) — by the time this skill runs, that decision is already made. What's left here is transport, and it's an environment check, not a per-task judgment — never pick `claude-p` because a task "looks" self-contained or simple.
 
-- **herdr available** (`capability.json` says `herdr-enabled` AND this session's own `HERDR_ENV` is `1`) → `herdr-pane`, always. `claude -p` is a black box with no way to pause for a live reply — there's no task shape that makes it the better choice once herdr exists.
-- **herdr not available** (either `capability.json` is missing or says disabled, or `HERDR_ENV` isn't `1` this session) → `claude-p` is the only option. If the task looks likely to need mid-task clarification, say so — headless dispatch can't ask mid-task questions (it reports `failed` with the question stated instead of pausing), and running `init` would enable herdr-backed dispatch — but still proceed with `claude-p` if the user doesn't want to set that up now.
+- **`capability.json` says `claude-p-only`** → `claude-p`, always. This is an explicit opt-out the user gave in `init`; honor it even if `HERDR_ENV` is `1` this session.
+- **Otherwise, default to detecting herdr live rather than requiring a recorded capability** — `capability.json` saying `herdr-enabled`, or simply being absent (e.g. this dispatch didn't arrive via a path that ever ran `init`), are treated the same way: check this session's own `HERDR_ENV`.
+  - **`HERDR_ENV` is `1`** → `herdr-pane`, always. `claude -p` is a black box with no way to pause for a live reply — there's no task shape that makes it the better choice once herdr exists.
+  - **`HERDR_ENV` isn't `1`** → `claude-p` is the only option — there's no live herdr session for this main agent to join a tab/pane in. If the task looks likely to need mid-task clarification, say so — headless dispatch can't ask mid-task questions (it reports `failed` with the question stated instead of pausing), and running `init` would enable herdr-backed dispatch — but still proceed with `claude-p` if the user doesn't want to set that up now.
 
 State the mode and why before doing anything else.
 
@@ -24,7 +26,7 @@ State the mode and why before doing anything else.
 
 **Before the first `herdr-pane` dispatch in this main-agent session** (not per-dispatch, not per-plan), ensure the main agent itself is addressable — see `references/cross-session-coordination.md` "Making the main agent addressable" for the exact mechanism. Skipping this is not a cosmetic gap: `SendMessage` does not fail loudly when an agent guesses the wrong target — it silently delivers to whatever session across the account happens to share a similar auto-derived title, which can be a stale, unrelated, offline session. Confirmed live: exactly this happened — an agent's coordination question was reported "sent" and was never seen again, no error anywhere.
 
-**Verification:** mode stated with a reason; `herdr-pane` used whenever both capability conditions hold; `claude-p` used only because herdr genuinely wasn't available, never because the task looked simple; agent kind resolved and stated independently of mode; before the first `herdr-pane` dispatch this session, the main agent's own addressability was checked, not assumed.
+**Verification:** mode stated with a reason; `herdr-pane` used whenever `capability.json` doesn't say `claude-p-only` and `HERDR_ENV` is `1` this session; `claude-p` used only because of an explicit opt-out or a genuinely absent live herdr session, never because the task looked simple; agent kind resolved and stated independently of mode; before the first `herdr-pane` dispatch this session, the main agent's own addressability was checked, not assumed.
 
 ## Task 2: Resolve batch membership
 
@@ -99,7 +101,8 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 ## Red Flags
 
 - "No herdr session available, ask the user to open one anyway" — last resort only; default to `claude-p` first.
-- "No `capability.json`, stop and tell the user to run `init` first" — no, that just means herdr isn't confirmed available; dispatch via `claude-p` same as any other herdr-unavailable case, regardless of what the task looks like.
+- "No `capability.json`, stop and tell the user to run `init` first" — no, and don't default to `claude-p` either; a missing file isn't an opt-out, check `HERDR_ENV` live and use `herdr-pane` if it's `1`.
+- "No `capability.json`, so herdr isn't confirmed available, use `claude-p`" — no, only an explicit `claude-p-only` opts out; absence means check `HERDR_ENV` live instead of assuming unavailable.
 - "Skip writing the instruction until dispatch succeeds" — no, write it `pending` first; a stray pending file on failure is signal, not noise.
 - "Reconstruct the herdr command sequence from memory" — no, always the reference.
 - "This agent's mode doesn't matter, use whatever's default" — no, mirror the main agent's actual mode every time.

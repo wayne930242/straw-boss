@@ -196,9 +196,9 @@ Skip silently (no error) when a listed source file doesn't exist in the main che
 
 **Joining the plan's shared workspace (herdr-pane mode only).** All worktree-backed tabs for the same plan land in one workspace — never a fresh one per task. That workspace is, by construction, the main agent's own: when the main agent is itself running inside a herdr pane, `$HERDR_WORKSPACE_ID` names it (confirmed set alongside `HERDR_ENV`).
 ```bash
-herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "<app_dir>-<slug>" --label "<slug>" --no-focus
+herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "<app_dir>-<slug>" --label "<slug>"
 ```
-Confirmed live: `tab create` (unlike `worktree create`) genuinely accepts an explicit `--workspace` target and lands the new tab there without disturbing the main agent's own pane. There is no per-task decision to make about which workspace to target or whether it's "shared with the main agent" — it always is, because this mechanism never creates a new one. If the main agent is not itself running inside a herdr pane (no `$HERDR_WORKSPACE_ID`), there is no workspace to join — the task falls back to `claude-p` mode per `dispatch-mechanics.md`, where workspace/tab concepts don't apply.
+Confirmed live: `tab create` (unlike `worktree create`) genuinely accepts an explicit `--workspace` target and lands the new tab there. There is no per-task decision to make about which workspace to target or whether it's "shared with the main agent" — it always is, because this mechanism never creates a new one. Without `--no-focus`, the new tab takes focus — on a plan's wave dispatch (every ready task at once), expect focus to jump once per task in the wave. If the main agent is not itself running inside a herdr pane (no `$HERDR_WORKSPACE_ID`), there is no workspace to join — the task falls back to `claude-p` mode per `dispatch-mechanics.md`, where workspace/tab concepts don't apply.
 
 The dispatch instruction for a full-flow task states the worktree's path explicitly and that the agent must not create its own. Everything after worktree creation (commit, MR/release mechanics) still follows the target app's own conventions where one exists — only the worktree-creation step moved.
 
