@@ -32,6 +32,14 @@ This queues as input for after the current turn (submitting to a `working` pane 
 
 Pass the same `$HERDR_PANE_ID` value (for `herdr-pane`) to `dispatch-task.py write`'s `--main-agent-pane-id`, and the exact renamed value to its `--main-agent-peer-name`, when assembling the instruction (`dispatch-mechanics.md`'s "Instruction file") — this is what lets the dispatched agent read reachability back structurally via `get-main-agent.py`, instead of only from the prose above. Omitting `--main-agent-peer-name` falls back to the bare `straw-boss-orchestrator` literal, which is unsafe whenever more than one main agent might be running — always pass it once `/rename` has run. That's the whole instruction either way; `notifying-main-agent` itself carries the judgment rule, the channel-selection logic, the reporting requirement, and the never-authorization safety boundary, so none of it needs restating here.
 
+## Self-compact (main agent compacting its own context)
+
+The main agent can compact itself the exact same way it injects `/rename` above — `herdr agent prompt` typing a slash command into its own pane isn't limited to `/rename`; `/compact` works identically:
+```bash
+herdr agent prompt "$HERDR_PANE_ID" "/compact <optional focus text>"
+```
+This is the main agent's own judgment call, not a fixed schedule. Per the `/rename` note above, this queues as input for after the current turn — it never interrupts work already in flight this turn. The real question is what the *next* turn would need that exists only in this turn's working context and isn't written down anywhere durable yet (`plan.json`, an instruction file, a status/artifact write) — compacting loses whatever that is. Reach for it once that's settled: between plan waves, after a batch of dispatches lands, not while state the next turn needs still exists only in this turn's own reasoning. No `$HERDR_PANE_ID` at all (herdr fully unavailable) means this channel doesn't exist for this main agent — Claude Code's own automatic compaction as context fills is the only fallback, same as for any session.
+
 ## Making an agent addressable
 
 `herdr agent start`'s trailing `-- --name <name>` flag (passed through to the underlying `claude` process, distinct from herdr's own `<unique-name>` control handle that's the command's first argument) sets the exact name that shows up in `ListAgents`/is reachable via `SendMessage`, overriding the auto-derived `<cwd-basename>-<suffix>` default entirely. `dispatch-mechanics.md`'s `herdr agent start` command already passes the same `plan_id`/`task_id`-derived value for both — no separate naming decision needed here.

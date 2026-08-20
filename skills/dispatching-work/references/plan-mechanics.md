@@ -145,6 +145,8 @@ Use the `Monitor` tool with a command like the above (a real polling loop, not a
 
 ## Auto-detach on terminal state
 
+**A task_id getting a same-task continuation isn't finished yet — don't call `wrap-up-task.py` for it ("Same-task continuation" below).** That script archives the instruction file and syncs `plan.json`'s `tasks[].status` to a terminal state in one atomic call; running it for a task_id with a later phase still coming would archive the very instruction file that phase still needs (`get-main-agent.py --instruction-path` reads it) and mark the task done before it actually is. Recognizing a task_id isn't really finished yet is the main agent's own call to make from the plan/task context; it never needs the user's sign-off. Only run the steps below once a task_id is genuinely, finally done — no further phase of its own coming.
+
 Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization` or `awaiting-user-input`, neither of which is terminal — both need the session to stay alive, one to be resumed once authorized, the other to be answered directly by the user.
 
 When a task's status file reports `done`/`failed` (observed via the Monitor notification), or the main agent has just written `cancelled` itself (Cancel is the one case where this sequence runs inline as part of performing the action, not reactively off a notification about someone else's write — see `cross-session-coordination.md`'s Cancel section):
@@ -156,12 +158,16 @@ When a task's status file reports `done`/`failed` (observed via the Monitor noti
 
 ## Same-task continuation (`/compact` then phase 2)
 
-Only when the next task is a later phase of the *same* logical task (never a different, independent task — those always get a fresh agent regardless of whether a finished session is sitting idle):
+**Checked before "Auto-detach on terminal state" above ever runs, not after** — once `wrap-up-task.py` has archived the instruction and synced `plan.json`, there's nothing left to reuse. Only when the next work is a later phase of the *same* logical task_id (never a different, independent task — those always get a fresh agent regardless of whether a finished session is sitting idle). This is the main agent's own judgment call, made straight from the plan/task context it already has — it doesn't need to check with the user before compacting and continuing.
+
+Sending `/compact` here is nothing more than the same `herdr agent prompt` call already used for every other prompt into this pane — it types `/compact <focus>` in exactly as a human would at the terminal, no separate tool, API, or permission involved:
 ```bash
 herdr agent prompt "<same-agent-name>" "/compact <optional focus text>" 
 herdr agent prompt "<same-agent-name>" "<phase 2 task text>" --wait --timeout <ms>
 ```
 Two separate calls. Do not wait for the compact call to settle before sending the second — Claude Code processes queued input in order.
+
+**Phase 2's completion needs its own report, stated explicitly in the phase-2 text.** This isn't a fresh dispatch instruction (no `dispatch-task.py write` ran), so there's no instruction file reminding the session of its reporting obligation the way a new dispatch has — the phase-2 prompt itself must restate it (send the `SendMessage` push required by `notifying-main-agent`'s "Branch: Report your own status" once phase 2 reaches `done`/`failed`). This also isn't optional bookkeeping: if phase 1 already wrote a terminal status to `status/<task_id>.json` and the Monitor loop above has already deduped that filename via `seen`, phase 2 overwriting the same file won't produce a fresh Monitor line — the same gap already documented for `cancelled` in "Monitoring completion" above. The `SendMessage` push isn't filename-deduped, so it's what the main agent actually learns phase 2 finished from.
 
 ## Agent naming
 
