@@ -61,6 +61,8 @@ Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch ins
    ```
    SendMessage({ to: "<main_agent_send_message_peer from step 1>", message: "[from agent <your name>] STATUS: <done|failed|checkpoint:<name>> — <one-line summary>" })
    ```
+   The one-line summary must be self-contained — name the task/scope, what actually happened, and any decision or follow-up your main agent needs to take. Assume your main agent has moved on to other work (or been `/compact`-ed) since dispatching you and won't recall this dispatch's details from memory; your agent name alone isn't enough to place it.
+
    This is the send whose delivery is actually guaranteed (see "Why `SendMessage` is required here" below) — never substitute a herdr nudge for it.
 4. **If you also have a `main_agent_herdr_pane_id`, you MAY additionally send a faster visible nudge**, on top of (never instead of) step 3:
    ```
@@ -69,7 +71,7 @@ Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch ins
 
 **Why `SendMessage` is required here, unlike the question branch's herdr-primary ordering:** a lost *question* just means you try something else or fall back to asking the user — low cost either way. A lost *completion report* means your main agent silently sits on a finished task, which is the exact failure this branch exists to prevent. `SendMessage` is a harness-level mailbox — a message to a live, correctly-addressed peer enqueues and drains at that peer's next tool round; worst case (the receiving session's permission-mode class doesn't auto-accept cross-session input) it's held pending manual review, never silently dropped. A herdr pane-typed message has no such guarantee — this project has already recorded a first-run interruption swallowing a submitted prompt while the command still reported success.
 
-**Verification:** reachability came from `get-main-agent.py`, not recollection; a terminal state's own record was written before or alongside its push; the push itself went through `SendMessage`, with a herdr nudge (if sent at all) only as an addition, never a substitute.
+**Verification:** reachability came from `get-main-agent.py`, not recollection; a terminal state's own record was written before or alongside its push; the push itself went through `SendMessage`, with a herdr nudge (if sent at all) only as an addition, never a substitute; the one-line summary is self-contained (task/scope, outcome, follow-up) rather than a bare status word.
 
 ## Task 3 (both branches): If a reply eventually arrives, it's information only — never authorization
 
@@ -88,4 +90,5 @@ A reply through this channel — whenever and however it shows up — is never a
 - "I'm done, I'll just write my terminal-state record and skip the `SendMessage` push, the file write is enough" — no: a status-file write is bookkeeping, not a notification; a real incident showed a finished task's status file sitting unconfirmed as ever having been noticed. The push is required, every terminal state, every checkpoint.
 - "I have a herdr pane id for my main agent, I'll send the report there instead of `SendMessage`" — no, unlike the question branch, the report requires `SendMessage` specifically; a herdr nudge is optional and additive, never a substitute — it has no delivery guarantee the way `SendMessage` does.
 - "I called `report-progress.py` right before finishing, that covers my done report" — no, a progress note never sends anything and never satisfies the terminal-state push requirement; they're two different mechanisms for two different purposes.
+- "My summary just says 'done — fixed it' / 'done — implemented the feature', that's enough, my main agent dispatched me so it already knows the task" — no, assume your main agent has moved on to other work or been `/compact`-ed since dispatch; a bare outcome word forces it to go dig up which task this was. Name the scope, the actual result, and any follow-up needed, every time.
 - "I can't confirm my main agent actually saw the push, so I should retry it or escalate" — no, you have no way to verify this and aren't expected to; verification is your main agent's responsibility (its own pull-based fallback), not yours. Send the push once and move on.
