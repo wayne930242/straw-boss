@@ -48,7 +48,7 @@ The managed-apps list lives at `.claude/straw-boss/apps.json`, relative to the p
 
 ## Reading and writing this file
 
-- **`init`** writes it (Task 2) and keeps it in sync with the root `CLAUDE.md` managed-apps section (Task 9) — see `init`'s `SKILL.md`.
+- **`init`** writes it (its "Resolve the managed apps" task) and keeps it in sync with the root `CLAUDE.md` managed-apps section (its "Sync the managed-apps section in root CLAUDE.md" task) — see `init`'s `SKILL.md`, numbered tasks whose order can shift as the skill grows.
 - **`work-on`** reads `apps` to build its routing table (Task 1), reads `redirectTo` for the legacy-redirect step (Task 2), and reads `crossAppSkills` for cross-app coordination (Task 3).
 - **`shipping-task`** reads `forbidDirectCommit` and `gitWorkflowSkill` per resolved app.
 - **`dispatching-work`**'s `references/plan-mechanics.md` reads `localFiles` for the worktree local-file-copy step.

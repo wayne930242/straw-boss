@@ -2,7 +2,7 @@
 
 Exact file formats and command sequences for `dispatching-work`. Everything below reflects what was actually verified against `herdr` v0.8.0, the installed `claude` CLI, and (where an agent kind other than `claude` is involved) the installed `codex-cli` 0.147.0 — not assumed from general knowledge. If a `herdr`/`claude`/`codex` upgrade changes any of this, re-verify rather than trusting this file blindly.
 
-**Agent kind and `mode` are orthogonal — resolved independently, neither implies the other.** `mode` (`claude-p` / `herdr-pane`) is transport only: headless one-shot vs. a live joinable pane. Agent kind (`claude`, `codex`, ...) is which CLI actually runs inside that transport. A reader must not assume `claude-p` means `claude` the agent, or that `herdr-pane` implies claude either — see "Resolving the agent kind" below.
+**Agent kind and `mode` are orthogonal — resolved independently, neither implies the other.** `mode` (`claude-p` / `herdr-pane`) is transport only: headless one-shot vs. a live joinable pane. Agent kind (`claude`, `codex`, ...) is which CLI actually runs inside that transport — see "Resolving the agent kind" below.
 
 All state lives under a `.straw-boss/` directory in the user's home directory, not the target project's checkout — this is per-user, per-machine operational state (which dispatch mode this user prefers, what's currently dispatched), not project configuration.
 
@@ -147,7 +147,7 @@ cd "<app_dir>" && codex exec --json <sandbox/approval flags from the mapping tab
 - Confirmed live: the first JSONL line is always `{"type":"thread.started","thread_id":"<uuid>"}`. That `thread_id` is what `dispatch-task.py confirm --observed-session-id` records — `codex exec` accepts no `--session-id`-equivalent flag, so nothing is pre-assigned the way `claude --session-id` does.
 - A benign `{"type":"item.completed","item":{"type":"error","message":"..."}}` event can appear on a completely successful run (confirmed live: a "skill descriptions were shortened" notice) — an `item.completed` of `type: "error"` is not by itself proof of failure. Treat a terminal `{"type":"turn.completed",...}` event (or the process exiting 0) as success; its absence, or a non-zero exit, as failure.
 - Once launched, confirm it per "Instruction file" above: `dispatch-task.py confirm --app <app> --slug <short-slug> --observed-session-id <thread_id from the first event>` — no `--pane-id`/`--tab-id` for this mode, same as the claude-kind `claude-p` case.
-- No `--name`-equivalent flag exists for any codex subcommand (confirmed via `--help`) — a `codex exec` dispatch is not addressable via `SendMessage`/`ListAgents` the way a `claude --name` session is. It also can't honor the plan-task status-file protocol on its own (no `.claude/skills/` loaded) — consistent with "Resolving the agent kind"'s standalone-only rule, this mode is never used for a plan/batch task.
+- No `--name`-equivalent flag exists for any codex subcommand (confirmed via `--help`) — not addressable via `SendMessage`/`ListAgents`, and never used for a plan/batch task, per "Resolving the agent kind"'s standalone-only rule above.
 
 ## `herdr-pane` dispatch — pane setup (all agent kinds)
 
@@ -224,18 +224,18 @@ Continues from the same steps 0-3 pane setup above. Confirmed live end-to-end (s
    ```bash
    herdr agent start "<unique-name>" --kind codex --pane <new_pane_id> -- <sandbox/approval flags from the mapping table above> [-m <agent_model>] [-c model_reasoning_effort=<agent_effort>]
    ```
-   Same rule as the headless case: `-m`/`-c model_reasoning_effort=` only when the resolution step chose an override, omitted otherwise. No `--session-id`/`--name`-equivalent flags exist for codex (confirmed via `--help`) — herdr's own agent handle (the first argument) is the only addressing this dispatch gets; it is **not** reachable via `SendMessage`/`ListAgents` the way a named claude session is (consistent with "Resolving the agent kind"'s standalone-only rule).
+   Same rule as the headless case: `-m`/`-c model_reasoning_effort=` only when the resolution step chose an override, omitted otherwise. No `--session-id`/`--name`-equivalent flags exist for codex (confirmed via `--help`) — herdr's own agent handle (the first argument) is the only addressing this dispatch gets, per "Resolving the agent kind"'s standalone-only rule above.
 5. **Handle the first-run trust prompt — codex has its own, shaped just like claude's.** Confirmed live: a fresh codex pane shows "Do you trust the contents of this directory?" and sets `agent_status: blocked`, cleared the identical way:
    ```bash
    herdr agent send-keys "<unique-name>" enter
    ```
-   Then `herdr agent wait "<unique-name>" --until idle --until blocked --timeout 15000` (repeated-`--until` form, per the note in the claude section above). **Reading a still-blocked codex pane needs `--source visible`, not the default:** `herdr agent read "<unique-name>" --lines 40 --source visible` — confirmed live that the default `--source recent` returns empty for a pre-task codex pane.
+   Then `herdr agent wait "<unique-name>" --until idle --until blocked --timeout 15000` (repeated-`--until` form, per the note in the claude section above).
 6. **Submit the task:**
    ```bash
    herdr agent prompt "<unique-name>" "<task text>" --wait --timeout 120000
    ```
    Same optional `--wait` semantics as the claude case.
-6.5. **Confirm the task actually landed**, same reasoning as the claude case — `herdr agent read "<unique-name>" --lines 40 --source visible` and confirm the transcript shows real output following the submitted text.
+6.5. **Confirm the task actually landed**, same reasoning as the claude case — `herdr agent read "<unique-name>" --lines 40 --source visible` and confirm the transcript shows real output following the submitted text. Codex needs `--source visible` here (and for reading a still-blocked pane back at step 5, if the wait returns `blocked` again) — confirmed live that the default `--source recent` returns empty for a codex pane.
 7. **Read back the session id — codex populates `agent_session` only after this first prompt, never at start time (confirmed live: absent from `herdr agent get`/`agent start`'s result right after step 4, present only once step 6 actually lands).** `herdr agent get "<unique-name>"` now returns `.result.agent.agent_session.value` — same shape as claude's (`{"agent":"codex","kind":"id","source":"herdr:codex","value":"<uuid>"}`). This is what gets recorded, not cross-checked against anything pre-assigned (there was nothing to pre-assign).
 8. **Confirm the dispatch**, recording the pane/tab and the session id actually read back in step 7:
    ```bash

@@ -35,8 +35,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SUPPORTED_AGENT_KINDS = {"claude", "codex"}
-
 
 def mp_dev_root() -> Path:
     return Path.home() / ".straw-boss"
@@ -103,10 +101,6 @@ def write_instruction(
         )
     if (plan_slug is None) != (task_id is None):
         raise ValueError("--plan and --task-id must be given together, or not at all")
-    if agent_kind not in SUPPORTED_AGENT_KINDS:
-        raise ValueError(
-            f"unrecognized --agent-kind {agent_kind!r} -- supported kinds are {sorted(SUPPORTED_AGENT_KINDS)}"
-        )
     if plan_slug is not None and agent_kind != "claude":
         raise ValueError(
             f"--agent-kind {agent_kind!r} is not allowed for a plan/batch task -- "
@@ -193,6 +187,7 @@ def main() -> int:
     write_p.add_argument(
         "--agent-kind",
         default="claude",
+        choices=["claude", "codex"],
         help="which agent CLI runs this dispatch (default: claude); the caller resolves this "
         "from apps.json's agentKind / an explicit override before calling this script",
     )
