@@ -39,6 +39,15 @@ def archived_path(app: str, slug: str) -> Path:
     return mp_dev_root() / "dispatch" / "archive" / f"{app}--{slug}.json"
 
 
+def sibling_paths(app: str, slug: str) -> list[Path]:
+    """The optional .status.json/.progress.jsonl files a standalone dispatch's
+    report-task-status.py/report-progress.py calls may have written next to
+    its instruction file -- archived alongside it, never left behind live."""
+    base = mp_dev_root() / "dispatch"
+    stem = f"{app}--{slug}"
+    return [base / f"{stem}.status.json", base / f"{stem}.progress.jsonl"]
+
+
 def plan_path(plan_slug: str) -> Path:
     return mp_dev_root() / "plans" / plan_slug / "plan.json"
 
@@ -78,6 +87,20 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
                 f"task {task_id!r} status is {plan_status!r}, not terminal -- refusing "
                 f"to wrap up a task that's still awaiting authorization or user input"
             )
+    else:
+        # A standalone dispatch's own report-task-status.py --instruction-path record
+        # (see dispatch-mechanics.md's "Reporting scripts") -- same non-terminal guard
+        # as the plan-task case above, but only enforced if it was ever written; an
+        # older dispatch, or one confirmed done another way (e.g. claude-p process
+        # exit), may legitimately have none.
+        standalone_status_path = sibling_paths(app, slug)[0]
+        if standalone_status_path.is_file():
+            standalone_status = str(load_json(standalone_status_path)["status"])
+            if standalone_status not in ("done", "failed", "cancelled"):
+                raise ValueError(
+                    f"dispatch {app}--{slug} status is {standalone_status!r}, not terminal -- refusing "
+                    f"to wrap up a dispatch that's still awaiting authorization or user input"
+                )
 
     payload = load_json(src)
     payload["status"] = "wrapped-up"
@@ -85,6 +108,10 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
     dest.parent.mkdir(parents=True, exist_ok=True)
     dump_json(dest, payload)
     src.unlink()
+
+    for sibling in sibling_paths(app, slug):
+        if sibling.is_file():
+            sibling.rename(dest.parent / sibling.name)
 
     if plan_slug is not None:
         assert task_id is not None

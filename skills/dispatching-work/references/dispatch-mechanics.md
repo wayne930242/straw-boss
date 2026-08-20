@@ -64,6 +64,8 @@ One file per dispatch: `<home>/.straw-boss/dispatch/<app>--<short-slug>.json`. P
   "agent_effort": null,
   "herdr_pane_id": null,
   "herdr_tab_id": null,
+  "main_agent_herdr_pane_id": "wF:p9",
+  "main_agent_send_message_peer": "straw-boss-orchestrator-wF-p9",
   "status": "pending",
   "created_at": "2026-08-16T10:00:00+08:00",
   "repo_root": "/absolute/path/to/your/repo"
@@ -76,16 +78,27 @@ Write this file — and generate the `session_id` — with the script, not a han
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --app <app> --slug <short-slug> --task "<task text>" --mode claude-p|herdr-pane \
   --repo-root <repo_root> [--batch <label>] [--plan <plan-slug> --task-id <task_id>] \
-  [--agent-kind claude|codex] [--agent-model <model>] [--agent-effort <effort>]
+  [--agent-kind claude|codex] [--agent-model <model>] [--agent-effort <effort>] \
+  [--main-agent-pane-id <$HERDR_PANE_ID value>] [--main-agent-peer-name <renamed value>]
 ```
 
-`--agent-kind` defaults to `claude` if omitted — see "Resolving the agent kind" above for how to resolve it before calling this. `--agent-model`/`--agent-effort` are optional, unenforced record-keeping — only pass them when the resolution step actually chose an override.
+`--agent-kind` defaults to `claude` if omitted — see "Resolving the agent kind" above for how to resolve it before calling this. `--agent-model`/`--agent-effort` are optional, unenforced record-keeping — only pass them when the resolution step actually chose an override. `--main-agent-pane-id` is the dispatching main agent's own current `$HERDR_PANE_ID` — pass it for a `herdr-pane` dispatch (omit for `claude-p`, which has no live pane); this is the same value the dispatch prompt's own reachability prose already states (per `cross-session-coordination.md`'s "Making the main agent addressable"), just also recorded structurally so the dispatched agent can read it back with `get-main-agent.py` instead of only recalling it from its own prompt. `--main-agent-peer-name` is the exact per-session-unique value this main agent renamed itself to (e.g. `straw-boss-orchestrator-wF-p9`, not the bare `straw-boss-orchestrator` literal — see `cross-session-coordination.md`'s "Making the main agent addressable" for why a shared literal is a real `SendMessage` delivery hazard when more than one main agent might be running); omitting it falls back to the bare literal, unsafe under that same condition — always pass it once `/rename` has run.
 
 Prints `{"session_id": "...", "instruction_path": "..."}` — use that `session_id` for the actual dispatch command below, don't generate a second one. For a plan task (`--plan`/`--task-id` given), this also marks `plan.json`'s matching task `dispatched` and refuses (before writing anything) if that task isn't still `planned` — a double-dispatch never leaves a stray pending file behind. It refuses outright if an instruction already exists at that `--app`/`--slug` pair, too.
 
-`repo_root` is the absolute path of the project checkout this dispatch targets — required because instruction storage is no longer inside any particular checkout, so `app` alone (e.g. an app name) is ambiguous without it. `batch`, `herdr_pane_id`, `herdr_tab_id` are `null` until they apply. `status` moves `pending` → `in-progress` → `wrapped-up`.
+`repo_root` is the absolute path of the project checkout this dispatch targets — required because instruction storage is no longer inside any particular checkout, so `app` alone (e.g. an app name) is ambiguous without it. `batch`, `herdr_pane_id`, `herdr_tab_id` are `null` until they apply. `main_agent_herdr_pane_id` is `null` for `claude-p`. `status` moves `pending` → `in-progress` → `wrapped-up`.
 
 Archived (wrapped-up) instructions move to `<home>/.straw-boss/dispatch/archive/<app>--<short-slug>.json`, same shape — see "Closing a herdr-pane instruction" below for how that move happens.
+
+## Reporting scripts — given to every dispatched task, plan or standalone
+
+Three scripts, all keyed on the dispatch's own instruction path — a dispatched agent never needs to know or care whether it's a plan or standalone task to use any of them. The main agent has this path from `dispatch-task.py write`'s own result; the dispatched agent has it because the dispatch instruction states it explicitly (`cross-session-coordination.md`'s "What the dispatch instruction states, per mode" — it's computed before `write` is even called, since `write`'s own `--task` argument is this same prompt):
+
+- **`get-main-agent.py --instruction-path <path>`** — reads back `main_agent_herdr_pane_id`/`main_agent_send_message_peer` from the instruction file. Call this right before sending the `SendMessage` push per `skills/notifying-main-agent/SKILL.md`'s "Branch: Report your own status" — it's the authoritative source, not the dispatch prompt's own prose recollection.
+- **`report-progress.py --instruction-path <path> --note "<text>"`** — appends a timestamped note to a sibling `<app>--<slug>.progress.jsonl`. Callable any number of times, at any point in the task. Never sends anything, never touches the instruction file — `peeking-work` reads this log's tail as its first move, so the main agent usually doesn't need to join the dispatched agent's live pane just to see what it's doing.
+- **`report-task-status.py --instruction-path <path> --status <status> --note "<text>"`** — writes this dispatch's terminal-state record: for a plan task, the existing `~/.straw-boss/plans/<slug>/status/<task_id>.json` (unchanged location — `Monitor`/`read-plan-status.py` need no changes); for a standalone dispatch, a new sibling `<app>--<slug>.status.json`. This is bookkeeping, not a notification — always pair a terminal-state write with the `SendMessage` push, never rely on the write alone (see `plan-mechanics.md`'s "Reporting status").
+
+`report-task-status.py` still also accepts its original `--plan`/`--task` form (mutually exclusive with `--instruction-path`) for a caller that already has the plan slug/task_id handy and no instruction path — e.g. the main agent's own `cancelled` write. A dispatched agent reporting on itself should always prefer `--instruction-path`.
 
 ## Detecting the main agent's own permission mode
 
@@ -132,7 +145,8 @@ cd "<app_dir>" && claude -p --session-id "<uuid from dispatch-task.py write>" $P
 - `claude -p --output-format json` gives a single structured result if the caller needs to parse the outcome programmatically; plain text output is fine for a report-back-to-user case.
 - Once launched, confirm it per "Instruction file" above (`dispatch-task.py confirm --app <app> --slug <short-slug>`, no `--pane-id`/`--tab-id` needed for this mode) — the instruction should not sit `pending` after the process is actually running.
 - If the main agent itself is running inside a herdr pane, launching `claude -p` from it (even via `Bash`) overwrites that pane's own `agent_session` in `herdr pane list`/`agent list` to the subprocess's session id — cosmetic only, confirmed live, nothing documented here reads it, but don't use it to check "is this still my own pane."
-- **Detecting the "ready to push/merge" checkpoint has no separate signal for a standalone `claude-p` dispatch — the process exiting *is* the signal.** On the full flow, the dispatch instruction tells the agent to stop and report readiness rather than execute a push/merge (see `shipping-task`'s Task 4) — commit itself needs no authorization and never stops the agent. `claude -p` processes exactly one turn then exits — so a foreground run returning, or a background run's harness-notification firing, means the agent either finished the whole task or (full flow only) hit that stop-and-report point; read its final output (already on stdout for a foreground run) to tell which. On the light flow there's no stop-and-report point at all — a `claude -p` process exiting always means the task actually finished (committed and done), never a checkpoint. There is no plan-style status file for a non-plan dispatch to poll instead — don't go looking for one.
+- **A standalone `claude-p` dispatch also sends the `SendMessage` push** (`notifying-main-agent`'s "Branch: Report your own status") right before it exits, on reaching `done`/`failed`/the "ready to push/merge" checkpoint — same requirement as any other dispatch, and it costs nothing extra since the process is exiting either way. This does not replace the process-exit signal below, which is already reliable on its own for `claude-p` specifically (see `design.md`'s Non-Goals in the `push-based-completion-reporting` change) — the two are redundant by design for this mode, not competing.
+- **Detecting the "ready to push/merge" checkpoint has no separate live-pane signal for a standalone `claude-p` dispatch — the process exiting *is* the fallback signal.** On the full flow, the dispatch instruction tells the agent to stop and report readiness rather than execute a push/merge (see `shipping-task`'s Task 4) — commit itself needs no authorization and never stops the agent. `claude -p` processes exactly one turn then exits — so a foreground run returning, or a background run's harness-notification firing, means the agent either finished the whole task or (full flow only) hit that stop-and-report point; read its final output (already on stdout for a foreground run) to tell which. On the light flow there's no stop-and-report point at all — a `claude -p` process exiting always means the task actually finished (committed and done), never a checkpoint. A standalone dispatch also has its own terminal-state record now (`report-task-status.py --instruction-path <path>` — see "Reporting scripts" above) — not a plan's `status/` directory, but the same idea; still bookkeeping, not itself the notification.
 
 ## `claude-p` dispatch (headless, `agent_kind: "codex"`)
 

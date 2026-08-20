@@ -64,18 +64,21 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 
 **Cross-task artifacts.** When task B depends on task A and genuinely needs A's output, both dispatch instructions state the exact path under `~/.straw-boss/plans/<slug>/artifacts/` — A's says where to write it, B's says where to read it and that it's required input, not optional context. `plan.json`'s `description` field is prose, not a handoff mechanism.
 
-**Three checkpoint types — never conflate them:**
+**Four checkpoint/report types — never conflate them:**
 | Status | For | Answered by | Terminal? |
 |---|---|---|---|
 | `awaiting-authorization` | push/merge (full flow only — light flow's commit needs no authorization) | User, relayed through the main agent (`shipping-task`) | No — main agent resumes after authorizing |
-| `awaiting-user-input` | work-content question needing human judgment | User, directly in the agent's own pane — main agent only points at it | No — agent continues on its own once answered |
-| `SendMessage` to the main agent | informational question the main agent can answer from what it already knows | Main agent itself, no human needed (`references/cross-session-coordination.md`) | Not a status transition at all |
+| `awaiting-user-input` | work-content question needing human judgment, or genuine technical difficulty a second opinion didn't resolve | User, directly in the agent's own pane — main agent only points at it | No — agent continues on its own once answered |
+| `SendMessage` to the main agent (question) | informational question the main agent can answer from what it already knows | Main agent itself, no human needed (`references/cross-session-coordination.md`) | Not a status transition at all |
+| `SendMessage` push (report) | reaching `done`/`failed`/a checkpoint — required, primary signal, per `notifying-main-agent`'s "Branch: Report your own status" | Main agent, guaranteed-delivery (unlike a herdr nudge, which is optional/additive only) | Not a status transition itself — accompanies whatever transition (`done`/`failed`/`awaiting-authorization`) is actually happening |
 
-A task unsure which applies tries to resolve it itself or asks the main agent via `SendMessage` first — only escalate to `awaiting-user-input` when neither the agent nor the main agent can actually answer it. Both status checkpoints are `herdr-pane`-only; `claude-p` cannot pause for either.
+A task unsure which of the first three applies tries to resolve it itself, then tries a stronger second opinion if genuinely stuck on technical difficulty (not missing context), then asks the main agent via `SendMessage` if it's informational — only escalate to `awaiting-user-input` once none of those apply (full order in `plan-mechanics.md`'s "User-clarification checkpoints"). Both status checkpoints are `herdr-pane`-only; `claude-p` cannot pause for either. The fourth row (the report push) is unconditional — every dispatch sends it on reaching `done`/`failed`/a checkpoint, regardless of mode.
 
 **Same-task continuation.** Only for phase 2 of the *same* logical task on an idle finished session — never for a different, independent task. Send `/compact [focus]` and the phase-2 text as **two separate** `herdr agent prompt` calls; don't wait for compact to finish before sending the second.
 
-**Monitor coverage.** Start a `Monitor` that emits on every status a task can report — `done`, `failed`, `cancelled`, `awaiting-authorization`, `awaiting-user-input` — not just completion (exact zsh-safe polling command in `plan-mechanics.md`, including the caveat that `cancelled` may not reliably produce its own notification — the main agent performing a cancel already knows and doesn't wait on one). `done`/`failed`/`cancelled` are terminal: on those, auto-detach (close the pane/worktree tab per the rules above, call `wrap-up-task.py`, recompute + dispatch the next ready wave). `awaiting-authorization`/`awaiting-user-input` never trigger auto-detach. On `failed`, if it looks like a permission denial, ask the user before ever redispatching with a bypass — never automatic. The plan is done only once every task is terminal, never on the first one finishing.
+**Monitor coverage (fallback).** Start a `Monitor` that emits on every status a task can report — `done`, `failed`, `cancelled`, `awaiting-authorization`, `awaiting-user-input` — not just completion (exact zsh-safe polling command in `plan-mechanics.md`, including the caveat that `cancelled` may not reliably produce its own notification — the main agent performing a cancel already knows and doesn't wait on one). This loop is the fallback for a task that's gone quiet without its `SendMessage` push arriving — see `plan-mechanics.md`'s "Monitoring completion" — not the primary way completion is learned about. `done`/`failed`/`cancelled` are terminal: on those, auto-detach (close the pane/worktree tab per the rules above, call `wrap-up-task.py`, recompute + dispatch the next ready wave). `awaiting-authorization`/`awaiting-user-input` never trigger auto-detach. On `failed`, if it looks like a permission denial, ask the user before ever redispatching with a bypass — never automatic. The plan is done only once every task is terminal, never on the first one finishing.
+
+**Progress visibility.** A dispatched task may call `report-progress.py --instruction-path <path> --note "<text>"` at any point during its work — a separate, non-notifying, append-only log (`dispatch-mechanics.md`'s "Reporting scripts"). `peeking-work` reads this trail before joining a task's live pane, so checking on a task usually doesn't require interrupting it.
 
 **Shared-resource coordination.** Every worktree-backed instruction states, verbatim or equivalent, that a local dev server in this worktree may collide with another worktree's or the shared environment's port/HMR — no port is auto-allocated. When the task will actually run a dev server or verify a migration against a shared (non-per-worktree) database, this is not just a caveat but a collision another *main agent's* task can also hit — worktrees don't isolate it. Follow `references/shared-resource-coordination.md` and put its exact `claim-port`/`wait` command into the instruction, `--requester-boss` set to the same value already given for `notifying-main-agent`; the agent claims and releases the resource itself, inline in its own task.
 
@@ -83,13 +86,13 @@ A task unsure which applies tries to resolve it itself or asks the main agent vi
 
 ## Branch: List outstanding instructions
 
-Scan `~/.straw-boss/dispatch/` (excluding `archive/`), report grouped by status. Pure read.
+Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only — excluding `archive/`, and excluding a standalone dispatch's own `<app>--<slug>.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts"), which match a naive `*.json`/`*.jsonl` glob but are not instructions themselves — reading one as if it were would report a phantom, already-terminal entry that never actually gets wrapped up (`wrap-up-task.py` archives them alongside their real instruction, not standalone). Report grouped by status. Pure read.
 
 ## Branch: Wrap up an instruction
 
 1. Confirm which instruction (ask if ambiguous).
 2. If `herdr-pane` and the pane/tab is still open and no longer needed, close it first (`herdr pane close`/`herdr tab close` — tab only if it was the last pane in it). `claude-p` has nothing to close.
-3. Call `wrap-up-task.py` — sets `wrapped-up`, archives the file, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file (refuses if not yet terminal — `done`/`failed`/`cancelled`). Never `mv`/`Edit` this by hand.
+3. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
 
 **Verification:** pane/tab confirmed closed before the file is archived, never assumed.
 
@@ -101,12 +104,15 @@ Scan `~/.straw-boss/dispatch/` (excluding `archive/`), report grouped by status.
 - "Reconstruct the herdr command sequence from memory" — no, always the reference.
 - "This agent's mode doesn't matter, use whatever's default" — no, mirror the main agent's actual mode every time.
 - "Pane looks closed already, skip confirming" — no, check via `herdr pane get`/`agent get` first.
+- "This standalone dispatch has no plan, so wrap it up whenever, no status to check" — no, `wrap-up-task.py` now refuses if its own `.status.json` (if one was written) reports a non-terminal status, same guard a plan task already has.
 - "Two unrelated dispatches, share a batch to save a tab" — no, batch is one multi-app unit of work only.
 - "3 ready tasks, dispatch one at a time to keep it simple" — no, all at once, always.
 - "This idle finished session could take the next ready task" — no, unless it's literally the same task's next phase.
 - "First task in the plan finished, mark the plan done" — no, only once every task is terminal.
 - "This task looks simple/self-contained, use `claude-p` even though herdr's available" — no, mode is an environment check, not a task judgment; `herdr-pane` is used whenever it's available, full stop.
 - "The task's mid-flight question, relay it like an authorization checkpoint" — no, `awaiting-user-input` is answered directly in the pane; a question the main agent can itself answer goes through `SendMessage` instead, not a status transition.
+- "The task wrote its status file, that's how the main agent finds out it's done" — no, per "Four checkpoint/report types" above: the status write is bookkeeping, not the notification; the task's `SendMessage` push is what's required, every time.
+- "Rely on the `Monitor` polling loop, it'll catch every status change" — no, it's the fallback now, not the primary signal; a `Monitor` that isn't running (a fresh or resumed main-agent session, a dropped task) catches nothing until something else triggers a re-check.
 - "Skip the worktree verify-repair step, herdr worktree create usually works fine" — no, the `config.worktree` bug happens with *any* creation method on a repo with `extensions.worktreeConfig`; verify every time.
 - "Dispatch the herdr-pane task first, worry about main-agent addressability if an agent actually needs it" — no, Task 1 requires this checked *before* the first herdr-pane dispatch this session; an agent that needs the channel and finds it unaddressed doesn't get an error, it gets silent misdelivery to an unrelated session.
 - "This coordination question sounds like something the main agent could reasonably weigh in on, SendMessage it" — no, per `cross-session-coordination.md`: any trade-off or "which direction" call is `awaiting-user-input`, full stop, regardless of how qualified the main agent seems.

@@ -81,6 +81,16 @@ def mark_plan_task(plan_slug: str, task_id: str, status: str) -> None:
     dump_json(plan_path(plan_slug), plan)
 
 
+DEFAULT_MAIN_AGENT_SEND_MESSAGE_PEER = "straw-boss-orchestrator"
+# ^ Fallback only, for a main agent with no $HERDR_PANE_ID to derive a unique
+# name from (see cross-session-coordination.md's "Making the main agent
+# addressable"). Two concurrent main agents both using this literal is a real
+# SendMessage delivery hazard -- always pass --main-agent-peer-name with a
+# per-session-unique value (e.g. "straw-boss-orchestrator-<pane-id>") when
+# $HERDR_PANE_ID is available; this constant is not a safe default to rely on
+# whenever more than one main agent might be running.
+
+
 def write_instruction(
     app: str,
     slug: str,
@@ -93,6 +103,8 @@ def write_instruction(
     agent_kind: str,
     agent_model: str | None,
     agent_effort: str | None,
+    main_agent_pane_id: str | None,
+    main_agent_peer_name: str | None,
 ) -> dict[str, Any]:
     path = instruction_path(app, slug)
     if path.exists():
@@ -122,6 +134,8 @@ def write_instruction(
         "agent_effort": agent_effort,
         "herdr_pane_id": None,
         "herdr_tab_id": None,
+        "main_agent_herdr_pane_id": main_agent_pane_id,
+        "main_agent_send_message_peer": main_agent_peer_name or DEFAULT_MAIN_AGENT_SEND_MESSAGE_PEER,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "repo_root": repo_root,
@@ -199,6 +213,21 @@ def main() -> int:
         default=None,
         help="reasoning-effort override to record, if the caller chose one for this dispatch",
     )
+    write_p.add_argument(
+        "--main-agent-pane-id",
+        default=None,
+        help="the dispatching main agent's own herdr pane id ($HERDR_PANE_ID), for herdr-pane mode -- "
+        "lets the dispatched agent look up its main agent's reachability via get-main-agent.py "
+        "instead of relying only on prose stated in --task; omit for claude-p (no live pane)",
+    )
+    write_p.add_argument(
+        "--main-agent-peer-name",
+        default=None,
+        help="the SendMessage peer name this main agent actually renamed itself to -- pass the "
+        "per-session-unique value used in the /rename call (see cross-session-coordination.md), "
+        f"not the bare default; falls back to {DEFAULT_MAIN_AGENT_SEND_MESSAGE_PEER!r} only when omitted, "
+        "which is unsafe if more than one main agent might be running",
+    )
 
     confirm_p = sub.add_parser("confirm", help="mark the dispatch in-progress after it lands")
     confirm_p.add_argument("--app", required=True)
@@ -227,6 +256,8 @@ def main() -> int:
                 agent_kind=args.agent_kind,
                 agent_model=args.agent_model,
                 agent_effort=args.agent_effort,
+                main_agent_pane_id=args.main_agent_pane_id,
+                main_agent_peer_name=args.main_agent_peer_name,
             )
         else:
             result = confirm_instruction(
