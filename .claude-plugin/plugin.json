@@ -1,6 +1,6 @@
 {
   "name": "straw-boss",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Herdr-backed dispatch for Claude Code: a boss triages any work — implementation, audit, research, diagnosis — to a plain subagent or a session actually rooted in an app's own directory (headless `claude -p`, or an interactive herdr pane) so its own CLAUDE.md/rules/skills/hooks load the way they would for any developer working there directly, with a standardized git lifecycle and an authorization gate on every push/merge. Works directly in a single-app repo, or routes across a monorepo's apps first.",
   "author": { "name": "Wei Hung" },
   "license": "MIT",
