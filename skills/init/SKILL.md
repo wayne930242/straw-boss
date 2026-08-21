@@ -26,11 +26,20 @@ Figure out which directories are the project's apps and how each should be match
 
 For each confirmed app, also get its `match` phrases — words or descriptions someone would use to refer to it in a request ("the backend", "the mobile app", short names, common misnomers). Derive a first guess from the directory name and, if present, `package.json`'s `name`/`description`, and confirm/adjust with the user rather than asking from a blank page every time.
 
-Then ask, once, whether any app needs the less common per-app settings — a retired app that should redirect new work elsewhere (`redirectTo`, with an optional `note` if the retired app doesn't look deprecated), an app that forbids direct commits to its base branch (`forbidDirectCommit`), an app whose dispatches should default to a non-`claude` agent CLI (`agentKind` — most apps leave this unset; see Task 3 for the separate, project-wide work-type routing question), an app that already owns a project-level git-workflow skill (`gitWorkflowSkill`), gitignored local files a fresh worktree needs (`localFiles`), or an existing skill that already handles this app depending on another (`crossAppSkills`). Most projects have none of these — don't interrogate every app about every field; ask the one open question and fill in only what the user volunteers.
+Then investigate the less common per-app settings yourself before asking anything — a blind "does any app need X" is unanswerable to the user without the same digging this session can already do. For each app, check the concrete signal behind each field:
+
+- `redirectTo`: do two apps look like the same product at different stages — one's `CLAUDE.md`/README self-describes as legacy/deprecated, or another app's config still points at a service this one has replaced? Add an optional `note` if the retired app doesn't otherwise look deprecated.
+- `forbidDirectCommit`: read each app's `git log --oneline` shape (flat commits straight to the base branch vs. a merge/PR pattern) and, if reachable, its actual branch protection (`gh api repos/<owner>/<repo>/branches/<base>/protection`). A personal or free-tier repo with no protection and a flat history needs nothing.
+- `agentKind`: does the app carry a persistent non-`claude` CLI setup (its own `.codex/`, `.cursor/`, etc. directory with agent-specific instructions, not a symlinked mirror of the claude ones) that reflects a standing team/project default — not just the user's personal habit of switching which CLI they open? Most apps leave this unset; see Task 3 for the separate, project-wide work-type routing question.
+- `gitWorkflowSkill`: grep the app's own skills for one that already handles commits, PRs, or releases.
+- `localFiles`: diff the app's `.gitignore` against what actually exists on disk and against `git ls-files` — only a gitignored file that currently exists *and* isn't already tracked belongs here. Flag a sensitive one (credentials, live secrets) with `sensitive: true` and a note that the user must approve before it's ever copied into a worktree.
+- `crossAppSkills`: grep every app's skills for a hard-coded reference to another app's directory or repo (e.g. a skill that writes output into a sibling app's source tree).
+
+Present what the investigation actually found, per app and field, as a recommendation — not a blank open question — and let the user confirm, correct, or add what the investigation couldn't see (a private branch-protection setup `gh` can't reach, an unwritten team policy). Most projects still end up with none of these fields set; investigating isn't license to pad the config, it's what makes the one open question answerable instead of asked cold.
 
 Write the result to `<repo-root>/.claude/straw-boss/apps.json` (same repo-root resolution as Task 1) per `references/apps-config-schema.md`'s exact field names and shapes.
 
-**Verification:** every app in the written config has a `name`, `dir`, and at least one `match` phrase; nothing was invented without the user confirming it; optional fields are present only where the user actually said so.
+**Verification:** every app in the written config has a `name`, `dir`, and at least one `match` phrase; every optional field present was either grounded in a concrete signal the investigation found and confirmed by the user, or something the user volunteered beyond what the investigation could see — never a blind guess and never invented without confirmation.
 
 ## Task 3: Offer additional agent kinds and their routing policy
 
@@ -140,7 +149,8 @@ If the markers already exist, replace only the content between them — leave th
 
 - "The apps config already exists, skip straight to using it" — no, Task 1 requires showing current state and asking, every `init` run.
 - "The directory scan found everything, skip confirming with the user" — no, present candidates and let the user confirm/trim/add.
-- "Ask every app about forbidDirectCommit/gitWorkflowSkill/localFiles/crossAppSkills one by one" — no, ask once whether any app needs them; most don't.
+- "Ask every app about forbidDirectCommit/gitWorkflowSkill/localFiles/crossAppSkills one by one" — no, investigate every app once, then present the findings as one recommendation; most apps need none of them.
+- "Just ask the user whether any app needs these fields, skip checking git history/gitignore/skills first" — no, per Task 2: investigate the concrete signal behind each field before asking anything; a blind open question is unanswerable without the digging this session can already do itself.
 - "Root CLAUDE.md doesn't have the markers, just append a second copy" — no, search for the markers first; only append when truly absent.
 - "Add the Notes column back, it's more useful at a glance" — no, per Task 10: every nested session inherits root `CLAUDE.md`, so per-app detail belongs in `apps.json` only, never duplicated into the root file.
 - "The user said yes to herdr, persist it now" — no, Task 7 still has to confirm the server and integration are actually there.
