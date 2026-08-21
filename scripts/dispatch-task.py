@@ -81,16 +81,6 @@ def mark_plan_task(plan_slug: str, task_id: str, status: str) -> None:
     dump_json(plan_path(plan_slug), plan)
 
 
-DEFAULT_MAIN_AGENT_SEND_MESSAGE_PEER = "straw-boss-orchestrator"
-# ^ Fallback only, for a main agent with no $HERDR_PANE_ID to derive a unique
-# name from (see cross-session-coordination.md's "Making the main agent
-# addressable"). Two concurrent main agents both using this literal is a real
-# SendMessage delivery hazard -- always pass --main-agent-peer-name with a
-# per-session-unique value (e.g. "straw-boss-orchestrator-<pane-id>") when
-# $HERDR_PANE_ID is available; this constant is not a safe default to rely on
-# whenever more than one main agent might be running.
-
-
 def write_instruction(
     app: str,
     slug: str,
@@ -104,7 +94,7 @@ def write_instruction(
     agent_model: str | None,
     agent_effort: str | None,
     main_agent_pane_id: str | None,
-    main_agent_peer_name: str | None,
+    main_agent_peer_name: str,
 ) -> dict[str, Any]:
     path = instruction_path(app, slug)
     if path.exists():
@@ -135,7 +125,7 @@ def write_instruction(
         "herdr_pane_id": None,
         "herdr_tab_id": None,
         "main_agent_herdr_pane_id": main_agent_pane_id,
-        "main_agent_send_message_peer": main_agent_peer_name or DEFAULT_MAIN_AGENT_SEND_MESSAGE_PEER,
+        "main_agent_send_message_peer": main_agent_peer_name,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "repo_root": repo_root,
@@ -222,11 +212,14 @@ def main() -> int:
     )
     write_p.add_argument(
         "--main-agent-peer-name",
-        default=None,
-        help="the SendMessage peer name this main agent actually renamed itself to -- pass the "
-        "per-session-unique value used in the /rename call (see cross-session-coordination.md), "
-        f"not the bare default; falls back to {DEFAULT_MAIN_AGENT_SEND_MESSAGE_PEER!r} only when omitted, "
-        "which is unsafe if more than one main agent might be running",
+        required=True,
+        help="the SendMessage peer name this main agent actually resolved for itself -- its own "
+        "claude --name <value> launch flag if it was started with one (detect it from this "
+        "session's own process args, e.g. via ps -p $CLAUDE_PID -ww -o args=), otherwise the "
+        "per-session-unique value from an explicit /rename call (see cross-session-coordination.md's "
+        "'Making the main agent addressable'); required with no default -- two concurrent main "
+        "agents both silently falling back to the same bare literal is a real SendMessage delivery "
+        "hazard, confirmed to have actually happened",
     )
 
     confirm_p = sub.add_parser("confirm", help="mark the dispatch in-progress after it lands")
