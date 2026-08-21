@@ -50,7 +50,7 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 | `boss-say` | **所有事情的入口。**判斷規模、逐項判斷要單獨做還是派工，交給對應的專責 skill 或自己的批次機制 |
 | `work-on` | 把請求對應到某個 app，處理 legacy redirect |
 | `dispatching-work` | 內部派工機制——選派工方式（herdr 可用就用 `herdr-pane`，不可用才退回 `claude-p`）跟 agent kind（預設 `claude`，或設定過的其他 kind）、寫指令、實際派工、列出/收尾既有派工 |
-| `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工、commit 自由，push/merge 前找你授權 |
+| `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工、commit 和推送自己的 feature branch 都自由，merge 前（以及推到該分支以外的任何 push 前）才找你授權 |
 | `peeking-work` | 唯讀看一個派工現在在做什麼，不加入、不打斷 |
 | `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
 | `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——一份 `CLAUDE.md`、一個 guard hook，加一份即時抓取官方文件寫成的 skill 撰寫規範 |

@@ -17,8 +17,8 @@ Dispatching a task is not the end of the main agent's own turn on it. `dispatchi
 
 Every operational judgment call this plugin's own skills already delegate — mode/tier triage (`boss-say`'s Task 1, `dispatching-work`'s Task 1), adjusting an in-flight dispatch (`docs/roles.md`'s Autonomy boundary), which worker to message and when (`notifying-main-agent`) — gets **stated and acted on**, not put to the user as a question. This is not a gap in the user's own general "ask when uncertain" default — `~/.claude/CLAUDE.md`'s own "Delegated Operational Authority" section carves this out explicitly: a decision a skill has already delegated isn't "uncertain" in that sense, it's already been made — for the main agent to make, not to re-surface.
 
-The only places this plugin actually stops to ask are already named, and only these four (`dispatching-work`'s "Four checkpoint/report types" table) — nothing else warrants pausing:
-- `awaiting-authorization` — a push/merge needs the user's actual authorization, never assumed.
+The only places this plugin actually stops to ask are already named, and only these four (a subset of `dispatching-work`'s checkpoint/report types table — `awaiting-main-agent` is also named there, but the main agent resolves it directly rather than stopping to ask) — nothing else warrants pausing:
+- `awaiting-authorization` — a merge, or a push landing outside the task's own feature branch, needs the user's actual authorization, never assumed. (A push of the task's own feature branch needs none — it's reported as a non-blocking FYI, not this checkpoint.)
 - `awaiting-user-input` — a genuine work-content judgment call, or technical difficulty a second opinion couldn't resolve.
 - A `SendMessage` question to a peer — informational, answerable from what that peer already knows.
 - A `SendMessage` report — required, not a question at all, just the completion push.

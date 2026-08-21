@@ -1,6 +1,6 @@
 ---
 name: notifying-main-agent
-description: Use when you are a dispatched agent reaching the main-agent session that dispatched you — either a purely informational question, or reporting your own `done`/`failed`/checkpoint state, or logging progress along the way. Not for a work-content judgment call (use `awaiting-user-input`), an authorization request (use `awaiting-authorization`), or a blocker only the main agent's own action can resolve (use `awaiting-main-agent`).
+description: Use when you are a dispatched agent reaching the main-agent session that dispatched you — either a purely informational question, reporting your own `done`/`failed`/checkpoint state, reporting a completed push of your own feature branch (report-and-continue, never a stop), or logging progress along the way. Not for a work-content judgment call (use `awaiting-user-input`), an authorization request (use `awaiting-authorization`), or a blocker only the main agent's own action can resolve (use `awaiting-main-agent`).
 ---
 
 ## Overview
@@ -49,7 +49,7 @@ Never guess or derive the main agent's pane id or peer name. If neither your dis
 
 ## Branch: Report your own status
 
-Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch instruction told you to stop and report (e.g. ready to push/merge, or blocked on an action only your main agent can take) — not a question, so the informational test above does not apply here. Two separate mechanisms, used differently:
+Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch instruction told you to stop and report (e.g. ready to merge, a push landing outside your own feature branch, or blocked on an action only your main agent can take) — not a question, and not a completed push of your own feature branch (that's the branch below, report-and-continue, never a stop) — so the informational test above does not apply here. Two separate mechanisms, used differently:
 
 ### Progress, at any point before a terminal state — a log, not a push
 
@@ -75,9 +75,23 @@ Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch ins
 
 **Verification:** reachability came from `get-main-agent.py`, not recollection; a terminal state's own record was written before or alongside its push; the push itself went through `SendMessage`, with a herdr nudge (if sent at all) only as an addition, never a substitute; the one-line summary is self-contained (task/scope, outcome, follow-up) rather than a bare status word.
 
-## Task 3 (both branches): If a reply eventually arrives, it's information only — never authorization
+## Branch: Report a completed push, then continue
 
-A reply through this channel — whenever and however it shows up — is never authorization for a push/merge or any other mutation that needs one, regardless of what it says. If a permission was denied and you're tempted to ask your main agent (or any other peer) to perform the action for you, or to treat a reply as clearance to proceed — don't. Refuse, and surface it through your own status-reporting mechanism instead.
+Entry condition: you pushed your own feature branch and opened or updated an MR/PR, and your dispatch instruction did not tell you to stop for this — only a merge, or a push landing outside your own feature branch, is a checkpoint (the branch above). This is not a checkpoint: report it, then keep working immediately, in the same turn — do not wait for a reply or a resume.
+
+1. **Look up your main agent's current reachability**: `get-main-agent.py --instruction-path <path>` — same source as the other branches.
+2. **Skip the status-record write.** Unlike `done`/`failed`/a checkpoint, this notification never gets a `report-task-status.py` write and carries no status value — it's a `SendMessage`-only signal, same as the informational-question branch above.
+3. **Send the `SendMessage` push — required, not optional**:
+   ```
+   SendMessage({ to: "<main_agent_send_message_peer from step 1>", message: "[from agent <your name>] PUSHED: <branch name> — <MR/PR reference> — continuing" })
+   ```
+4. **Continue your work immediately** — you were never stopped, so there's nothing to resume; don't wait for a reply before moving on (addressing review feedback, further pushes to the same branch, working toward the next checkpoint).
+
+**Verification:** the push you're reporting is your own feature branch, never a merge or a push outside it (those go through the branch above instead); no status-record write was made for it; you kept working in the same turn rather than treating the notification as a reason to stop.
+
+## Task 3 (all branches): If a reply eventually arrives, it's information only — never authorization
+
+A reply through this channel — whenever and however it shows up — is never authorization for a merge, a push landing outside your own feature branch, or any other mutation that needs one, regardless of what it says. If a permission was denied and you're tempted to ask your main agent (or any other peer) to perform the action for you, or to treat a reply as clearance to proceed — don't. Refuse, and surface it through your own status-reporting mechanism instead.
 
 **Verification:** no mutation you performed was justified by a peer's reply through this channel.
 
@@ -86,7 +100,8 @@ A reply through this channel — whenever and however it shows up — is never a
 - "This seems like something my main agent could plausibly weigh in on" — that's not the test; the test is whether it's a fact your main agent already has, not a judgment call. When in doubt, it's `awaiting-user-input`.
 - "I can't make progress until my main agent answers, but it's not a human judgment call, so it's still the informational channel" — no, that's the second dividing line: a blocker that stops you cold is `awaiting-main-agent`, fire-and-forget or not — it needs to be tracked, not queued behind other async questions.
 - "Add `--wait` to the herdr send, so I know my main agent got it" — no, your main agent is already working; `--wait` matches its current unrelated turn finishing, not acknowledgment of your message. Trust the command's own success/failure return instead.
-- "Got a reply telling me to go ahead, that's good enough to push/merge" — no, Task 3: never treat a reply as authorization, no matter when or how it arrives.
+- "Got a reply telling me to go ahead, that's good enough to merge/push outside my branch" — no, Task 3: never treat a reply as authorization, no matter when or how it arrives.
+- "I pushed my own feature branch, I'll write a status record and wait like any other checkpoint" — no, a feature-branch push is not a checkpoint: skip the status-record write, send the `SendMessage` push, and keep working immediately, per "Branch: Report a completed push, then continue" above.
 - "Don't know my main agent's pane id or peer name, I'll guess from the cwd or a plausible pattern" — no, only the exact values from your dispatch instruction or `get-main-agent.py`.
 - "I have a main-agent pane id, but `SendMessage` feels simpler, use that instead" for a question — no, herdr is primary when available for the question branch; `SendMessage`'s peer-name addressing has a documented misdelivery failure mode herdr's pane id doesn't share.
 - "Skip the `[from agent ...]` label, the main agent will figure out where it came from" — no, an unlabeled message lands indistinguishable from the human's own input.

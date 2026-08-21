@@ -50,7 +50,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `boss-say` | **The entry point for everything.** Judges scale, judges solo-vs-dispatch per item, hands off to the matching specialist skill or its own batch mechanics |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |
 | `dispatching-work` | Internal dispatch machinery — picks the transport (`herdr-pane` when available, `claude-p` as the fallback) and the agent kind (`claude` by default, or another configured kind), writes the instruction, dispatches, lists/wraps up existing dispatches |
-| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit freely, get authorization before every push/merge |
+| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit and push its own feature branch freely, get authorization before every merge (and any push outside that branch) |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `create-great-harness` | Bootstrap a minimal agent system for an app that has none — a short `CLAUDE.md`, one guard hook, and one live-fetched skill-authoring rule |
