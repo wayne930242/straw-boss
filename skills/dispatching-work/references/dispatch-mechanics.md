@@ -65,7 +65,7 @@ One file per dispatch: `<home>/.straw-boss/dispatch/<app>--<short-slug>.json`. P
   "herdr_pane_id": null,
   "herdr_tab_id": null,
   "main_agent_herdr_pane_id": "wF:p9",
-  "main_agent_send_message_peer": "straw-boss-orchestrator-wF-p9",
+  "main_agent_send_message_peer": "AgentMessaging-orchestrator-wF-p9",
   "status": "pending",
   "created_at": "2026-08-16T10:00:00+08:00",
   "repo_root": "/absolute/path/to/your/repo"
@@ -82,7 +82,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   [--main-agent-pane-id <$HERDR_PANE_ID value>] [--main-agent-peer-name <renamed value>]
 ```
 
-`--agent-kind` defaults to `claude` if omitted — see "Resolving the agent kind" above for how to resolve it before calling this. `--agent-model`/`--agent-effort` are optional, unenforced record-keeping — only pass them when the resolution step actually chose an override. `--main-agent-pane-id` is the dispatching main agent's own current `$HERDR_PANE_ID` — pass it for a `herdr-pane` dispatch (omit for `claude-p`, which has no live pane); this is the same value the dispatch prompt's own reachability prose already states (per `cross-session-coordination.md`'s "Making the main agent addressable"), just also recorded structurally so the dispatched agent can read it back with `get-main-agent.py` instead of only recalling it from its own prompt. `--main-agent-peer-name` is required, with no default — the script refuses outright if it's omitted, since a silent fallback to a bare literal is a real `SendMessage` delivery hazard once more than one main agent might be running (confirmed to have actually happened). Resolve it first: this main agent's own `claude --name <value>` launch flag if it was started with one, otherwise the per-session-unique value from an explicit `/rename` call (e.g. `straw-boss-orchestrator-wF-p9`) — see `cross-session-coordination.md`'s "Making the main agent addressable" for the exact detection order.
+`--agent-kind` defaults to `claude` if omitted — see "Resolving the agent kind" above for how to resolve it before calling this. `--agent-model`/`--agent-effort` are optional, unenforced record-keeping — only pass them when the resolution step actually chose an override. `--main-agent-pane-id` is the dispatching main agent's own current `$HERDR_PANE_ID` — pass it for a `herdr-pane` dispatch (omit for `claude-p`, which has no live pane); this is the same value the dispatch prompt's own reachability prose already states (per `cross-session-coordination.md`'s "Making the main agent addressable"), just also recorded structurally so the dispatched agent can read it back with `get-main-agent.py` instead of only recalling it from its own prompt. `--main-agent-peer-name` is required, with no default — the script refuses outright if it's omitted, since a silent fallback to a bare literal is a real `SendMessage` delivery hazard once more than one main agent might be running (confirmed to have actually happened). Resolve it first: this main agent's own `claude --name <value>` launch flag if it was started with one, otherwise the per-session-unique value from an explicit `/rename` call (e.g. `AgentMessaging-orchestrator-wF-p9`) — see `cross-session-coordination.md`'s "Making the main agent addressable" for the exact detection order.
 
 Prints `{"session_id": "...", "instruction_path": "..."}` — use that `session_id` for the actual dispatch command below, don't generate a second one. For a plan task (`--plan`/`--task-id` given), this also marks `plan.json`'s matching task `dispatched` and refuses (before writing anything) if that task isn't still `planned` — a double-dispatch never leaves a stray pending file behind. It refuses outright if an instruction already exists at that `--app`/`--slug` pair, too.
 
@@ -188,7 +188,7 @@ cd "<app_dir>" && codex exec --json <sandbox/approval flags from the mapping tab
 
 Steps 0-3 above are agent-kind-agnostic — a fresh pane, cwd set, nothing agent-specific started yet. What comes next branches by the resolved `agent_kind`.
 
-## `herdr-pane` dispatch — steps 4-8, `agent_kind: "claude"`
+## `herdr-pane` dispatch — steps 4-6.5, `agent_kind: "claude"`
 
 4. **Validate `<unique-name>`, then start the claude agent with the session_id `dispatch-task.py write` printed:**
    ```bash
@@ -214,15 +214,20 @@ Steps 0-3 above are agent-kind-agnostic — a fresh pane, cwd set, nothing agent
    ```
    Omit `--wait` when the caller doesn't need an immediate result (fire-and-forget into the pane; the user can check on it later) — in that case, skip step 6.5 too and let a later status check confirm delivery instead.
 
-   **Steps 6.5 through 8 are not optional follow-up — they finish this same dispatch.** An instruction left `pending` after its agent has visibly started working means one of them was skipped; don't treat "the task was submitted" as done.
-6.5. **Confirm the task actually landed — do not trust the CLI's success return alone.** Confirmed live during testing: a first-run interruption (e.g. a one-time onboarding flow, or any other transient hiccup) can consume the submitted text while `herdr agent prompt --wait` still reports success and `agent_status` settles to `idle`. **`terminal_title` cannot tell you this on its own** — step 4 always passes `--name`, and that alone renames the pane's terminal title away from its generic default the moment the agent starts, before any task is ever submitted (confirmed live: the title had already changed to the `--name` value while the pane was still sitting on the cleared trust prompt, with no task sent yet), so "no longer generic" proves the agent started, not that this task landed. Instead, `herdr agent read "<unique-name>" --lines 40` and confirm the transcript shows real assistant output that follows the submitted task text — not just the task text sitting unanswered, and not still the pre-task trust-prompt screen. If it doesn't, resubmit the prompt once (repeat step 6), then re-check. If still not confirmed after one retry, stop and tell the user rather than marking the instruction `in-progress`.
-7. **Cross-check the session id.** `herdr agent get "<unique-name>"` now returns `.result.agent.agent_session.value` (confirmed field path, present once the claude integration hook — see `init` — has reported in). Compare it to the session_id passed in step 4; if they don't match, flag this to the user rather than silently trusting either value.
-8. **Confirm the dispatch**, recording `herdr_pane_id`/`herdr_tab_id` and flipping the instruction to `in-progress`:
+6.5. **Confirm delivery and record the dispatch in one continuous action — not three separate chores to remember.** Do not trust `herdr agent prompt --wait`'s success return alone: a first-run interruption (e.g. a one-time onboarding flow, or any other transient hiccup) can consume the submitted text while it still reports success and `agent_status` settles to `idle`. **`terminal_title` cannot tell you this on its own** — step 4 always passes `--name`, and that alone renames the pane's terminal title away from its generic default the moment the agent starts, before any task is ever submitted (confirmed live: the title had already changed to the `--name` value while the pane was still sitting on the cleared trust prompt, with no task sent yet), so "no longer generic" proves the agent started, not that this task landed.
+   ```bash
+   herdr agent read "<unique-name>" --lines 40
+   herdr agent get "<unique-name>"
+   ```
+   Confirm the transcript shows real assistant output that follows the submitted task text — not just the task text sitting unanswered, and not still the pre-task trust-prompt screen. If it doesn't, resubmit the prompt once (repeat step 6), then re-check; if still not confirmed after one retry, stop and tell the user rather than proceeding below.
+
+   Once delivery is confirmed, record it immediately using the same `agent get` output above — `.result.agent.agent_session.value` is the session id to pass through:
    ```bash
    uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" confirm \
-     --app <app> --slug <short-slug> --pane-id <new_pane_id> --tab-id <tab_id>
+     --app <app> --slug <short-slug> --pane-id <new_pane_id> --tab-id <tab_id> \
+     --observed-session-id <.result.agent.agent_session.value from the agent get above>
    ```
-   Refuses if the instruction isn't still `pending` — don't call this before step 6.5 has actually confirmed delivery. Do this immediately after step 7, in the same span of actions as steps 4-6 — not as a separate later chore; confirmed live during testing this is exactly the step that gets forgotten when it's treated as an afterthought.
+   Refuses if the instruction isn't still `pending`, or if `--observed-session-id` doesn't match the session id `dispatch-task.py write` pre-assigned in step 4 (the script asserts this itself — not a separate manual comparison to remember). An instruction left `pending` after its agent has visibly started working means this whole block was skipped; don't treat "the task was submitted" as done.
 
 For `claude-p`, there's no pane/tab to record — call the same `confirm` without `--pane-id`/`--tab-id` once the process has actually been launched.
 

@@ -166,10 +166,18 @@ def confirm_instruction(
     if tab_id is not None:
         payload["herdr_tab_id"] = tab_id
     if observed_session_id is not None:
-        # Some agent kinds (e.g. codex) don't accept a caller-supplied session
-        # id -- the pre-generated one in `write`'s payload was never actually
-        # passed to the launch command, so it's replaced with what the agent
-        # itself reported, not asserted equal to it.
+        # claude was launched with the pre-generated session_id passed as
+        # --session-id, so the two must match -- a mismatch means the pane
+        # this confirms isn't the one this dispatch launched. Other agent
+        # kinds (e.g. codex) don't accept a caller-supplied session id -- the
+        # pre-generated one was never passed to the launch command, so it's
+        # replaced with what the agent itself reported instead of compared.
+        if payload["agent_kind"] == "claude" and payload["session_id"] != observed_session_id:
+            raise ValueError(
+                f"observed session id {observed_session_id!r} does not match the session id "
+                f"{payload['session_id']!r} recorded at write time -- the agent in this pane may "
+                f"not be the one this dispatch launched"
+            )
         payload["session_id"] = observed_session_id
     dump_json(path, payload)
     return {"instruction_path": str(path)}

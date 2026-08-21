@@ -98,6 +98,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/reply-to-worker.py" \
 ```
 Delivers the reply, confirms it landed, then records the resolution — one call. `status` stays `awaiting-main-agent` afterward (the worker's own next terminal write closes it out, same as `awaiting-user-input`); the script only adds `resolved_by_main_agent_at`/`main_agent_reply`.
 
+If resolving takes more than a couple of tool calls, an optional `cross-session-coordination.md` Inform nudge (`herdr agent prompt "<name>" "[from main agent] ..."`, no `--wait`) lets the worker know it's being worked on instead of sitting silent until the reply lands — never required, and `reply-to-worker.py`'s own call above is still what actually resolves the checkpoint.
+
 On this notification (push or `Monitor` fallback), the main agent resolves it directly — no "tell the user which pane" step, unlike `awaiting-user-input`.
 
 Same `herdr-pane`/`agent_kind: claude` restriction as `awaiting-user-input`; a task blocked this way outside that combination reports `failed` with the situation in `--note` instead.

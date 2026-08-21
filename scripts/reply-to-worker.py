@@ -136,7 +136,20 @@ def send_reply(name: str, reply: str) -> None:
 def read_transcript(name: str) -> str:
     # `agent read` (confirmed live) has no JSON output mode at all --
     # `--format` is only `text`/`ansi` -- its stdout *is* the transcript.
-    return run_herdr_raw(["agent", "read", name, "--lines", str(CONFIRM_READ_LINES)])
+    args = ["agent", "read", name, "--lines", str(CONFIRM_READ_LINES)]
+    try:
+        return run_herdr_raw(args)
+    except ValueError as exc:
+        # Reported live (a peer session hit this exact error): herdr refuses
+        # to scroll a pane's alternate-screen scrollback while its agent is
+        # still `working` ("...can only be captured by scrolling while idle.
+        # Wait and retry, or use --source visible") -- the visible screen can
+        # still be read in that state. Detected via herdr's own suggestion
+        # text in its error message, not a hardcoded status check, so this
+        # doesn't need to track herdr's exact wording for "not idle" itself.
+        if "--source visible" not in str(exc):
+            raise
+        return run_herdr_raw([*args, "--source", "visible"])
 
 
 def normalize_whitespace(text: str) -> str:
@@ -206,8 +219,11 @@ def reply_to_worker(worker_instruction_path: str, reply: str) -> dict[str, Any]:
         send_reply(name, reply)
         if not confirm_landed(name, reply):
             raise ValueError(
-                f"could not confirm the reply landed in {name!r}'s transcript after one retry -- "
-                f"status file left untouched at {status_path}"
+                f"sent the reply to {name!r} via herdr (that call itself succeeded) but could not "
+                f"confirm it landed in the transcript after one retry -- likely still queued in a "
+                f"busy pane rather than lost, but not certain either way. status file left untouched "
+                f"at {status_path}; check the pane directly (`herdr agent read {name} --source "
+                f"visible`) before resending"
             )
 
     status_payload["resolved_by_main_agent_at"] = datetime.now(timezone.utc).isoformat()

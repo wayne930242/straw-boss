@@ -8,7 +8,7 @@
 and plan-mechanics.md).
 
 Checks the two things a hand-done check tends to get wrong:
-  - format: must match ^[a-z][a-z0-9_-]{0,31}$
+  - format: must match ^[A-Za-z][A-Za-z0-9_-]{0,31}$
   - uniqueness: must not already be a `name` among live herdr agents
 
 Never calls `herdr` itself -- the main agent runs `herdr agent list` as its
@@ -26,7 +26,7 @@ import re
 import sys
 from typing import Any
 
-NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 
 
 def live_names(agent_list_payload: dict[str, Any]) -> set[str]:
@@ -39,7 +39,7 @@ def live_names(agent_list_payload: dict[str, Any]) -> set[str]:
 
 def check(name: str, agent_list_payload: dict[str, Any]) -> None:
     if not NAME_PATTERN.match(name):
-        raise ValueError(f"{name!r} does not match ^[a-z][a-z0-9_-]{{0,31}}$")
+        raise ValueError(f"{name!r} does not match ^[A-Za-z][A-Za-z0-9_-]{{0,31}}$")
     taken = live_names(agent_list_payload)
     if name in taken:
         raise ValueError(f"{name!r} is already in use by a live agent")
