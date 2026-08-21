@@ -1,6 +1,6 @@
 ---
 name: notifying-main-agent
-description: Use when you are a dispatched agent reaching the main-agent session that dispatched you — either a purely informational question, or reporting your own `done`/`failed`/checkpoint state, or logging progress along the way. Not for a work-content judgment call (use `awaiting-user-input`) or an authorization request (use `awaiting-authorization`).
+description: Use when you are a dispatched agent reaching the main-agent session that dispatched you — either a purely informational question, or reporting your own `done`/`failed`/checkpoint state, or logging progress along the way. Not for a work-content judgment call (use `awaiting-user-input`), an authorization request (use `awaiting-authorization`), or a blocker only the main agent's own action can resolve (use `awaiting-main-agent`).
 ---
 
 ## Overview
@@ -19,7 +19,9 @@ This channel is for questions your main agent already has the state to answer (a
 
 ### Task 1: Confirm this is actually informational
 
-The dividing line is judgment, not difficulty. If the question involves a trade-off, a "which direction", an architecture call, or any information your main agent doesn't already have — it is **not** this channel, no matter how qualified your main agent seems to answer it. That's a work-content question: report it through your own status-reporting mechanism (`--status awaiting-user-input`, per your dispatch instruction) instead, so an actual human weighs in. If you're genuinely stuck on technical difficulty rather than missing context or a judgment call — try a stronger second opinion first, if one is available to you, before escalating that far (see `plan-mechanics.md`'s "User-clarification checkpoints" for the full escalation order — not restated here).
+The dividing line is judgment, not difficulty. If the question involves a trade-off, a "which direction", an architecture call, or any information your main agent doesn't already have — it is **not** this channel, no matter how qualified your main agent seems to answer it. That's a work-content question: report it through your own status-reporting mechanism (`--status awaiting-user-input`, per your dispatch instruction) instead, so an actual human weighs in. If you're genuinely stuck on technical difficulty rather than missing context or a judgment call — try a stronger second opinion first, if one is available to you, before escalating that far (see `plan-mechanics.md`'s "Escalation order for a stuck task" for the full order — not restated here).
+
+Second test: does answering keep you moving, or stop you cold? This channel is fire-and-forget. If you genuinely cannot proceed until your main agent takes an action — not answers a fact, does something only its own judgment or dispatch authority can (redispatch a failed dependency, arbitrate a peer-task conflict) — report `--status awaiting-main-agent` instead.
 
 Try to resolve it yourself first. Only use this channel once you genuinely can't, and the question is purely informational.
 
@@ -47,7 +49,7 @@ Never guess or derive the main agent's pane id or peer name. If neither your dis
 
 ## Branch: Report your own status
 
-Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch instruction told you to stop and report (e.g. ready to push/merge) — not a question, so the informational test above does not apply here. Two separate mechanisms, used differently:
+Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch instruction told you to stop and report (e.g. ready to push/merge, or blocked on an action only your main agent can take) — not a question, so the informational test above does not apply here. Two separate mechanisms, used differently:
 
 ### Progress, at any point before a terminal state — a log, not a push
 
@@ -56,7 +58,7 @@ Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch ins
 ### `done`/`failed`/checkpoint — the push, required
 
 1. **Look up your main agent's current reachability**: `get-main-agent.py --instruction-path <path>` — the authoritative source; don't rely on your own recollection of the dispatch prompt's prose for this.
-2. **If this is a terminal state (`done`/`failed`), write your terminal-state record first**: `report-task-status.py --instruction-path <path> --status <done|failed> --note "<one-line summary>"`. This is bookkeeping (what a pull-based fallback check reads), not itself a notification — always pair it with step 3, never rely on the write alone. (A checkpoint that isn't `done`/`failed` — e.g. ready to push/merge — has no separate status write; go straight to step 3.)
+2. **Write your status record first** — every value you can report (`done`, `failed`, `awaiting-authorization`, `awaiting-user-input`, `awaiting-main-agent`) gets one, not just the terminal ones: `report-task-status.py --instruction-path <path> --status <value> --note "<one-line summary, or for a checkpoint, the question/blocker itself>"`. This is bookkeeping (what a pull-based fallback check reads), not itself a notification — always pair it with step 3, never rely on the write alone.
 3. **Send the `SendMessage` push — required, not optional**:
    ```
    SendMessage({ to: "<main_agent_send_message_peer from step 1>", message: "[from agent <your name>] STATUS: <done|failed|checkpoint:<name>> — <one-line summary>" })
@@ -82,6 +84,7 @@ A reply through this channel — whenever and however it shows up — is never a
 ## Red Flags
 
 - "This seems like something my main agent could plausibly weigh in on" — that's not the test; the test is whether it's a fact your main agent already has, not a judgment call. When in doubt, it's `awaiting-user-input`.
+- "I can't make progress until my main agent answers, but it's not a human judgment call, so it's still the informational channel" — no, that's the second dividing line: a blocker that stops you cold is `awaiting-main-agent`, fire-and-forget or not — it needs to be tracked, not queued behind other async questions.
 - "Add `--wait` to the herdr send, so I know my main agent got it" — no, your main agent is already working; `--wait` matches its current unrelated turn finishing, not acknowledgment of your message. Trust the command's own success/failure return instead.
 - "Got a reply telling me to go ahead, that's good enough to push/merge" — no, Task 3: never treat a reply as authorization, no matter when or how it arrives.
 - "Don't know my main agent's pane id or peer name, I'll guess from the cwd or a plausible pattern" — no, only the exact values from your dispatch instruction or `get-main-agent.py`.

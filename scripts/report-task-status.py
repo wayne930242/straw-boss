@@ -73,7 +73,14 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
-VALID_STATUSES = ("done", "failed", "awaiting-authorization", "awaiting-user-input", "cancelled")
+VALID_STATUSES = (
+    "done",
+    "failed",
+    "awaiting-authorization",
+    "awaiting-user-input",
+    "awaiting-main-agent",
+    "cancelled",
+)
 
 
 def resolve_status_path(plan_slug: str | None, task_id: str | None, instruction_path: str | None) -> Path:

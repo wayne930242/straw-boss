@@ -14,8 +14,8 @@ script has no way to perform).
 
 For a plan task, wrap-up only proceeds once the task's own status file
 reports a terminal state (done/failed/cancelled) -- never on
-awaiting-authorization or awaiting-user-input, which need the session to
-stay alive.
+awaiting-authorization, awaiting-user-input, or awaiting-main-agent,
+which need the session to stay alive.
 """
 
 from __future__ import annotations
@@ -85,7 +85,8 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
         if plan_status not in ("done", "failed", "cancelled"):
             raise ValueError(
                 f"task {task_id!r} status is {plan_status!r}, not terminal -- refusing "
-                f"to wrap up a task that's still awaiting authorization or user input"
+                f"to wrap up a task that's still awaiting authorization, user input, "
+                f"or main-agent action"
             )
     else:
         # A standalone dispatch's own report-task-status.py --instruction-path record
@@ -99,7 +100,8 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
             if standalone_status not in ("done", "failed", "cancelled"):
                 raise ValueError(
                     f"dispatch {app}--{slug} status is {standalone_status!r}, not terminal -- refusing "
-                    f"to wrap up a dispatch that's still awaiting authorization or user input"
+                    f"to wrap up a dispatch that's still awaiting authorization, user input, "
+                    f"or main-agent action"
                 )
 
     payload = load_json(src)
