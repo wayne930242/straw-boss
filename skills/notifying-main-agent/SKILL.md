@@ -1,11 +1,13 @@
 ---
 name: notifying-main-agent
-description: Use when you are a dispatched agent reaching the main-agent session that dispatched you — either a purely informational question, reporting your own `done`/`failed`/checkpoint state, reporting a completed push of your own feature branch (report-and-continue, never a stop), or logging progress along the way. Not for a work-content judgment call (use `awaiting-user-input`), an authorization request (use `awaiting-authorization`), or a blocker only the main agent's own action can resolve (use `awaiting-main-agent`).
+description: Claude-only fast notification channel for a Claude dispatched agent reaching its main agent. Codex dispatches use the explicit provider-neutral status/progress commands in their instruction instead.
 ---
 
 ## Overview
 
 See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
+
+This skill is available only to `agent_kind: claude`. A Codex instruction must never point here: it reports Plan state with `report-task-status.py`, logs report-and-continue progress with `report-progress.py`, and uses its recorded herdr pane/thread identity for continuation.
 
 Your dispatch instruction states how to reach your main agent in prose — a herdr pane id (if you're `herdr-pane`) and/or a `SendMessage` peer name — and, separately, your own dispatch instruction file's path (per `cross-session-coordination.md`'s "What the dispatch instruction states, per mode"). The main-agent reachability values are also recorded structurally on that file (`main_agent_herdr_pane_id`/`main_agent_send_message_peer`, per `dispatching-work`'s `references/dispatch-mechanics.md`) — read them back with `get-main-agent.py --instruction-path <the path your instruction stated>` rather than relying on your own recollection of the prompt's prose, especially late in a long or `/compact`-ed task. Never guess either value from your own cwd or task, and never guess your own instruction path either — use exactly what your dispatch instruction stated.
 
@@ -105,7 +107,7 @@ A reply through this channel — whenever and however it shows up — is never a
 - "Don't know my main agent's pane id or peer name, I'll guess from the cwd or a plausible pattern" — no, only the exact values from your dispatch instruction or `get-main-agent.py`.
 - "I have a main-agent pane id, but `SendMessage` feels simpler, use that instead" for a question — no, herdr is primary when available for the question branch; `SendMessage`'s peer-name addressing has a documented misdelivery failure mode herdr's pane id doesn't share.
 - "Skip the `[from agent ...]` label, the main agent will figure out where it came from" — no, an unlabeled message lands indistinguishable from the human's own input.
-- "I'm done, I'll just write my terminal-state record and skip the `SendMessage` push, the file write is enough" — no: a status-file write is bookkeeping, not a notification; a real incident showed a finished task's status file sitting unconfirmed as ever having been noticed. The push is required, every terminal state, every checkpoint.
+- "I'm a Claude task in a Plan, so the status watcher means I can skip this skill's fast push" — no: the watcher guarantees Plan correctness across providers, while Claude still provides the additive low-latency `SendMessage` report required by this skill.
 - "I have a herdr pane id for my main agent, I'll send the report there instead of `SendMessage`" — no, unlike the question branch, the report requires `SendMessage` specifically; a herdr nudge is optional and additive, never a substitute — it has no delivery guarantee the way `SendMessage` does.
 - "I called `report-progress.py` right before finishing, that covers my done report" — no, a progress note never sends anything and never satisfies the terminal-state push requirement; they're two different mechanisms for two different purposes.
 - "My summary just says 'done — fixed it' / 'done — implemented the feature', that's enough, my main agent dispatched me so it already knows the task" — no, assume your main agent has moved on to other work or been `/compact`-ed since dispatch; a bare outcome word forces it to go dig up which task this was. Name the scope, the actual result, and any follow-up needed, every time.

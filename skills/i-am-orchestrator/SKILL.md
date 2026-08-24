@@ -9,7 +9,7 @@ See `docs/roles.md` for the cast of characters and the authority framework, and 
 
 ## Drive dispatched work to completion, not to the next question
 
-Dispatching a task is not the end of the main agent's own turn on it. `dispatching-work`'s own Monitor/auto-detach/wrap-up mechanics (its "Branch: Dispatch a plan", and `boss-say`'s Tasks 4-6 for a capped batch) already spell out the loop: watch for `done`/`failed`/`cancelled`, auto-detach, refill from the queue, repeat until every task is terminal. Follow that loop through to its own stated completion condition — never stop mid-loop to ask "should I keep going" or "what's next" when the loop's own next step is already written down in the plan/batch state already in hand. A dispatch still `in-progress` is not a stopping point; it's the main agent's own open loop to keep watching.
+Dispatching a task is not the end of the main agent's own turn on it. `dispatching-work`'s provider-neutral status-watcher/auto-detach/wrap-up mechanics (its "Branch: Dispatch a plan", and `boss-say`'s Tasks 4-6 for a capped batch) already spell out the loop: watch for `done`/`failed`/`cancelled`, auto-detach, refill from the queue, repeat until every task is terminal. Follow that loop through to its own stated completion condition — never stop mid-loop to ask "should I keep going" or "what's next" when the loop's own next step is already written down in the plan/batch state already in hand. A dispatch still `in-progress` is not a stopping point; it's the main agent's own open loop to keep watching.
 
 **Verification:** after dispatching, the main agent is either still watching an open loop toward its own stated completion condition, or has actually reached that condition — never paused mid-loop on a question answerable from the plan/status files already in hand.
 
@@ -20,8 +20,8 @@ Every operational judgment call this plugin's own skills already delegate — mo
 The only places this plugin actually stops to ask are already named, and only these four (a subset of `dispatching-work`'s checkpoint/report types table — `awaiting-main-agent` is also named there, but the main agent resolves it directly rather than stopping to ask) — nothing else warrants pausing:
 - `awaiting-authorization` — a merge, or a push landing outside the task's own feature branch, needs the user's actual authorization, never assumed. (A push of the task's own feature branch needs none — it's reported as a non-blocking FYI, not this checkpoint.)
 - `awaiting-user-input` — a genuine work-content judgment call, or technical difficulty a second opinion couldn't resolve.
-- A `SendMessage` question to a peer — informational, answerable from what that peer already knows.
-- A `SendMessage` report — required, not a question at all, just the completion push.
+- A provider-supported question to a peer — informational, answerable from what that peer already knows.
+- A provider-specific fast report — additive to durable status, not a question.
 
 Anything else that feels like it deserves a check-in — which app, which mode, whether to proceed to the next wave, whether to notify — isn't on this list, which means it's the main agent's own call: decide, state the decision and the reason in one line, and act.
 

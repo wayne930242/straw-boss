@@ -94,7 +94,7 @@ def write_instruction(
     agent_model: str | None,
     agent_effort: str | None,
     main_agent_pane_id: str | None,
-    main_agent_peer_name: str,
+    main_agent_peer_name: str | None,
 ) -> dict[str, Any]:
     path = instruction_path(app, slug)
     if path.exists():
@@ -103,11 +103,8 @@ def write_instruction(
         )
     if (plan_slug is None) != (task_id is None):
         raise ValueError("--plan and --task-id must be given together, or not at all")
-    if plan_slug is not None and agent_kind != "claude":
-        raise ValueError(
-            f"--agent-kind {agent_kind!r} is not allowed for a plan/batch task -- "
-            f"non-claude dispatch is standalone-only, use --agent-kind claude for plan tasks"
-        )
+    if agent_kind == "claude" and not main_agent_peer_name:
+        raise ValueError("--main-agent-peer-name is required for agent-kind 'claude'")
     if plan_slug is not None:
         assert task_id is not None
         check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
@@ -220,8 +217,9 @@ def main() -> int:
     )
     write_p.add_argument(
         "--main-agent-peer-name",
-        required=True,
-        help="the SendMessage peer name this main agent actually resolved for itself -- its own "
+        default=None,
+        help="the SendMessage peer name this main agent actually resolved for itself; required for "
+        "agent-kind claude and unused by codex -- its own "
         "claude --name <value> launch flag if it was started with one (detect it from this "
         "session's own process args, e.g. via ps -p $CLAUDE_PID -ww -o args=), otherwise the "
         "per-session-unique value from an explicit /rename call (see cross-session-coordination.md's "

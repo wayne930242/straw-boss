@@ -51,7 +51,7 @@ agent's own fleet.
 
 `wait` and `claim-port` block/sleep internally, unlike the bare `acquire`
 primitive they're built on. This is deliberate here, unlike this plugin's
-main-agent-level Monitor-based polling loops (see plan-mechanics.md), which
+main-agent-level background status watcher (see plan-mechanics.md), which
 stay external because the main agent needs to remain responsive and observable
 while watching several tasks at once. A single dispatched task waiting on
 one resource has no such audience -- nothing outside it needs turn-by-

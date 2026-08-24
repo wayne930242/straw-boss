@@ -7,8 +7,8 @@
 the main agent's reply and record the resolution, atomically.
 
 See skills/dispatching-work/references/plan-mechanics.md's "Main-agent-
-action checkpoints". Only ever targets `mode: herdr-pane`, `agent_kind:
-claude` -- the only combination that can report this checkpoint.
+action checkpoints". Only targets `mode: herdr-pane`; herdr provides the
+provider-neutral live addressing used for both supported agent kinds.
 
 Unlike every other script here, this one shells out to `herdr` instead of
 only reading/writing JSON -- required so "the reply was sent" and "the
@@ -133,10 +133,14 @@ def send_reply(name: str, reply: str) -> None:
     run_herdr(["agent", "prompt", name, reply])
 
 
-def read_transcript(name: str) -> str:
+def read_transcript(name: str, agent_kind: str) -> str:
     # `agent read` (confirmed live) has no JSON output mode at all --
     # `--format` is only `text`/`ansi` -- its stdout *is* the transcript.
     args = ["agent", "read", name, "--lines", str(CONFIRM_READ_LINES)]
+    if agent_kind == "codex":
+        # Confirmed live: herdr's default `recent` source can be empty for a
+        # Codex pane even though its visible screen contains the prompt.
+        return run_herdr_raw([*args, "--source", "visible"])
     try:
         return run_herdr_raw(args)
     except ValueError as exc:
@@ -172,9 +176,9 @@ def reply_landed(transcript: str, reply: str) -> bool:
     return normalize_whitespace(transcript).find(normalize_whitespace(reply)) >= 0
 
 
-def confirm_landed(name: str, reply: str) -> bool:
+def confirm_landed(name: str, reply: str, agent_kind: str) -> bool:
     for attempt in range(CONFIRM_POLL_ATTEMPTS):
-        if reply_landed(read_transcript(name), reply):
+        if reply_landed(read_transcript(name, agent_kind), reply):
             return True
         if attempt < CONFIRM_POLL_ATTEMPTS - 1:
             time.sleep(CONFIRM_POLL_INTERVAL_S)
@@ -189,10 +193,10 @@ def reply_to_worker(worker_instruction_path: str, reply: str) -> dict[str, Any]:
 
     mode = instruction.get("mode")
     agent_kind = instruction.get("agent_kind")
-    if mode != "herdr-pane" or agent_kind != "claude":
+    if mode != "herdr-pane" or agent_kind not in ("claude", "codex"):
         raise ValueError(
             f"worker {inst_path} is mode={mode!r} agent_kind={agent_kind!r} -- "
-            f"awaiting-main-agent only exists for mode=herdr-pane, agent_kind=claude workers"
+            "awaiting-main-agent requires a herdr-pane worker using a supported agent kind"
         )
 
     herdr_pane_id = instruction.get("herdr_pane_id")
@@ -215,9 +219,9 @@ def reply_to_worker(worker_instruction_path: str, reply: str) -> dict[str, Any]:
     # A genuine herdr failure (timeout, pane gone) propagates immediately
     # and never triggers a resend -- only a poll window that completes
     # without ever finding the reply retries below.
-    if not confirm_landed(name, reply):
+    if not confirm_landed(name, reply, str(agent_kind)):
         send_reply(name, reply)
-        if not confirm_landed(name, reply):
+        if not confirm_landed(name, reply, str(agent_kind)):
             raise ValueError(
                 f"sent the reply to {name!r} via herdr (that call itself succeeded) but could not "
                 f"confirm it landed in the transcript after one retry -- likely still queued in a "

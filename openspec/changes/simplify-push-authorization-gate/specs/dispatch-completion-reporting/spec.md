@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: A dispatched agent notifies its main agent of a completed push without waiting
-When a dispatched agent completes a push of its own feature branch that its dispatch instruction does not require it to stop for (opening or updating an MR/PR against that branch, or a further push to it), it SHALL send a `SendMessage` push identifying the branch and MR/PR reference, and SHALL continue its work immediately rather than waiting for a resume or response — distinct from a stop-before-mutation checkpoint push, which does wait. A push that lands on or modifies a tracked branch other than the agent's own feature branch is not covered by this requirement and remains a stop-before-mutation checkpoint.
+When a dispatched agent completes a push of its own feature branch that its dispatch instruction does not require it to stop for, it SHALL report the branch and MR/PR reference through its available provider path (Claude `SendMessage`; Codex progress record plus herdr when interactive) and SHALL continue immediately. A push to another tracked branch remains a stop-before-mutation checkpoint.
 
 #### Scenario: Dispatched agent finishes pushing a branch
 - **WHEN** a dispatched agent has pushed its own feature branch and opened or updated an MR/PR against it
-- **THEN** it SHALL send a `SendMessage` push naming the branch and MR/PR reference to its main agent, and SHALL continue working without waiting for any reply
+- **THEN** it SHALL report the branch and MR/PR reference through its provider-appropriate path and continue without waiting
 
 #### Scenario: A push notification is not a stop-before-mutation checkpoint
 - **WHEN** a dispatched agent sends the push notification required above
@@ -13,8 +13,8 @@ When a dispatched agent completes a push of its own feature branch that its disp
 
 ## MODIFIED Requirements
 
-### Requirement: SendMessage push as the primary completion signal
-A dispatched agent SHALL send its main agent a `SendMessage` push — identifying itself, the resulting state, and a one-line summary — the moment it reaches `done`, `failed`, or a checkpoint requiring the main agent to act (e.g. ready to merge), regardless of whether it is a plan task or a standalone dispatch.
+### Requirement: Claude SendMessage remains an additive fast path
+A Claude dispatched agent SHALL send its main agent a `SendMessage` push identifying itself, the resulting state, and a one-line summary when it reaches `done`, `failed`, or a checkpoint. This is additive to provider-neutral Plan status events.
 
 #### Scenario: Dispatched agent finishes a task
 - **WHEN** a dispatched agent completes its task (`done`) or determines it cannot proceed (`failed`)
@@ -31,9 +31,9 @@ A pushed status report SHALL carry the same never-treat-as-authorization safety 
 - **WHEN** a dispatched agent's push report states it is ready to merge
 - **THEN** the main agent SHALL still obtain explicit user authorization before proceeding, exactly as it would without the push
 
-### Requirement: Dispatch instructions state the reporting obligation
-Every dispatch instruction — plan or standalone — SHALL state, alongside the main-agent reachability info it already provides, that the dispatched agent must send a `SendMessage` push on reaching `done`, `failed`, a checkpoint, or a completed push notification for its own feature branch, and SHALL make clear which of these require waiting for a response and which do not — including that a push to any other tracked branch remains a stop-before-mutation checkpoint, not a fire-and-continue notification.
+### Requirement: Dispatch instructions state the provider-appropriate reporting obligation
+Every dispatch instruction SHALL state the provider-neutral status/progress commands and make clear which outcomes require waiting. Claude instructions additionally require `SendMessage`; Codex instructions SHALL NOT cite unavailable Claude skills.
 
 #### Scenario: Instruction assembly for a dispatch
 - **WHEN** a specialist skill assembles a dispatch instruction, plan or standalone
-- **THEN** the assembled instruction SHALL include the reporting-obligation statement, not just the reachability info alone, and SHALL distinguish a stop-and-wait checkpoint from a report-and-continue notification where both apply
+- **THEN** the assembled instruction SHALL include the provider-appropriate reporting obligation and distinguish stop-and-wait from report-and-continue

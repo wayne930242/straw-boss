@@ -6,27 +6,26 @@ See `proposal.md` - Why for motivation. Relevant current state:
 - `scripts/wrap-up-task.py`'s terminal-status guard is a membership test (`status not in ("done", "failed", "cancelled")`), not an enumerated list of non-terminal values — a new non-terminal status is refused automatically with zero code change, only its two hardcoded error-message strings mention "awaiting authorization or user input" by name.
 - `scripts/get-main-agent.py` is the existing worker→main-agent reachability lookup: pure JSON read, no side effects, no subprocess. It exists because the *dispatched agent* needs to resolve its main agent's reachability from its own instruction file.
 - Every established herdr-CLI invocation (`herdr agent get`, `herdr agent prompt`, `herdr agent read`) and every `SendMessage` send in this codebase is issued directly by the calling agent as its own tool call — no existing script shells out to `herdr` or sends a message on an agent's behalf. `scripts/*.py` are pure state (JSON) I/O today.
-- `awaiting-user-input`/`awaiting-authorization` are herdr-pane-only by construction: a `claude -p` process has no live pane to pause in, so a `claude-p` task that hits an unresolvable blocker already reports `failed` with the situation in `--note` instead (`plan-mechanics.md`'s "User-clarification checkpoints").
+- `claude-p` has no resumable live pane, so a task that hits an unresolvable blocker reports `failed`; herdr-pane workers pause live, while headless Codex checkpoints can be continued later with `codex exec resume`.
 - `dispatch-mechanics.md`'s herdr-pane dispatch step 6.5 already established the pattern for confirming a `herdr agent prompt` actually landed (read the pane's transcript back, don't trust the CLI's success return alone) after a documented live failure where a first-run interruption swallowed a submitted prompt while the CLI still reported success.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Give a dispatched agent blocked on the main agent's own judgment/authority a first-class, trackable checkpoint, reusing the existing status-file and `Monitor`-fallback machinery rather than inventing a parallel one.
+- Give a dispatched agent blocked on the main agent's own judgment/authority a first-class, trackable checkpoint, reusing the durable status-file machinery rather than inventing a parallel one.
 - Make "the main agent replied" and "the checkpoint is no longer silently stale" the same provable event, not two steps the main agent can complete only one of.
 - Leave every file's existing schema untouched — purely additive. (One correction made along the way, not a behavior change: `notifying-main-agent`'s own instructions claimed a non-`done`/`failed` checkpoint has no status-file write, contradicting `plan-mechanics.md`'s own "Authorization checkpoints"/"User-clarification checkpoints" and `report-task-status.py`'s `VALID_STATUSES`, which already write `awaiting-authorization`/`awaiting-user-input` today. Fixed as part of this change since the new checkpoint sits right next to that wrong claim.)
 
-**Non-Goals (see proposal.md's Impact section for the two deferred items):**
+**Non-Goals:**
 - No worker-side bounded reminder/retry while blocked.
-- No fix to `Monitor`'s per-filename (not per-filename-plus-status) dedup.
-- No support for this checkpoint on `claude-p` — unchanged from the existing `awaiting-user-input`/`awaiting-authorization` limitation; a `claude-p` task facing this kind of blocker continues to report `failed` with the situation in `--note`.
-- No change to how the *worker* sends its initial push (`SendMessage`, per the existing required mechanism) — only the main agent's reply path is new.
+- No support for pausing and resuming a `claude-p` process; it continues to report `failed` with the situation in `--note`.
+- No attempt to make a provider-specific fast channel authoritative; durable status remains the scheduling source of truth.
 
 ## Decisions
 
 ### The new status reuses the existing status-file shape; no new file format
-`awaiting-main-agent` is added to `VALID_STATUSES` and otherwise flows through the exact machinery `awaiting-user-input` already does (same file, same writer, same `Monitor` watched-list pattern, same `wrap-up-task.py` refusal-by-membership check).
-**Alternative considered:** encode "who answers" as a note-level convention inside the existing `awaiting-user-input` status (e.g. a `--note` prefix). Rejected — it's not machine-checkable, so `Monitor` and `wrap-up-task.py` can't distinguish the two without parsing free text, defeating the point of making this a first-class state.
+`awaiting-main-agent` is added to `VALID_STATUSES` and otherwise flows through the exact machinery `awaiting-user-input` already does (same file, same writer, same content-revision watcher, same `wrap-up-task.py` refusal-by-membership check).
+**Alternative considered:** encode "who answers" as a note-level convention inside the existing `awaiting-user-input` status (e.g. a `--note` prefix). Rejected — it's not machine-checkable, so the watcher and `wrap-up-task.py` can't distinguish the two without parsing free text, defeating the point of making this a first-class state.
 
 ### The reply is delivered by resuming the worker's own pane, not by a new SendMessage
 The main agent's reply is sent with `herdr agent prompt` into the worker's existing pane — the same resume mechanism `dispatch-authority`'s existing "Redirect a dispatched agent mid-task" requirement already uses, and the same way a human answers `awaiting-user-input` today (directly in the pane, not via a queued message).
@@ -48,7 +47,7 @@ Every other script in `scripts/` only reads/writes JSON; the actual herdr/`SendM
 `reply_landed` collapses all whitespace runs to a single space in both the transcript and the reply before searching, instead of an exact substring match. Confirmed live against a real herdr pane: a long reply that hard-wraps at the pane's column width turns the space before the wrap point into a newline, so an exact match against the original text fails even though the reply landed — the script then retried, and the worker genuinely executed the same reply a second time (the exact non-idempotent double-send this whole feature exists to prevent, reproduced live during task 5.1b before this fix). `CONFIRM_READ_LINES=500` was separately confirmed live: the original prompt was still findable in a 500-line read after 80 lines of the worker's own subsequent output, but not in the original 40-line window — validating the round-3 advisor fix against real pane behavior, not just a mock.
 
 ### Resolution is recorded as additive fields on the existing status file, not a new status value
-On confirmed delivery, `reply-to-worker.py` adds `resolved_by_main_agent_at` (timestamp) and `main_agent_reply` (the text sent) to the *same* status JSON, leaving `status: "awaiting-main-agent"` unchanged. This lets `Monitor`/a human distinguish "already replied, worker hasn't resumed yet" from "never replied to" without adding a new enum value or touching `report-task-status.py`'s writer contract (still worker-only, untouched by this change). These fields are naturally superseded the next time the worker itself writes a terminal status — that write fully overwrites the file (existing `report-task-status.py` behavior, unchanged), which is fine: the distinction these fields exist for is only useful during the window the checkpoint is still open.
+On confirmed delivery, `reply-to-worker.py` adds `resolved_by_main_agent_at` (timestamp) and `main_agent_reply` (the text sent) to the *same* status JSON, leaving `status: "awaiting-main-agent"` unchanged. This lets the watcher and a human distinguish "already replied, worker hasn't resumed yet" from "never replied to" without adding a new enum value or touching `report-task-status.py`'s writer contract. These fields are naturally superseded the next time the worker itself writes a terminal status.
 
 ### `wrap-up-task.py` needs no logic change, only its error-message text
 Confirmed by reading the script: the terminal-status guard is `status not in ("done", "failed", "cancelled")`, a membership test — `awaiting-main-agent` is refused automatically. Only the two hardcoded strings ("...still awaiting authorization or user input") should be updated to also name the new checkpoint, for accuracy — cosmetic, no behavior change.
@@ -67,7 +66,7 @@ A worker only knows `awaiting-main-agent` is available if its own dispatch instr
 - **[Risk — confirmed live, fixed] `herdr agent read` returns no JSON at all** (only `--format text|ansi`) → An earlier version parsed it as JSON like `agent get`/`agent prompt`, which raised on every real invocation. Confirmed and fixed during task 5.1b: `agent read` gets its own raw-stdout path; `agent get`'s `.result.agent.name` is now confirmed live, not inferred.
 - **[Risk — confirmed live, fixed] Line-wrapped replies broke exact substring matching, causing a real duplicate send** → A long reply hard-wraps at the pane's column width; the space at the wrap point becomes a newline, so `transcript.rfind(reply)` misses it even though it landed. Confirmed live during task 5.1b: this triggered the script's own retry, and the worker executed the same reply twice. Mitigation: whitespace-normalized comparison (collapse all whitespace runs to one space on both sides before matching).
 - **[Trade-off] This checkpoint remains unavailable to `claude-p` workers** → Accepted, unchanged from the existing `awaiting-user-input`/`awaiting-authorization` limitation; not a new gap introduced here.
-- **[Trade-off] `Monitor`'s per-filename dedup can still miss this checkpoint's later resolution** (the pre-existing bug noted in proposal.md) → Explicitly deferred; a `Monitor` loop that already marked a task's status file "seen" while it was `awaiting-main-agent` won't re-emit once the worker later writes `done`/`failed`, same limitation the two existing checkpoints already have today. Not made worse by this change, not fixed by it either.
+- **[Resolved follow-up] Per-filename dedup could miss a checkpoint's later terminal rewrite** → `watch-plan-status.py` now deduplicates by full content revision and retries malformed partial writes, so every valid rewrite emits and a restarted watcher recovers current state.
 
 ## Migration Plan
 

@@ -11,15 +11,13 @@ sibling append-only log next to the dispatch's own instruction file
 (<home>/.straw-boss/dispatch/<app>--<slug>.json ->
 <app>--<slug>.progress.jsonl), never to the instruction file itself.
 
-Deliberately a separate file from any status file a Monitor loop
-watches: plan-mechanics.md's Monitor dedups strictly by filename, so an
-intermediate write to a status file's own filename would be treated as
-"already seen," silently swallowing a later genuine terminal write to
-that same filename. This script never touches a status file.
+Deliberately a separate file from the status state watched for scheduling:
+progress notes may be numerous and do not change task readiness. The Plan
+watcher deduplicates valid status files by content revision; this append-only
+log remains a distinct human-readable progress stream.
 
-This is a log, not a notification -- it never sends a SendMessage push.
-See skills/notifying-main-agent/SKILL.md's "Branch: Report your own
-status" for the terminal-state/checkpoint push, which is separate.
+This is a log, not a notification. Terminal states and checkpoints use
+report-task-status.py; provider-specific fast reporting is separate.
 """
 
 from __future__ import annotations

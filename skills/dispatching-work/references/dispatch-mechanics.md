@@ -1,6 +1,6 @@
 # Dispatch mechanics
 
-Exact file formats and command sequences for `dispatching-work`. Everything below reflects what was actually verified against `herdr` v0.8.0, the installed `claude` CLI, and (where an agent kind other than `claude` is involved) the installed `codex-cli` 0.147.0 — not assumed from general knowledge. If a `herdr`/`claude`/`codex` upgrade changes any of this, re-verify rather than trusting this file blindly.
+Exact file formats and command sequences for `dispatching-work`. Everything below reflects what was actually verified against `herdr` v0.8.0, the installed `claude` CLI, and (where an agent kind other than `claude` is involved) `codex-cli` 0.149.1 — not assumed from general knowledge. If a `herdr`/`claude`/`codex` upgrade changes any of this, re-verify rather than trusting this file blindly.
 
 **Agent kind and `mode` are orthogonal — resolved independently, neither implies the other.** `mode` (`claude-p` / `herdr-pane`) is transport only: headless one-shot vs. a live joinable pane. Agent kind (`claude`, `codex`, ...) is which CLI actually runs inside that transport — see "Resolving the agent kind" below.
 
@@ -16,11 +16,11 @@ Resolution order, cheapest/most-specific first:
 
 1. **An explicit override for this one dispatch** — the main agent decided, for this specific task, to use a different kind than the app's own default (a judgment against root `CLAUDE.md`'s agent-routing policy, if the project has one from `init`'s Task 3 — see `init`'s `SKILL.md`). State the kind and the reasoning before dispatching, the same way mode is already stated.
 2. **The resolved app's `apps.json` entry** — its `agentKind` field (`skills/init/references/apps-config-schema.md`). `null`/absent means `claude`.
-3. **`claude`** — the fallback when neither of the above applies. This is also the *only* allowed value for a plan or batch task, regardless of what the app's `agentKind` says — see "Standalone-only" below.
+3. **`claude`** — the fallback when neither of the above applies.
 
 Pass the resolved value as `--agent-kind` to `dispatch-task.py write` (default `"claude"` if omitted, so an unmodified caller sees no behavior change). It's recorded verbatim on the instruction file's `agent_kind` field.
 
-**Standalone-only.** A dispatch whose resolved agent kind is not `claude` must be a standalone dispatch — never a plan task or a batch item. `dispatch-task.py write` enforces this itself (refuses `--agent-kind` other than `claude` when `--plan`/`--task-id` are also given), but the resolution step above should never even attempt it: if a plan/batch task's app default resolves to a non-`claude` kind, use `claude` for that task instead and state that the app's own default was overridden and why — a codex-kind (or other non-claude) agent doesn't load `.claude/skills/`, so it can't run `notifying-main-agent`, isn't reachable by name over `SendMessage`/`ListAgents`, and has no built-in way to honor the plan's `done`/`failed`/`awaiting-*` status-file protocol.
+**Plan and batch support.** The resolved agent kind is preserved for standalone, batch, and Plan tasks. A Codex agent does not load `.claude/skills/` and is not reachable through Claude `SendMessage`/`ListAgents`, so its dispatch instruction must state the provider-neutral `report-task-status.py --instruction-path` contract explicitly. `watch-plan-status.py` observes those persisted transitions and drives wave scheduling; no Claude mailbox identity is required.
 
 **Model/effort.** When the routing-policy judgment in step 1 also calls for a specific model or reasoning-effort (not just a different kind), pass `--agent-model`/`--agent-effort` to `dispatch-task.py write` too — purely for the instruction file's own record-keeping, not validated against any fixed list. Leaving both unset means the launched CLI uses whatever it's already configured with (for `codex`, that's `~/.codex/config.toml`'s own `model`/`model_reasoning_effort` — a perfectly reasonable default, not a gap).
 
@@ -82,7 +82,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   [--main-agent-pane-id <$HERDR_PANE_ID value>] [--main-agent-peer-name <renamed value>]
 ```
 
-`--agent-kind` defaults to `claude` if omitted — see "Resolving the agent kind" above for how to resolve it before calling this. `--agent-model`/`--agent-effort` are optional, unenforced record-keeping — only pass them when the resolution step actually chose an override. `--main-agent-pane-id` is the dispatching main agent's own current `$HERDR_PANE_ID` — pass it for a `herdr-pane` dispatch (omit for `claude-p`, which has no live pane); this is the same value the dispatch prompt's own reachability prose already states (per `cross-session-coordination.md`'s "Making the main agent addressable"), just also recorded structurally so the dispatched agent can read it back with `get-main-agent.py` instead of only recalling it from its own prompt. `--main-agent-peer-name` is required, with no default — the script refuses outright if it's omitted, since a silent fallback to a bare literal is a real `SendMessage` delivery hazard once more than one main agent might be running (confirmed to have actually happened). Resolve it first: this main agent's own `claude --name <value>` launch flag if it was started with one, otherwise the per-session-unique value from an explicit `/rename` call (e.g. `AgentMessaging-orchestrator-wF-p9`) — see `cross-session-coordination.md`'s "Making the main agent addressable" for the exact detection order.
+`--agent-kind` defaults to `claude` if omitted — see "Resolving the agent kind" above for how to resolve it before calling this. `--agent-model`/`--agent-effort` are optional, unenforced record-keeping. `--main-agent-pane-id` is the dispatching main agent's current `$HERDR_PANE_ID`; pass it for any `herdr-pane` dispatch and omit it for headless mode. `--main-agent-peer-name` is required only for Claude, whose `SendMessage` path needs a unique resolved target; omit it for Codex, which uses provider-neutral status events and (when interactive) the pane id instead.
 
 Prints `{"session_id": "...", "instruction_path": "..."}` — use that `session_id` for the actual dispatch command below, don't generate a second one. For a plan task (`--plan`/`--task-id` given), this also marks `plan.json`'s matching task `dispatched` and refuses (before writing anything) if that task isn't still `planned` — a double-dispatch never leaves a stray pending file behind. It refuses outright if an instruction already exists at that `--app`/`--slug` pair, too.
 
@@ -96,7 +96,7 @@ Three scripts, all keyed on the dispatch's own instruction path — a dispatched
 
 - **`get-main-agent.py --instruction-path <path>`** — reads back `main_agent_herdr_pane_id`/`main_agent_send_message_peer` from the instruction file. Call this right before sending the `SendMessage` push per `skills/notifying-main-agent/SKILL.md`'s "Branch: Report your own status" — it's the authoritative source, not the dispatch prompt's own prose recollection.
 - **`report-progress.py --instruction-path <path> --note "<text>"`** — appends a timestamped note to a sibling `<app>--<slug>.progress.jsonl`. Callable any number of times, at any point in the task. Never sends anything, never touches the instruction file — `peeking-work` reads this log's tail as its first move, so the main agent usually doesn't need to join the dispatched agent's live pane just to see what it's doing.
-- **`report-task-status.py --instruction-path <path> --status <status> --note "<text>"`** — writes this dispatch's terminal-state record: for a plan task, the existing `~/.straw-boss/plans/<slug>/status/<task_id>.json` (unchanged location — `Monitor`/`read-plan-status.py` need no changes); for a standalone dispatch, a new sibling `<app>--<slug>.status.json`. This is bookkeeping, not a notification — always pair a terminal-state write with the `SendMessage` push, never rely on the write alone (see `plan-mechanics.md`'s "Reporting status").
+- **`report-task-status.py --instruction-path <path> --status <status> --note "<text>"`** — writes this dispatch's state record: for a plan task, the existing `~/.straw-boss/plans/<slug>/status/<task_id>.json`; for a standalone dispatch, a sibling `<app>--<slug>.status.json`. Every Plan agent kind uses this interface. `watch-plan-status.py` turns each Plan file-content revision into an active scheduling event; Claude may additionally send its `notifying-main-agent` push as a fast path.
 
 `report-task-status.py` still also accepts its original `--plan`/`--task` form (mutually exclusive with `--instruction-path`) for a caller that already has the plan slug/task_id handy and no instruction path — e.g. the main agent's own `cancelled` write. A dispatched agent reporting on itself should always prefer `--instruction-path`.
 
@@ -161,7 +161,19 @@ cd "<app_dir>" && codex exec --json <sandbox/approval flags from the mapping tab
 - Confirmed live: the first JSONL line is always `{"type":"thread.started","thread_id":"<uuid>"}`. That `thread_id` is what `dispatch-task.py confirm --observed-session-id` records — `codex exec` accepts no `--session-id`-equivalent flag, so nothing is pre-assigned the way `claude --session-id` does.
 - A benign `{"type":"item.completed","item":{"type":"error","message":"..."}}` event can appear on a completely successful run (confirmed live: a "skill descriptions were shortened" notice) — an `item.completed` of `type: "error"` is not by itself proof of failure. Treat a terminal `{"type":"turn.completed",...}` event (or the process exiting 0) as success; its absence, or a non-zero exit, as failure.
 - Once launched, confirm it per "Instruction file" above: `dispatch-task.py confirm --app <app> --slug <short-slug> --observed-session-id <thread_id from the first event>` — no `--pane-id`/`--tab-id` for this mode, same as the claude-kind `claude-p` case.
-- No `--name`-equivalent flag exists for any codex subcommand (confirmed via `--help`) — not addressable via `SendMessage`/`ListAgents`, and never used for a plan/batch task, per "Resolving the agent kind"'s standalone-only rule above.
+- No `--name`-equivalent flag exists for any codex subcommand (confirmed via `--help`) — it is not addressable via Claude `SendMessage`/`ListAgents`. Plan correctness instead uses the recorded thread id plus provider-neutral status events.
+
+### Continuing a headless Codex checkpoint
+
+The instruction file's confirmed `session_id` is the Codex thread id. After the appropriate authority branch supplies the reply, continue the same task instead of creating a new dispatch:
+
+```bash
+cd "<repo_root>" && codex exec resume --json \
+  [-m <agent_model>] [-c model_reasoning_effort=<agent_effort>] \
+  "<recorded session_id>" "<reply plus the reminder to report the next status through the same instruction path>"
+```
+
+The resumed turn overwrites the same Plan status file when it reaches its next checkpoint or terminal state; `watch-plan-status.py` emits the new content revision. Do not call `dispatch-task.py confirm` again and do not create a new instruction file.
 
 ## `herdr-pane` dispatch — pane setup (all agent kinds)
 
@@ -243,7 +255,7 @@ Continues from the same steps 0-3 pane setup above. Confirmed live end-to-end (s
    ```bash
    herdr agent start "<unique-name>" --kind codex --pane <new_pane_id> -- <sandbox/approval flags from the mapping table above> [-m <agent_model>] [-c model_reasoning_effort=<agent_effort>]
    ```
-   Same rule as the headless case: `-m`/`-c model_reasoning_effort=` only when the resolution step chose an override, omitted otherwise. No `--session-id`/`--name`-equivalent flags exist for codex (confirmed via `--help`) — herdr's own agent handle (the first argument) is the only addressing this dispatch gets, per "Resolving the agent kind"'s standalone-only rule above.
+   Same rule as the headless case: `-m`/`-c model_reasoning_effort=` only when the resolution step chose an override, omitted otherwise. No `--session-id`/`--name`-equivalent flags exist for codex (confirmed via `--help`) — herdr's own agent handle (the first argument) is its live-pane addressing surface, while Plan scheduling uses persisted status events.
 5. **Handle the first-run trust prompt — codex has its own, shaped just like claude's.** Confirmed live: a fresh codex pane shows "Do you trust the contents of this directory?" and sets `agent_status: blocked`, cleared the identical way:
    ```bash
    herdr agent send-keys "<unique-name>" enter

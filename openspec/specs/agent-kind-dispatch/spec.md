@@ -32,12 +32,12 @@ Every dispatched agent, regardless of its agent kind, SHALL be launched with a p
 - **WHEN** the main agent's own session is running under a restricted permission mode and it dispatches an agent whose kind is not `claude`
 - **THEN** the dispatched agent SHALL be launched with that agent kind's own equivalent restriction, never with fewer restrictions than the main agent's own mode
 
-### Requirement: Non-claude dispatch is restricted to standalone tasks
-A dispatch whose resolved agent kind is not `claude` SHALL be a standalone dispatch only. It SHALL NOT be used for a plan task or a batch item.
+### Requirement: Agent-kind resolution applies to standalone, batch, and Plan tasks
+A dispatch SHALL preserve its resolved supported agent kind regardless of whether it is standalone, a batch item, or a dependency-tracked Plan task. Plan state reporting and dependency scheduling SHALL use provider-neutral status interfaces rather than forcing a non-Claude task to Claude.
 
-#### Scenario: A plan or batch task resolves to a non-claude app default
-- **WHEN** a plan task or batch item targets an app whose configured agent kind is not `claude`
-- **THEN** that task SHALL be dispatched under `claude` instead, and the main agent SHALL state that it overrode the app's configured default and why, rather than silently dispatching under the app's default or silently dispatching under `claude` without explanation
+#### Scenario: A Plan task resolves to Codex
+- **WHEN** a Plan task targets an app whose configured or explicitly selected agent kind is `codex`
+- **THEN** that task SHALL dispatch under Codex, record `agent_kind: codex`, and participate in the same status/ready-wave protocol as a Claude task
 
 ### Requirement: Unresolvable agent kind is refused, not substituted
 When an app's configuration or a dispatch's explicit override names an agent kind that has no known launch/permission mapping, the dispatch SHALL be refused before any process is launched.

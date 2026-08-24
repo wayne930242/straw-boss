@@ -41,28 +41,17 @@ If the request touches more than one app, check each pair against the resolved a
 
 **Verification:** a multi-app request with a configured `crossAppSkills` pointer names that skill explicitly rather than describing an ad-hoc flow.
 
-## Task 4: Check for an existing OpenSpec change
+## Task 4: Decompose into a plan, if the request needs one
 
-For implementation work only (skip for read-only requests). For each resolved app, do a light scan of its `openspec/changes/` (excluding `archive/`) if the app uses OpenSpec — not every project does. Don't read every proposal in full; a quick look at change names (and, if a name alone doesn't tell you, a skim of `proposal.md`'s `## Why`) is enough to judge whether anything looks related to this request.
+Only for implementation work that resolved to more than one task — either multiple apps, or multiple sequential phases within one app. A request that resolves to exactly one task skips this task entirely; go straight to Task 5.
 
-- **Nothing looks related:** say nothing, move on — this is the common case and shouldn't interrupt every request with a question.
-- **Something looks related:** stop and ask the user before composing any task description — name the change, state what it looks like it covers, and ask whether this request should continue/extend that change, is genuinely unrelated new work, or something else. Do not guess an answer yourself and do not silently fold the change into the request's description.
-
-The app's own workflow owns *how* that change gets worked (its own project-level OpenSpec skill if it has one, or your global OpenSpec workflow otherwise) — this task's job is only to notice the change exists and get the user's call on whether it's in scope, not to drive it.
-
-**Verification:** every resolved app with OpenSpec history was scanned; the user was asked about anything that looked related before task description composition began, and was never asked when nothing looked related.
-
-## Task 5: Decompose into a plan, if the request needs one
-
-Only for implementation work that resolved to more than one task — either multiple apps, or multiple sequential phases within one app. A request that resolves to exactly one task skips this task entirely; go straight to Task 6.
-
-Invoke `grilling` (or this project's equivalent decomposition-confirmation skill) to confirm the decomposition and every dependency edge with the user — one task at a time, do not silently assume how the pieces relate. Once confirmed, write `~/.straw-boss/plans/<plan-slug>/plan.json` (task list, dependency graph, high-level per-task description — not a detailed spec; the dispatched agent for each task works out its own detailed spec using whatever process its own app uses, deferring to an existing OpenSpec change per Task 4 where the user confirmed one applies) and create the empty `~/.straw-boss/plans/<plan-slug>/status/` and `~/.straw-boss/plans/<plan-slug>/artifacts/` directories. See `dispatching-work`'s `references/plan-mechanics.md` for the exact schema, including the "Cross-task artifacts" convention for how a dependent task gets at its prerequisite's real output — read it, don't reconstruct it from memory.
+Invoke `grilling` (or this project's equivalent decomposition-confirmation skill) to confirm the decomposition and every dependency edge with the user — one task at a time, do not silently assume how the pieces relate. Once confirmed, write `~/.straw-boss/plans/<plan-slug>/plan.json` (task list, dependency graph, high-level per-task description — not a detailed spec) and create the empty `~/.straw-boss/plans/<plan-slug>/status/` and `~/.straw-boss/plans/<plan-slug>/artifacts/` directories. Each dispatched agent applies its target app's own development and SDD route only after entering that app; Straw Boss does not pre-shape or persist that contract. See `dispatching-work`'s `references/plan-mechanics.md` for the exact schema, including the "Cross-task artifacts" convention for how a dependent task gets at its prerequisite's real output — read it, don't reconstruct it from memory.
 
 **Verification:** a multi-task request has a confirmed-with-the-user dependency graph before `plan.json` is written; a single-task request never creates a plan.
 
-## Task 6: Hand off
+## Task 5: Hand off
 
-This task's job ends at naming the resolved app(s) (and, if Task 5 ran, the plan) — it does not call `dispatching-work` itself and does not decide whether to dispatch. That call — a plain subagent versus a dispatched agent rooted in the app — is `boss-say`'s execution-tier triage (its Task 1), made per item regardless of whether the work is implementation, audit, research, or diagnosis; it is never fixed by this skill or by which caller invoked it. The caller (the specialist skill that invoked this, after applying `boss-say`'s tier call) assembles the actual task description(s) and invokes `dispatching-work` if the tier call landed on dispatch — with the plan when Task 5 produced one, or a single instruction otherwise. Whatever Task 4 found (an existing change to continue, or nothing) travels with that hand-off — the caller doesn't re-derive it.
+This task's job ends at naming the resolved app(s) (and, if Task 4 ran, the plan) — it does not call `dispatching-work` itself and does not decide whether to dispatch. That call — a plain subagent versus a dispatched agent rooted in the app — is `boss-say`'s execution-tier triage (its Task 1), made per item regardless of whether the work is implementation, audit, research, or diagnosis; it is never fixed by this skill or by which caller invoked it. The caller (the specialist skill that invoked this, after applying `boss-say`'s tier call) assembles the actual task description(s) and invokes `dispatching-work` if the tier call landed on dispatch — with the plan when Task 4 produced one, or a single instruction otherwise. The dispatched instruction carries the user's intent and tells the agent to follow the target app's own development route after entering it; Straw Boss does not select or run that route itself.
 
 **Verification:** this task ends with the resolved app(s) (and plan, if any) named and control returned to the caller, not with `dispatching-work` already invoked here and not with a dispatch-or-not decision made here.
 
@@ -78,8 +67,7 @@ This task's job ends at naming the resolved app(s) (and, if Task 5 ran, the plan
 - "It's legacy but the user probably wants it fixed there" — redirect and say so; let the user override explicitly.
 - "A configured cross-app skill exists but describing the flow myself is simpler" — no, name the skill explicitly.
 - "It's basically all one change, route as a single app" — a multi-app request gets every app named and dispatched separately.
-- "The decomposition is obvious, skip grilling and just write the plan" — no, see Task 5: the user confirms the breakdown and every dependency edge before `plan.json` is written, every time.
-- "Found a related change, but it's obviously what the user meant, just proceed" — no, see Task 4: ask, don't assume, even when it seems obvious.
+- "The decomposition is obvious, skip grilling and just write the plan" — no, see Task 4: the user confirms the breakdown and every dependency edge before `plan.json` is written, every time.
 - "No `apps.json`, stop and tell the user to run `init` first" — no, only for a repo that genuinely reads as a monorepo; a single-app-looking repo gets an implicit app and proceeds, per Task 1.
 - "No `apps.json` and the repo has an `apps/` directory, just guess which one" — no, that's real ambiguity; ask, or suggest `init`.
 

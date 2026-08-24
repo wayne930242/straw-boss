@@ -11,12 +11,11 @@ dispatch-mechanics.md). Writes only this task's own status file -- never
 plan.json, never another task's file -- so concurrent reports from
 different tasks never contend for the same path.
 
-This status write is bookkeeping (what plan.json sync and wave
-computation read for a plan task; a durable record for a pull-based
-fallback check either way) -- it is not itself a notification. A
-dispatched agent also sends a SendMessage push per
-skills/notifying-main-agent/SKILL.md's "Branch: Report your own status";
-this script does not and cannot send that push itself.
+This is the provider-neutral durable state interface. For a plan task,
+watch-plan-status.py turns each file-content revision into the scheduling
+event that drives wave computation. A Claude dispatched agent may also send
+the SendMessage fast-path defined by skills/notifying-main-agent/SKILL.md;
+Codex plan correctness does not depend on that provider-specific channel.
 
 Two ways to address which task's status file to write, mutually
 exclusive:
