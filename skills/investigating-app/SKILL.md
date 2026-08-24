@@ -23,7 +23,7 @@ Invoke `work-on` now. Do not proceed without the target app.
 Apply `boss-say`'s execution-tier judgment (its Task 1), per app: does this research need the app's own harness, or is your own global `investigating` skill, run right here, enough?
 
 - **Solo:** invoke your `investigating` skill directly in this session (once per resolved app if `work-on` named more than one), giving it the resolved app's directory as known context.
-- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory. The worker decides for itself whether to run an app-local research skill or your global `investigating` skill — that's the worker's call, not something to dictate in the dispatch instruction. The dispatch instruction still states the `notifying-main-agent` pointer (main-agent reachability for this dispatch's mode), the terminal-state record on `done`/`failed` (`report-task-status.py --instruction-path <path> --status <done|failed> --note "<summary>"`), and the required `SendMessage` push — same as any other dispatch, not something to skip because the work is read-only — `dispatching-work`'s Task 3 assembles this.
+- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory. The worker decides for itself whether to run an app-local research skill or your global `investigating` skill. The instruction states `report-task-status.py --instruction-path <path> --status <done|failed> --note "<summary>"`, which writes before notifying the recorded herdr pane, plus `notifying-main-agent` routing for Claude workers. `SendMessage` is allowed only as Claude-to-Claude fallback.
 
 Either way, do not run a parallel or simplified investigation yourself instead of handing off to the real methodology.
 

@@ -14,8 +14,10 @@ different tasks never contend for the same path.
 This is the provider-neutral durable state interface. For a plan task,
 watch-plan-status.py turns each file-content revision into the scheduling
 event that drives wave computation. A Claude dispatched agent may also send
-the SendMessage fast-path defined by skills/notifying-main-agent/SKILL.md;
-Codex plan correctness does not depend on that provider-specific channel.
+the Claude-to-Claude SendMessage fallback defined by
+skills/notifying-main-agent/SKILL.md. When --instruction-path records a main
+agent herdr pane, this command prompts that pane after the durable write for
+every supported provider pairing.
 
 Two ways to address which task's status file to write, mutually
 exclusive:
@@ -49,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -125,6 +128,37 @@ def report_status(plan_slug: str | None, task_id: str | None, instruction_path: 
     return path
 
 
+def notify_main_agent(instruction_path: str, status: str, note: str) -> bool:
+    inst_path = Path(instruction_path)
+    payload = load_json(inst_path)
+    pane_id = payload.get("main_agent_herdr_pane_id")
+    if not pane_id:
+        return False
+
+    agent_kind = payload.get("agent_kind", "unknown")
+    app = payload.get("app", "unknown-app")
+    dispatch_id = payload.get("task_id") or inst_path.name.removesuffix(".json")
+    summary = note or "no summary provided"
+    message = (
+        f"[from {agent_kind} dispatched agent {app}/{dispatch_id}] "
+        f"STATUS: {status} — {summary}"
+    )
+    try:
+        result = subprocess.run(
+            ["herdr", "agent", "prompt", str(pane_id), message],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError("herdr notification failed because the herdr executable was not found") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("herdr notification timed out") from exc
+    if result.returncode != 0:
+        raise ValueError(f"herdr notification failed with exit code {result.returncode}")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", default=None, help="plan slug (give together with --task, or use --instruction-path instead)")
@@ -145,6 +179,14 @@ def main() -> int:
         return 1
 
     print(f"wrote {path}")
+    if args.instruction_path is not None and args.status != "cancelled":
+        try:
+            notified = notify_main_agent(args.instruction_path, args.status, args.note)
+        except ValueError as exc:
+            print(f"error: status remains written at {path}, but {exc}", file=sys.stderr)
+            return 1
+        if notified:
+            print("notified main agent through herdr")
     return 0
 
 

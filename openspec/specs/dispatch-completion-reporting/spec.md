@@ -18,22 +18,30 @@ Every Plan dispatched agent SHALL persist each checkpoint or terminal outcome th
 - **WHEN** a new watcher starts while Plan status files already exist
 - **THEN** it SHALL emit every current valid status once so scheduling state can be recovered
 
-### Requirement: Claude SendMessage remains an additive fast path
-A Claude dispatched agent SHALL continue to send the `SendMessage` report defined by `notifying-main-agent`. That push SHALL reduce notification latency but SHALL NOT be required for Plan dependency correctness. A Codex dispatch SHALL NOT be required to provide a Claude mailbox identity.
+### Requirement: Herdr is the primary live notification path
+Whenever a dispatch instruction records a main-agent herdr pane, the shared status command SHALL persist the checkpoint or terminal outcome first and then notify that pane with `herdr agent prompt`, regardless of either endpoint's provider. A failed prompt SHALL NOT roll back the durable state.
 
-#### Scenario: Claude Plan task finishes
-- **WHEN** a Claude Plan task persists `done` or `failed`
-- **THEN** it SHALL also send its Claude `SendMessage` report, while the status watcher independently emits the scheduling event
+#### Scenario: Mixed-provider Plan task finishes
+- **WHEN** a Claude or Codex Plan task reports `done` or `failed` to a Claude or Codex main agent whose pane is recorded
+- **THEN** the command SHALL write the status before prompting that pane, while the status watcher independently emits the scheduling event
 
-### Requirement: A Claude herdr-pane nudge may supplement its SendMessage push
-A Claude dispatched agent reachable via a herdr pane MAY additionally send a faster nudge into its main agent's own pane, but this SHALL NOT substitute for that Claude agent's `SendMessage` fast path. Codex uses its provider-neutral status record and may use the herdr pane directly when interactive.
+#### Scenario: Main agent cancels a dispatch
+- **WHEN** the main agent writes `cancelled` for a dispatch it is ending
+- **THEN** the command SHALL persist cancellation without prompting the main agent's own pane
 
-#### Scenario: Dispatched agent has both herdr and SendMessage reachability
-- **WHEN** a Claude dispatched agent's instruction gives it both a main-agent herdr pane id and a `SendMessage` peer name
-- **THEN** it SHALL still send the `SendMessage` push required above, whether or not it also sends a herdr nudge
+### Requirement: SendMessage is Claude-to-Claude fallback only
+`SendMessage` SHALL be offered only when both the dispatched agent and main agent are Claude. It MAY serve as fallback when no herdr pane is recorded or a herdr prompt fails, but SHALL NOT be recorded, required, or attempted when either endpoint is Codex.
+
+#### Scenario: Claude worker reports to Codex main agent
+- **WHEN** a Claude worker is dispatched by a Codex main agent
+- **THEN** its instruction SHALL use the recorded herdr pane and SHALL NOT carry or request a `SendMessage` peer
+
+#### Scenario: Claude-to-Claude herdr succeeds
+- **WHEN** a Claude worker's status command successfully prompts its Claude main agent's recorded pane
+- **THEN** it SHALL NOT also require `SendMessage`
 
 ### Requirement: Dispatch instructions state the provider-appropriate reporting obligation
-Every dispatch instruction SHALL include the exact provider-neutral progress/status commands. A Claude instruction SHALL additionally require `notifying-main-agent`; a Codex instruction SHALL be self-contained and SHALL NOT point to unavailable Claude skills or `SendMessage`.
+Every dispatch instruction SHALL include the exact provider-neutral progress/status commands, the main-agent provider, and only the reachability supported by the sender/receiver pair. A Claude instruction SHALL use `notifying-main-agent` for this routing; a Codex instruction SHALL be self-contained and SHALL NOT point to unavailable Claude skills or `SendMessage`.
 
 #### Scenario: Instruction assembly for a dispatch
 - **WHEN** a specialist skill assembles a dispatch instruction, plan or standalone
@@ -42,8 +50,8 @@ Every dispatch instruction SHALL include the exact provider-neutral progress/sta
 ### Requirement: Plan active detection is authoritative; standalone active detection remains a fallback
 The main agent SHALL keep the Plan status watcher active for scheduling. For a standalone dispatch, process/pane observation remains the fallback when the provider's notification path is absent or quiet.
 
-#### Scenario: Claude push arrives before its matching watcher event
-- **WHEN** a Claude Plan task's fast push arrives first
+#### Scenario: Herdr notification arrives before its matching watcher event
+- **WHEN** a Plan task's herdr notification arrives first
 - **THEN** the main agent MAY react immediately but SHALL still keep the watcher as the authoritative recoverable scheduling path
 
 #### Scenario: Standalone dispatch goes quiet
@@ -58,18 +66,18 @@ A pushed status report SHALL carry the same never-treat-as-authorization safety 
 - **THEN** the main agent SHALL still obtain explicit user authorization before proceeding, exactly as it would without the push
 
 ### Requirement: Main-agent reachability is recorded as a structured, script-readable field
-A dispatch instruction SHALL record the main-agent reachability available to its provider: herdr pane id when applicable, and a `SendMessage` peer name only when the agent kind supports that channel.
+A dispatch instruction SHALL record `main_agent_kind` independently from `agent_kind`, the main-agent herdr pane id when applicable, and a `SendMessage` peer name only for a Claude-to-Claude pair.
 
 #### Scenario: Dispatch instruction is written
 - **WHEN** a dispatch instruction is written, for `herdr-pane` or `claude-p` mode
-- **THEN** it SHALL record the applicable reachability fields without requiring a Claude peer name from Codex
+- **THEN** it SHALL record both endpoint providers and the applicable reachability fields without requiring or accepting a Claude peer name across providers
 
-#### Scenario: Claude dispatched agent prepares to send its push
-- **WHEN** a Claude dispatched agent is about to send the `SendMessage` push required by this capability
-- **THEN** it SHALL obtain its main agent's current reachability info by reading the structured fields back via a script, not solely from its own recollection of its dispatch prompt's prose
+#### Scenario: Dispatched agent prepares to report
+- **WHEN** a dispatched agent is about to report or a Claude worker needs its fallback
+- **THEN** it SHALL obtain the main-agent provider and preferred channel by reading the structured fields back via a script, not solely from prompt recollection
 
 ### Requirement: A dispatched agent can log progress at any point during its work
-A dispatched agent SHALL be able to append a timestamped, free-text progress note to a durable, per-dispatch log at any point during its work, independent of and in addition to the terminal-state/checkpoint push — appending a progress note SHALL NOT itself send a `SendMessage` push.
+A dispatched agent SHALL be able to append a timestamped, free-text progress note to a durable, per-dispatch log at any point during its work, independent of and in addition to terminal-state/checkpoint reporting — appending a progress note SHALL NOT itself send a live notification.
 
 #### Scenario: Dispatched agent logs an intermediate progress note
 - **WHEN** a dispatched agent wants to record what it is currently doing, before reaching any terminal state or checkpoint

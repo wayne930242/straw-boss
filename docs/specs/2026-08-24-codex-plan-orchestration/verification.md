@@ -2,20 +2,37 @@
 
 ## Automated evidence
 
-- `python3 -m unittest discover -s tests -v`: 9 passed. Covers Codex and Claude
-  Plan dispatch, dependency release, provider-specific peer-name validation,
-  checkpoint replies, content-transition recovery, watcher restart recovery,
-  partial JSON retry, and filename-authoritative task identity.
+- `python3 -m unittest discover -s tests -v`: 15 passed. Covers both endpoint
+  providers, required main-agent metadata, cross-provider peer rejection,
+  Claude-to-Claude fallback, write-before-herdr ordering, preserved status on
+  herdr failure, cancellation without self-notification, dependency release,
+  checkpoint replies, watcher recovery, and herdr-first Claude/Codex peer
+  questions.
 - `python3 -m compileall -q scripts tests`: passed.
 - `openspec validate --all --strict`: 7 items passed, 0 failed.
 - `git diff --check`: passed.
 
+## Agent-operated interface observations
+
+- A fake `herdr` executable asserted the Plan status file already existed when
+  `herdr agent prompt` ran, proving persistence precedes live notification.
+- Claude worker to Codex main-agent dispatch wrote no SendMessage peer,
+  `get-main-agent.py` selected `herdr`, and the status CLI prompted the recorded
+  pane.
+- A failing herdr executable made the status CLI exit non-zero while the
+  terminal status remained readable by the watcher.
+- A headless Claude-to-Claude instruction selected `send_message`; every
+  cross-provider attempt to record that peer failed before dispatch state was
+  written.
+- The `asking-peer-agents` contract addresses both Claude and Codex peers by
+  recorded herdr pane and limits `SendMessage` to a Claude-to-Claude fallback.
+
 ## Contract review
 
-- Current architecture, skills, canonical OpenSpec specs, and active deltas no
-  longer require a Claude agent kind for Plan or batch work.
-- Plan scheduling now depends on `report-task-status.py` plus
-  `watch-plan-status.py`; provider fast channels are explicitly additive.
+- Current architecture, skills, canonical OpenSpec specs, and active deltas all
+  describe herdr as primary and `SendMessage` as Claude-to-Claude fallback only.
+- Plan scheduling depends on persisted status plus `watch-plan-status.py`; live
+  herdr notification is ordered behind the write and does not replace recovery.
 - Archived OpenSpec changes remain historical and were not rewritten.
 
 ## Delivery boundary

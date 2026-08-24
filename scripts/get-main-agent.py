@@ -8,8 +8,8 @@
 A dispatch instruction (<home>/.straw-boss/dispatch/<app>--<slug>.json,
 written by dispatch-task.py write -- see
 skills/dispatching-work/references/dispatch-mechanics.md) records its
-main agent's own herdr pane id and SendMessage peer name as structured
-fields. A dispatched agent calls this script to read them back at report
+main agent's provider, herdr pane id, and optional Claude-to-Claude
+SendMessage peer name as structured fields. A dispatched agent calls this script to read them back at report
 time, instead of relying on its own recollection of the prose stated in
 its dispatch prompt -- a long-running or /compact-ed task's context may
 no longer reliably retain a value stated once, early, in that prompt.
@@ -32,14 +32,27 @@ def get_main_agent(instruction_path: Path) -> dict[str, Any]:
     if not instruction_path.is_file():
         raise ValueError(f"no instruction file at {instruction_path}")
     payload = load_json(instruction_path)
+    agent_kind = payload.get("agent_kind")
+    main_agent_kind = payload.get("main_agent_kind")
     pane_id = payload.get("main_agent_herdr_pane_id")
     peer = payload.get("main_agent_send_message_peer")
-    if pane_id is None and peer is None:
+    if main_agent_kind is None and pane_id is None and peer is None:
         raise ValueError(
             f"instruction file {instruction_path} has no main-agent reachability recorded -- "
             f"it may predate this field; fall back to whatever your dispatch prompt's prose states"
         )
-    return {"main_agent_herdr_pane_id": pane_id, "main_agent_send_message_peer": peer}
+    if pane_id is not None:
+        preferred_channel = "herdr"
+    elif agent_kind == "claude" and main_agent_kind == "claude" and peer is not None:
+        preferred_channel = "send_message"
+    else:
+        preferred_channel = "durable_status_only"
+    return {
+        "main_agent_kind": main_agent_kind,
+        "main_agent_herdr_pane_id": pane_id,
+        "main_agent_send_message_peer": peer,
+        "preferred_notification_channel": preferred_channel,
+    }
 
 
 def main() -> int:

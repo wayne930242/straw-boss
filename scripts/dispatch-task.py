@@ -91,6 +91,7 @@ def write_instruction(
     plan_slug: str | None,
     task_id: str | None,
     agent_kind: str,
+    main_agent_kind: str,
     agent_model: str | None,
     agent_effort: str | None,
     main_agent_pane_id: str | None,
@@ -103,8 +104,17 @@ def write_instruction(
         )
     if (plan_slug is None) != (task_id is None):
         raise ValueError("--plan and --task-id must be given together, or not at all")
-    if agent_kind == "claude" and not main_agent_peer_name:
-        raise ValueError("--main-agent-peer-name is required for agent-kind 'claude'")
+    if mode == "herdr-pane" and not main_agent_pane_id:
+        raise ValueError("--main-agent-pane-id is required for herdr-pane mode")
+    both_claude = agent_kind == "claude" and main_agent_kind == "claude"
+    if main_agent_peer_name and not both_claude:
+        raise ValueError(
+            "--main-agent-peer-name is only valid when both agent kinds are 'claude'"
+        )
+    if mode == "claude-p" and both_claude and not main_agent_peer_name:
+        raise ValueError(
+            "--main-agent-peer-name is required for a headless Claude-to-Claude dispatch"
+        )
     if plan_slug is not None:
         assert task_id is not None
         check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
@@ -117,6 +127,7 @@ def write_instruction(
         "batch": batch,
         "session_id": session_id,
         "agent_kind": agent_kind,
+        "main_agent_kind": main_agent_kind,
         "agent_model": agent_model,
         "agent_effort": agent_effort,
         "herdr_pane_id": None,
@@ -201,6 +212,13 @@ def main() -> int:
         "from apps.json's agentKind / an explicit override before calling this script",
     )
     write_p.add_argument(
+        "--main-agent-kind",
+        required=True,
+        choices=["claude", "codex"],
+        help="which agent CLI runs the dispatching main agent; notification routing depends on "
+        "the sender/receiver pair and must not be inferred from --agent-kind",
+    )
+    write_p.add_argument(
         "--agent-model", default=None, help="model override to record, if the caller chose one for this dispatch"
     )
     write_p.add_argument(
@@ -218,8 +236,9 @@ def main() -> int:
     write_p.add_argument(
         "--main-agent-peer-name",
         default=None,
-        help="the SendMessage peer name this main agent actually resolved for itself; required for "
-        "agent-kind claude and unused by codex -- its own "
+        help="the SendMessage peer name this main agent actually resolved for itself; valid only "
+        "when both --agent-kind and --main-agent-kind are claude, and required for that pair when "
+        "no herdr pane is used -- its own "
         "claude --name <value> launch flag if it was started with one (detect it from this "
         "session's own process args, e.g. via ps -p $CLAUDE_PID -ww -o args=), otherwise the "
         "per-session-unique value from an explicit /rename call (see cross-session-coordination.md's "
@@ -253,6 +272,7 @@ def main() -> int:
                 plan_slug=args.plan,
                 task_id=args.task_id,
                 agent_kind=args.agent_kind,
+                main_agent_kind=args.main_agent_kind,
                 agent_model=args.agent_model,
                 agent_effort=args.agent_effort,
                 main_agent_pane_id=args.main_agent_pane_id,

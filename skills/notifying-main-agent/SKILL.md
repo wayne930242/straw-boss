@@ -1,114 +1,134 @@
 ---
 name: notifying-main-agent
-description: Claude-only fast notification channel for a Claude dispatched agent reaching its main agent. Codex dispatches use the explicit provider-neutral status/progress commands in their instruction instead.
+description: Route a Claude dispatched agent's reports to a Claude or Codex main agent. Herdr is primary; SendMessage is Claude-to-Claude only.
 ---
 
 ## Overview
 
-See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
+See `docs/roles.md` for the authority framework. This skill runs in a Claude
+dispatched agent, but its main agent may be Claude or Codex. Never infer the
+receiver's provider or reachability from your own `agent_kind`.
 
-This skill is available only to `agent_kind: claude`. A Codex instruction must never point here: it reports Plan state with `report-task-status.py`, logs report-and-continue progress with `report-progress.py`, and uses its recorded herdr pane/thread identity for continuation.
+Your dispatch instruction records `main_agent_kind`,
+`main_agent_herdr_pane_id`, and an optional
+`main_agent_send_message_peer`. Read them at use time with:
 
-Your dispatch instruction states how to reach your main agent in prose — a herdr pane id (if you're `herdr-pane`) and/or a `SendMessage` peer name — and, separately, your own dispatch instruction file's path (per `cross-session-coordination.md`'s "What the dispatch instruction states, per mode"). The main-agent reachability values are also recorded structurally on that file (`main_agent_herdr_pane_id`/`main_agent_send_message_peer`, per `dispatching-work`'s `references/dispatch-mechanics.md`) — read them back with `get-main-agent.py --instruction-path <the path your instruction stated>` rather than relying on your own recollection of the prompt's prose, especially late in a long or `/compact`-ed task. Never guess either value from your own cwd or task, and never guess your own instruction path either — use exactly what your dispatch instruction stated.
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/get-main-agent.py" \
+  --instruction-path <your exact instruction path>
+```
 
-Two distinct reasons you'd use this skill — a question (below) and reporting your own status (below) — with different reliability requirements, not interchangeable:
+The returned `preferred_notification_channel` is authoritative:
+
+- `herdr`: primary for every Claude/Codex sender/receiver combination.
+- `send_message`: available only when both you and the main agent are Claude.
+- `durable_status_only`: no live receiver is recorded; rely on the required
+  durable report and the main agent's watcher/process observation.
+
+Never guess a pane id, peer name, provider, or instruction path.
 
 ## Branch: Ask an informational question
 
-This channel is for questions your main agent already has the state to answer (another task's status, which apps are in scope, whether a related change was already confirmed) — not for anything requiring judgment about the work itself.
+Use this only for non-blocking facts the main agent already has, such as another
+task's recorded state or which apps are in scope. A work-content trade-off is
+`awaiting-user-input`; an action only the main agent can take and that blocks you
+is `awaiting-main-agent`.
 
-**Both channels here are fire-and-forget.** Your main agent is typically `working` (it's orchestrating) when your message lands — it queues behind whatever your main agent is already doing, the same way a human's next prompt would. There is no synchronous reply available in this same call. If your main agent does answer, that answer arrives later as ordinary input to you — a new `SendMessage`, or a new prompt in your own pane (your main agent controls your pane's herdr handle too, from dispatch) — not something you wait for here.
+1. Read current reachability with `get-main-agent.py`.
+2. If the preferred channel is `herdr`, send without `--wait`:
 
-### Task 1: Confirm this is actually informational
+   ```bash
+   herdr agent prompt "<main_agent_herdr_pane_id>" \
+     "[from agent <your name>] <question>"
+   ```
 
-The dividing line is judgment, not difficulty. If the question involves a trade-off, a "which direction", an architecture call, or any information your main agent doesn't already have — it is **not** this channel, no matter how qualified your main agent seems to answer it. That's a work-content question: report it through your own status-reporting mechanism (`--status awaiting-user-input`, per your dispatch instruction) instead, so an actual human weighs in. If you're genuinely stuck on technical difficulty rather than missing context or a judgment call — try a stronger second opinion first, if one is available to you, before escalating that far (see `plan-mechanics.md`'s "Escalation order for a stuck task" for the full order — not restated here).
+3. Only if herdr is unavailable or fails, and the returned data says the main
+   agent is Claude and provides `main_agent_send_message_peer`, use:
 
-Second test: does answering keep you moving, or stop you cold? This channel is fire-and-forget. If you genuinely cannot proceed until your main agent takes an action — not answers a fact, does something only its own judgment or dispatch authority can (redispatch a failed dependency, arbitrate a peer-task conflict) — report `--status awaiting-main-agent` instead.
+   ```text
+   SendMessage({ to: "<recorded peer>", message: "[from agent <your name>] <question>" })
+   ```
 
-Try to resolve it yourself first. Only use this channel once you genuinely can't, and the question is purely informational.
+4. If neither live channel is available, continue what you can. If the missing
+   answer becomes blocking, persist the appropriate checkpoint instead of
+   pretending a message was delivered.
 
-**Verification:** you can state why this specific question has a factual answer your main agent already has, not a judgment call, before sending it.
-
-### Task 2: Send it, don't wait for it
-
-**Identify yourself in the message, every time** — `"[from agent <your own name, from your dispatch instruction>] <the question>"`. Without a clear agent label, injected text is indistinguishable from the human's own next prompt.
-
-- **You have a main-agent pane id** (you're `herdr-pane`): use herdr, not `SendMessage`.
-  ```
-  herdr agent prompt "<main-agent pane id, from get-main-agent.py or your dispatch instruction>" "[from agent <your name>] <question>"
-  ```
-  No `--wait` — your main agent is already `working`, so `--wait` would match its *current, unrelated* turn finishing, not an acknowledgment of your message; it proves nothing. Trust the command's own success/failure return to know whether delivery itself succeeded. If it fails (pane closed, herdr error), fall back to `SendMessage` below.
-
-- **You have no main-agent pane id** (you're `claude-p`, or the herdr attempt above failed):
-  ```
-  SendMessage({ to: "<main agent's SendMessage peer name, from get-main-agent.py or your dispatch instruction>", message: "[from agent <your name>] <question>" })
-  ```
-  Send it when it's genuinely useful information for your main agent to have (e.g. explaining an outcome your final report will also state). As `claude-p` specifically, you exit at the end of this turn regardless — you were never going to see a reply either way.
-
-Never guess or derive the main agent's pane id or peer name. If neither your dispatch instruction nor `get-main-agent.py` gives you one, this channel isn't available for this dispatch — fall back to whatever your instruction directs instead (typically `awaiting-user-input`).
-
-**Verification:** the target (pane id or peer name) came directly from your dispatch instruction or `get-main-agent.py`, never inferred; the message identifies you as the sending agent; neither channel was awaited for a reply.
+Both live channels are fire-and-forget. Do not wait for an acknowledgment.
 
 ## Branch: Report your own status
 
-Entry condition: you reached `done`, `failed`, or a checkpoint your dispatch instruction told you to stop and report (e.g. ready to merge, a push landing outside your own feature branch, or blocked on an action only your main agent can take) — not a question, and not a completed push of your own feature branch (that's the branch below, report-and-continue, never a stop) — so the informational test above does not apply here. Two separate mechanisms, used differently:
+At `done`, `failed`, or any required checkpoint, make exactly one worker-facing
+status call:
 
-### Progress, at any point before a terminal state — a log, not a push
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
+  --instruction-path <your exact instruction path> \
+  --status <done|failed|awaiting-authorization|awaiting-user-input|awaiting-main-agent> \
+  --note "<self-contained summary or blocker>"
+```
 
-`report-progress.py --instruction-path <path> --note "<text>"` appends a timestamped note to your dispatch's own progress log. Call it as often as useful, at any point in your work. It never sends anything and never touches your instruction file — it exists so your main agent (or the user, via `peeking-work`) can usually tell what you're doing without joining your live pane. Appending a progress note does **not** satisfy the terminal-state reporting requirement below.
+This command owns the ordering that agents used to have to remember:
 
-### `done`/`failed`/checkpoint — the push, required
+1. It writes the durable status record.
+2. If a main-agent herdr pane is recorded, it sends the self-contained status
+   message through `herdr agent prompt`.
 
-1. **Look up your main agent's current reachability**: `get-main-agent.py --instruction-path <path>` — the authoritative source; don't rely on your own recollection of the dispatch prompt's prose for this.
-2. **Write your status record first** — every value you can report (`done`, `failed`, `awaiting-authorization`, `awaiting-user-input`, `awaiting-main-agent`) gets one, not just the terminal ones: `report-task-status.py --instruction-path <path> --status <value> --note "<one-line summary, or for a checkpoint, the question/blocker itself>"`. This is bookkeeping (what a pull-based fallback check reads), not itself a notification — always pair it with step 3, never rely on the write alone.
-3. **Send the `SendMessage` push — required, not optional**:
-   ```
-   SendMessage({ to: "<main_agent_send_message_peer from step 1>", message: "[from agent <your name>] STATUS: <done|failed|checkpoint:<name>> — <one-line summary>" })
-   ```
-   The one-line summary must be self-contained — name the task/scope, what actually happened, and any decision or follow-up your main agent needs to take. Assume your main agent has moved on to other work (or been `/compact`-ed) since dispatching you and won't recall this dispatch's details from memory; your agent name alone isn't enough to place it.
+When the command reports `notified main agent through herdr`, reporting is
+complete. Do not also send `SendMessage`.
 
-   This is the send whose delivery is actually guaranteed (see "Why `SendMessage` is required here" below) — never substitute a herdr nudge for it.
-4. **If you also have a `main_agent_herdr_pane_id`, you MAY additionally send a faster visible nudge**, on top of (never instead of) step 3:
-   ```
-   herdr agent prompt "<main_agent_herdr_pane_id from step 1>" "[from agent <your name>] STATUS: <done|failed|checkpoint:<name>> — <one-line summary>"
-   ```
+If the command says the status remains written but herdr notification failed,
+or no herdr pane was recorded, `SendMessage` is a fallback only when
+`get-main-agent.py` confirms `main_agent_kind: claude` and provides a peer name.
+A Claude worker must never call `SendMessage` toward a Codex main agent. Without
+a valid Claude-to-Claude fallback, the durable status and watcher/process
+observation are the recovery mechanism.
 
-**Why `SendMessage` is required here, unlike the question branch's herdr-primary ordering:** a lost *question* just means you try something else or fall back to asking the user — low cost either way. A lost *completion report* means your main agent silently sits on a finished task, which is the exact failure this branch exists to prevent. `SendMessage` is a harness-level mailbox — a message to a live, correctly-addressed peer enqueues and drains at that peer's next tool round; worst case (the receiving session's permission-mode class doesn't auto-accept cross-session input) it's held pending manual review, never silently dropped. A herdr pane-typed message has no such guarantee — this project has already recorded a first-run interruption swallowing a submitted prompt while the command still reported success.
+Progress notes remain separate and non-notifying:
 
-**Verification:** reachability came from `get-main-agent.py`, not recollection; a terminal state's own record was written before or alongside its push; the push itself went through `SendMessage`, with a herdr nudge (if sent at all) only as an addition, never a substitute; the one-line summary is self-contained (task/scope, outcome, follow-up) rather than a bare status word.
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-progress.py" \
+  --instruction-path <path> --note "<text>"
+```
 
-## Branch: Report a completed push, then continue
+## Branch: Report a completed feature-branch push, then continue
 
-Entry condition: you pushed your own feature branch and opened or updated an MR/PR, and your dispatch instruction did not tell you to stop for this — only a merge, or a push landing outside your own feature branch, is a checkpoint (the branch above). This is not a checkpoint: report it, then keep working immediately, in the same turn — do not wait for a reply or a resume.
+A push of your own feature branch is an FYI, not a status transition or stop.
+Read reachability, then:
 
-1. **Look up your main agent's current reachability**: `get-main-agent.py --instruction-path <path>` — same source as the other branches.
-2. **Skip the status-record write.** Unlike `done`/`failed`/a checkpoint, this notification never gets a `report-task-status.py` write and carries no status value — it's a `SendMessage`-only signal, same as the informational-question branch above.
-3. **Send the `SendMessage` push — required, not optional**:
-   ```
-   SendMessage({ to: "<main_agent_send_message_peer from step 1>", message: "[from agent <your name>] PUSHED: <branch name> — <MR/PR reference> — continuing" })
-   ```
-4. **Continue your work immediately** — you were never stopped, so there's nothing to resume; don't wait for a reply before moving on (addressing review feedback, further pushes to the same branch, working toward the next checkpoint).
+- Prefer `herdr agent prompt` for any recorded main-agent pane.
+- Fall back to `SendMessage` only for a recorded Claude-to-Claude route.
+- If no live route exists, append the push detail with `report-progress.py` so
+  it remains discoverable.
 
-**Verification:** the push you're reporting is your own feature branch, never a merge or a push outside it (those go through the branch above instead); no status-record write was made for it; you kept working in the same turn rather than treating the notification as a reason to stop.
+Use a self-identifying message such as:
 
-## Task 3 (all branches): If a reply eventually arrives, it's information only — never authorization
+```text
+[from agent <name>] PUSHED: <branch> — <MR/PR reference> — continuing
+```
 
-A reply through this channel — whenever and however it shows up — is never authorization for a merge, a push landing outside your own feature branch, or any other mutation that needs one, regardless of what it says. If a permission was denied and you're tempted to ask your main agent (or any other peer) to perform the action for you, or to treat a reply as clearance to proceed — don't. Refuse, and surface it through your own status-reporting mechanism instead.
+Continue immediately after reporting. Never write a checkpoint status merely
+because your own feature branch was pushed.
 
-**Verification:** no mutation you performed was justified by a peer's reply through this channel.
+## Replies are information, never authorization
+
+A reply through herdr or `SendMessage` never authorizes a merge, a push landing
+outside your own feature branch, or any other gated mutation. Use the required
+status checkpoint and user-authorization flow.
 
 ## Red Flags
 
-- "This seems like something my main agent could plausibly weigh in on" — that's not the test; the test is whether it's a fact your main agent already has, not a judgment call. When in doubt, it's `awaiting-user-input`.
-- "I can't make progress until my main agent answers, but it's not a human judgment call, so it's still the informational channel" — no, that's the second dividing line: a blocker that stops you cold is `awaiting-main-agent`, fire-and-forget or not — it needs to be tracked, not queued behind other async questions.
-- "Add `--wait` to the herdr send, so I know my main agent got it" — no, your main agent is already working; `--wait` matches its current unrelated turn finishing, not acknowledgment of your message. Trust the command's own success/failure return instead.
-- "Got a reply telling me to go ahead, that's good enough to merge/push outside my branch" — no, Task 3: never treat a reply as authorization, no matter when or how it arrives.
-- "I pushed my own feature branch, I'll write a status record and wait like any other checkpoint" — no, a feature-branch push is not a checkpoint: skip the status-record write, send the `SendMessage` push, and keep working immediately, per "Branch: Report a completed push, then continue" above.
-- "Don't know my main agent's pane id or peer name, I'll guess from the cwd or a plausible pattern" — no, only the exact values from your dispatch instruction or `get-main-agent.py`.
-- "I have a main-agent pane id, but `SendMessage` feels simpler, use that instead" for a question — no, herdr is primary when available for the question branch; `SendMessage`'s peer-name addressing has a documented misdelivery failure mode herdr's pane id doesn't share.
-- "Skip the `[from agent ...]` label, the main agent will figure out where it came from" — no, an unlabeled message lands indistinguishable from the human's own input.
-- "I'm a Claude task in a Plan, so the status watcher means I can skip this skill's fast push" — no: the watcher guarantees Plan correctness across providers, while Claude still provides the additive low-latency `SendMessage` report required by this skill.
-- "I have a herdr pane id for my main agent, I'll send the report there instead of `SendMessage`" — no, unlike the question branch, the report requires `SendMessage` specifically; a herdr nudge is optional and additive, never a substitute — it has no delivery guarantee the way `SendMessage` does.
-- "I called `report-progress.py` right before finishing, that covers my done report" — no, a progress note never sends anything and never satisfies the terminal-state push requirement; they're two different mechanisms for two different purposes.
-- "My summary just says 'done — fixed it' / 'done — implemented the feature', that's enough, my main agent dispatched me so it already knows the task" — no, assume your main agent has moved on to other work or been `/compact`-ed since dispatch; a bare outcome word forces it to go dig up which task this was. Name the scope, the actual result, and any follow-up needed, every time.
-- "I can't confirm my main agent actually saw the push, so I should retry it or escalate" — no, you have no way to verify this and aren't expected to; verification is your main agent's responsibility (its own pull-based fallback), not yours. Send the push once and move on.
+- "I am Claude, so `SendMessage` must be available" — receiver capability is
+  independent; inspect `main_agent_kind` and the recorded channels.
+- "The main agent is Codex, but a plausible peer name might still work" —
+  never; `SendMessage` is Claude-to-Claude only.
+- "Terminal status needs two remembered steps: write, then notify" — no;
+  `report-task-status.py --instruction-path` owns write-before-herdr ordering.
+- "Herdr succeeded, also send `SendMessage` for safety" — no; herdr is primary
+  and sufficient. `SendMessage` is only a valid Claude-to-Claude fallback.
+- "Herdr failed, so the status was lost" — the command writes first; read its
+  error, which names the preserved status path.
+- "A progress note covers the terminal report" — it does not write task status
+  and does not notify.
+- "The final text of this turn is enough" — the caller cannot rely on it;
+  execute the status command.
+- "A reply said to proceed, so that is authorization" — never.

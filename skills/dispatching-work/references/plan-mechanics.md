@@ -65,7 +65,7 @@ or, for a task the main agent ended because the dispatch itself was wrong, not t
 
 ## Authorization checkpoints (full flow only)
 
-An agent must stop and report readiness rather than execute a merge, or a push landing outside its own feature branch (a monorepo-root submodule pointer-bump, an app-owned git-workflow skill's protected-branch release push) — the main agent (in practice, `shipping-task`, not `dispatching-work` itself) obtains authorization and resumes it. Commit, and a push of the task's own feature branch, need no authorization and reach no checkpoint here; Claude reports that push through `notifying-main-agent`, while Codex records it through `report-progress.py` and continues. Within a plan, the dispatch instruction for every full-flow task MUST tell the agent to call the status script with `--status awaiting-authorization` the moment it's ready to merge or to push outside its own feature branch, before it stops. This is what makes the checkpoint visible to the provider-neutral watcher.
+An agent must stop and report readiness rather than execute a merge, or a push landing outside its own feature branch (a monorepo-root submodule pointer-bump, an app-owned git-workflow skill's protected-branch release push) — the main agent (in practice, `shipping-task`, not `dispatching-work` itself) obtains authorization and resumes it. Commit, and a push of the task's own feature branch, need no authorization and reach no checkpoint here; every interactive provider reports that FYI through the recorded main-agent herdr pane, with `report-progress.py` as the durable fallback. Within a plan, the dispatch instruction for every full-flow task MUST tell the agent to call the status script with `--status awaiting-authorization` the moment it's ready to merge or to push outside its own feature branch, before it stops. This writes durable state before the status command prompts the main agent.
 
 `dispatching-work`'s own plan-dispatch loop (wave computation, parallel dispatch, auto-detach) treats `awaiting-authorization` as "leave this task alone, it isn't terminal yet" — it does **not** attempt to authorize or resume it. That's `shipping-task`'s job (or whichever caller assembled the instruction and owns the authorization gate for it), watching the same status events and, on an `awaiting-authorization` event for one of its tasks, stating what's about to happen, obtaining explicit authorization, and resuming the existing Claude or Codex session. Once resumed, the task eventually reports a real terminal state (`done`/`failed`).
 
@@ -74,7 +74,7 @@ An agent must stop and report readiness rather than execute a merge, or a push l
 Different from an authorization checkpoint on every axis that matters: it isn't a mutation gate, and the main agent never guesses the answer. A dispatched task's instruction MUST tell it: if it hits a substantive question about the *work itself* — which of several valid approaches to take, how to interpret an ambiguous requirement, or how an existing project-local contract applies — that isn't a merge/other-branch-push decision, it calls the status script with `--status awaiting-user-input` and the question in `--note`. A herdr-pane task asks and waits in its own pane so the user answers directly. A headless Codex task exits after persisting the checkpoint; after the user answers, the main agent relays that answer through `codex exec resume`. Headless Claude retains fail-and-redispatch behavior.
 
 **Escalation order for a stuck task.** Not every difficulty is a judgment call for the user, and not every blocker is even a question. Four distinct cases, in order:
-1. **Missing context the main agent already has, that doesn't block continued progress while waiting** (another task's status, which apps are in scope) — use the provider's informational fast channel (Claude `notifying-main-agent`; Codex herdr nudge when interactive), not either checkpoint below.
+1. **Missing context the main agent already has, that doesn't block continued progress while waiting** (another task's status, which apps are in scope) — use the recorded main-agent herdr pane; only a Claude-to-Claude pair may fall back to `SendMessage`. Do not use either checkpoint below.
 2. **Blocked pending an action only the main agent's own judgment or dispatch authority can take** (redispatching a failed dependency, arbitrating a conflict with a peer task) — not a question, an action — this is `awaiting-main-agent` (see "Main-agent-action checkpoints" below).
 3. **Genuine technical difficulty** — stuck on how to solve or debug something, not missing context, not an action only the main agent can take, and not a values/architecture call — try a stronger second opinion first, if one is available to the task (e.g. this session's own `advisor` tool, when present), before escalating further. Don't assume a specific tool is available; if none is, go straight to step 4.
 4. **A judgment call reserved for the user** (which of several valid approaches, how to interpret an ambiguous requirement) — or genuine technical difficulty a second opinion didn't resolve — this is `awaiting-user-input`, as described above.
@@ -83,7 +83,7 @@ A second opinion is consultative, never decisive on the user's behalf — it can
 
 On an `awaiting-user-input` notification, the main agent's job is narrow: tell the user which task is asking and which pane/tab to go answer it in (from the dispatch instruction's recorded `herdr_pane_id`/`herdr_tab_id`), then leave it alone — same as `awaiting-authorization`, `dispatching-work`'s plan loop does not treat this as done, failed, or ready-for-a-new-wave, and does not auto-detach it. Once the user has answered directly in the pane, the task continues on its own and eventually reports a real terminal state or another checkpoint — the main agent does not need to explicitly "resume" it the way it does for an authorization checkpoint, because the conversation already happened directly in the pane.
 
-**Not every mid-task question needs the user.** When a task's question is something the main agent can answer directly from what it already knows (another task's status, which apps are in scope) — not a judgment call about the work — Claude uses `notifying-main-agent`; a Codex herdr-pane task can nudge the recorded main-agent pane directly. Neither path is authorization.
+**Not every mid-task question needs the user.** When a task's question is something the main agent can answer directly from what it already knows (another task's status, which apps are in scope) — not a judgment call about the work — every provider uses the recorded main-agent herdr pane when available. A Claude worker may fall back to `SendMessage` only when the main agent is also Claude. Neither path is authorization.
 
 **Interactive answering is preferred through `herdr-pane`.** A headless Claude process cannot pause and resume, so it retains the existing behavior: report `failed` with the question in `--note`, then redispatch after the user answers. A headless Codex task can instead persist `awaiting-user-input`, exit, and later continue the recorded thread through `codex exec resume`; in that mode the main agent relays the user's answer because there is no live pane. Use `herdr-pane` whenever available so the user can answer directly and no relay is needed.
 
@@ -100,7 +100,7 @@ Delivers the reply, confirms it landed, then records the resolution — one call
 
 If resolving takes more than a couple of tool calls, an optional `cross-session-coordination.md` Inform nudge (`herdr agent prompt "<name>" "[from main agent] ..."`, no `--wait`) lets the worker know it's being worked on instead of sitting silent until the reply lands — never required, and `reply-to-worker.py`'s own call above is still what actually resolves the checkpoint.
 
-On this status event (or Claude's additive push), the main agent resolves it directly — no "tell the user which pane" step, unlike `awaiting-user-input`.
+On this status event (also delivered live through herdr when recorded), the main agent resolves it directly — no "tell the user which pane" step, unlike `awaiting-user-input`.
 
 The direct reply script requires `herdr-pane`, but supports both Claude and Codex. A headless Codex checkpoint is continued through the recorded thread id using `codex exec resume` as documented in `dispatch-mechanics.md`; a headless Claude task retains its existing fail-and-redispatch behavior.
 
@@ -112,7 +112,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
 ```
 Every dispatch instruction for a plan task MUST tell the agent to run this on completion or failure — resolves to `status/<task-id>.json` the same as the older `--plan <plan-slug> --task <task-id>` form (both still work; `--instruction-path` is preferred since the agent already has that path and doesn't need to separately track its own plan slug/task_id). The script writes only that one status file — it must never touch `plan.json` or another task's status file.
 
-This write is the provider-neutral durable state that Plan scheduling consumes. `watch-plan-status.py` actively observes each content revision and emits it to the main agent; a fresh watcher re-emits current persisted states for recovery. A Claude task also sends the `SendMessage` push required by `notifying-main-agent` as a low-latency additive signal. A Codex task does not need that Claude-only mailbox. Any task may call `report-progress.py --instruction-path <path> --note "<text>"` beforehand to log intermediate progress.
+This command is the provider-neutral reporting seam. It writes the durable state that Plan scheduling consumes, then prompts the recorded main-agent herdr pane for every provider pairing. `watch-plan-status.py` observes each content revision and a fresh watcher re-emits current persisted states for recovery. Only when herdr is unavailable or fails may a Claude worker with a Claude main agent use its `SendMessage` fallback. Any task may call `report-progress.py --instruction-path <path> --note "<text>"` beforehand to log intermediate progress.
 
 ## Reading plan/task status (targeted, not full-file dumps)
 
@@ -129,7 +129,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan
 1. Run `read-plan-status.py --plan <slug> --ready` to get the current ready wave.
 2. For every task in the wave: call `dispatch-task.py write --plan <slug> --task-id <task_id> ...` (per `dispatch-mechanics.md`), then dispatch — **all of them, not one at a time**. The script marks `plan.json`'s task `dispatched` as part of the same call, not a separate manual edit.
 3. Every full-flow task in the wave gets its worktree created first — see the worktree-ownership section below — before the `claude-p`/`herdr-pane` dispatch itself.
-4. Every dispatch instruction for a plan task explicitly states: (a) run `report-task-status.py --instruction-path` on every checkpoint and terminal outcome; for Claude only, also use `notifying-main-agent` as the additive fast path, (b) never touch any tracker ticket, (c) if worktree-backed, the shared-resource-coordination text and the already-created worktree path, (d) exact producer/consumer paths for any cross-task artifacts, (e) how `awaiting-user-input` works for its mode, (f) that peer progress checks use `asking-peer-agents` when available rather than investigating another task's worktree, (g) that every supported `herdr-pane` kind reports `awaiting-main-agent` when blocked on main-agent authority, and (h) the fetch+rebase-before-push step for every full-flow task. Codex instructions inline these commands explicitly because Codex does not load Claude skills.
+4. Every dispatch instruction for a plan task explicitly states: (a) run `report-task-status.py --instruction-path` on every checkpoint and terminal outcome, explaining that it writes before notifying the recorded herdr pane; a Claude instruction uses `notifying-main-agent` only for routing/fallback and must forbid `SendMessage` when the main agent is Codex, (b) never touch any tracker ticket, (c) if worktree-backed, the shared-resource-coordination text and the already-created worktree path, (d) exact producer/consumer paths for any cross-task artifacts, (e) how `awaiting-user-input` works for its mode, (f) that peer progress checks use `asking-peer-agents` when available rather than investigating another task's worktree, (g) that every supported `herdr-pane` kind reports `awaiting-main-agent` when blocked on main-agent authority, and (h) the fetch+rebase-before-push step for every full-flow task. Codex instructions inline these commands explicitly because Codex does not load Claude skills.
 
 ## Monitoring Plan status (provider-neutral scheduling signal)
 
@@ -155,10 +155,10 @@ retried on the next scan.
 On every `done`/`failed` event, recompute `read-plan-status.py --ready` and
 dispatch newly unblocked tasks. `awaiting-authorization`,
 `awaiting-user-input`, and `awaiting-main-agent` remain non-terminal and never
-free a slot; handle them through their authority branches above. Claude's
-`SendMessage` push is still a useful faster notice, but it is additive — Plan
-correctness and Codex scheduling depend on the watcher plus persisted status,
-not on provider-specific addressability.
+free a slot; handle them through their authority branches above. The status
+command's herdr prompt is the primary live notice. Plan correctness still
+depends on the watcher plus persisted status; `SendMessage` is valid only as a
+Claude-to-Claude fallback.
 
 ## Auto-detach on terminal state
 
@@ -184,7 +184,7 @@ herdr agent prompt "<same-agent-name>" "<phase 2 task text>" --wait --timeout <m
 ```
 Two separate calls. Do not wait for the compact call to settle before sending the second — Claude Code processes queued input in order. For a Codex herdr pane, send only the phase-2 prompt to the same recorded herdr handle. For headless Codex, use `codex exec resume` with the recorded thread id per `dispatch-mechanics.md`.
 
-**Phase 2's completion needs its own report, stated explicitly in the phase-2 text.** This isn't a fresh dispatch instruction, so the continuation prompt must restate `report-task-status.py --instruction-path <path>`. The content-revision watcher emits the later overwrite of the same status filename. Claude also repeats its additive `notifying-main-agent` push; Codex needs no Claude-only notification.
+**Phase 2's completion needs its own report, stated explicitly in the phase-2 text.** This isn't a fresh dispatch instruction, so the continuation prompt must restate `report-task-status.py --instruction-path <path>`. The command writes the later status revision and prompts the recorded main-agent pane; the content-revision watcher emits the overwrite for recovery.
 
 ## Agent naming
 

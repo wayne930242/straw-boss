@@ -77,9 +77,9 @@ Every app this bootstraps starts with zero skills — but the first one anyone w
 State what now exists: `CLAUDE.md`'s line count and section summary, the guard hook's exact trigger condition and file location (or that Task 4 was skipped on a dedup conflict, and what conflicted), the `/hooks`-or-restart caveat if it applies, and the skill-authoring rule's source URL/fetch date (or that Task 5 was skipped, and why).
 
 - **Invoked directly by a user in this session:** report inline, in this conversation.
-- **Invoked as a dispatched agent:** state it as this turn's own final text output, write your terminal-state record (`report-task-status.py --instruction-path <path> --status done --note "<one-line summary>"`), and send the required `SendMessage` push per `notifying-main-agent`'s "Branch: Report your own status" — the push, not the final text output, is what the caller actually depends on to know you're done; the final output is what it reads once it checks.
+- **Invoked as a dispatched agent:** state it as this turn's own final text output and run `report-task-status.py --instruction-path <path> --status done --note "<one-line summary>"`. That command writes durable state before notifying the recorded main-agent herdr pane. Follow `notifying-main-agent` only for a valid Claude-to-Claude fallback if herdr is unavailable or fails.
 
-**Verification:** the report states what was written and what to do (if anything) to make the hook take effect immediately; under dispatch, the terminal-state record was written and the required `SendMessage` push was sent, not skipped because the turn's own final output "should be enough."
+**Verification:** the report states what was written and what to do (if anything) to make the hook take effect immediately; under dispatch, the shared terminal-status command succeeded or its preserved-status notification failure was surfaced, not skipped because final output "should be enough."
 
 ## Red Flags
 
@@ -93,7 +93,7 @@ State what now exists: `CLAUDE.md`'s line count and section summary, the guard h
 - "Paraphrase the skill/rule spec from memory instead of fetching it live" — no, Task 5 exists specifically to prevent drift; fetch every time, never reuse a cached understanding from a prior bootstrap.
 - "Dispatched and there's no user to confirm Task 1's scope, ask anyway just in case" — no, a dispatch instruction with pre-confirmed scope means don't re-ask; there's no one to answer a `claude -p` dispatch's question.
 - "Dispatched, hit a dedup conflict in Task 4 step 1, ask the user anyway" — no, there's no one to answer under `claude -p`; skip the hook, note the conflict for Task 6, and move on.
-- "This turn's own final output is the completion signal, skip the `SendMessage` push" — no, Task 6: under dispatch, the push (via `SendMessage`, guaranteed delivery) is what the caller actually depends on; the final output is only useful once the caller checks, which the push is what prompts it to do.
+- "This turn's own final output is the completion signal, skip the status command" — no, Task 6: the command owns durable state plus primary herdr notification; final output alone is not observable enough.
 
 ## References
 

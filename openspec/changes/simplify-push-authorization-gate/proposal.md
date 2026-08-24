@@ -7,7 +7,7 @@
 - `shipping-task`'s full flow drops the push/MR authorization checkpoint. Only merge remains a stop-and-wait-for-authorization checkpoint.
 - A dispatched agent pushes and opens an MR/PR on its own once ready, and pushes further updates to the same branch on its own (e.g. addressing review feedback) — no authorization needed for any of it.
 - **The exemption is scoped to the task's own feature branch only** — the one the main agent's own worktree was created for. A push that lands on or updates any other tracked branch (the target/base branch directly, a monorepo root's submodule pointer-bump once the app's commit lands, a version-bump/release-tag push an app-owned `gitWorkflowSkill`'s remaining steps might perform against a protected/base branch) is not covered — it never touched the "already-authorized the moment the branch was created" reasoning above, and keeps its existing authorization gate unchanged.
-- Once pushed, the agent sends a required, non-blocking `SendMessage` notification (branch name, MR/PR reference) and continues working immediately — it never stops or waits for a reply, unlike the existing stop-and-wait checkpoint pattern (`awaiting-authorization`, `awaiting-user-input`, `awaiting-main-agent`).
+- Once pushed, the agent sends a non-blocking notification through the recorded main-agent herdr pane (branch name, MR/PR reference) and continues immediately. `SendMessage` is only a Claude-to-Claude fallback; a progress record covers the no-live-route case.
 - This is a universal default — applies to every managed app uniformly, no per-app override (confirmed with the user: not worth the config surface for now).
 - `docs/roles.md`'s "Autonomy boundary" absolute-gates line narrows to merge only — push isn't an authority the main agent is now permitted to bypass; it simply isn't a gate anymore.
 - `shipping-task` Task 5 narrows to merge authorization; gains a short branch for handling the new push-FYI notification (relay to the user, no action, no resume).
@@ -21,7 +21,7 @@
 ### Modified Capabilities
 
 - `dispatch-authority`: the "Authorization gates remain absolute" requirement narrows from "push or merge" to merge only — pushing the task's own feature branch is no longer a gate the main agent's autonomy could ever have bypassed, because it no longer requires authorization to begin with. A push to any other tracked branch is untouched by this narrowing.
-- `dispatch-completion-reporting`: the "SendMessage push as the primary completion signal" requirement's "reaches a stop-before-mutation checkpoint" scenario no longer covers push (only merge does); a new requirement covers the non-blocking FYI-and-continue notification pattern, distinct from the existing stop-and-wait checkpoint semantics.
+- `dispatch-completion-reporting`: the live notification requirement no longer treats a feature-branch push as a stop-before-mutation checkpoint; a separate non-blocking FYI-and-continue pattern remains distinct from stop-and-wait semantics.
 - `dispatched-agent-escalation`: the "Authorization escalation is unaffected" requirement's "push/merge authorization gate" label narrows to merge and any push outside the task's own feature branch — found during apply via a repo-wide grep for stale "push/merge" wording, not in the original proposal.
 
 ## Impact

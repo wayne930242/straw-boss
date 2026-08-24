@@ -1,13 +1,20 @@
 ---
 name: asking-peer-agents
-description: Use when a dispatched agent needs another dispatched task's live progress or latest conclusion, instead of investigating that task's app/worktree blind. Not for reaching your own main agent (`notifying-main-agent`) or for a dispatch's raw live content (`peeking-work`).
+description: Use when a dispatched agent needs another dispatched task's live progress or latest conclusion. Herdr is primary for Claude or Codex peer panes; SendMessage is a Claude-to-Claude fallback only.
 ---
 
 ## Overview
 
-A **peer** here means another dispatched agent — a session `dispatching-work` started, running in its own worktree or app checkout — never your own main agent. Reaching your own main agent is `notifying-main-agent`'s job, not this skill's.
+A **peer** here means another dispatched agent — a session `dispatching-work`
+started, running in its own worktree or app checkout — never your own main
+agent. Reaching your own main agent is `notifying-main-agent`'s job, not this
+skill's.
 
-This only reliably works for a peer dispatched `herdr-pane` under `agent_kind: claude`, whose instruction file has a `herdr_pane_id` recorded (plan/batch or standalone — either dispatches this way, per `dispatch-mechanics.md`'s herdr-pane dispatch step 4) — the one case where that pane id resolves to a live, named herdr agent, and that name is exactly its `SendMessage`/`ListAgents`-addressable one (the same value goes to both herdr's own handle and `claude --name`). A `claude-p` peer's addressable name is auto-derived by Claude Code and never recorded anywhere; a `codex` peer has no such name at all (`references/dispatch-mechanics.md`, "Resolving the agent kind"). For either of those, don't guess a name — this plugin has already recorded a wrong-target `SendMessage` silently vanishing ("reported sent and never seen again, no error anywhere") from a much smaller ambiguity than an outright guess would be. Ask your own main agent instead, via `notifying-main-agent`'s informational-question branch — it dispatched both of you and already knows the mapping.
+A peer is directly reachable when its instruction records `mode: herdr-pane`,
+`agent_kind: claude` or `agent_kind: codex`, and `herdr_pane_id`. Prompt that
+exact pane through herdr. A `claude-p` dispatch has no peer pane id, so ask your
+own main agent through `notifying-main-agent` instead. Never derive a pane id,
+provider, or peer name.
 
 ## Task 1: Confirm you actually need a peer's state
 
@@ -27,22 +34,50 @@ Hand `peeking-work` the target already resolved in Task 2 (its instruction path 
 
 **Verification:** `peeking-work` was invoked with the already-resolved target, not reimplemented inline and not re-resolved from scratch; a question its read already answered didn't also get a message sent "just to confirm."
 
-## Task 4: Reach out directly, only for an addressable peer
+## Task 4: Reach out through the recorded peer pane
 
-Confirm the target dispatch is `mode: herdr-pane`, `agent_kind: claude`, and has a `herdr_pane_id` recorded. If it doesn't, stop here and use `notifying-main-agent`'s question branch to ask your own main agent instead — never guess further for a `claude-p` or `codex` dispatch, or one with no `herdr_pane_id` recorded yet.
+Confirm the target dispatch is `mode: herdr-pane`, uses a supported
+`agent_kind` (`claude` or `codex`), and records `herdr_pane_id`. If any check
+fails, use `notifying-main-agent`'s question branch instead.
 
-1. Look up its actual name — `herdr agent get "<herdr_pane_id>"` — rather than computing one. A claude-kind herdr-pane dispatch always started via `herdr agent start "<unique-name>" ... -- --name "<unique-name>"` (`dispatch-mechanics.md`'s step 4), so the pane's own `name` field *is* the exact `SendMessage`/`ListAgents`-addressable value, authoritative rather than derived from anything — plan-task naming has its own convention (`plan-mechanics.md`'s "Agent naming"), a standalone dispatch may use a different one, and neither matters here since you're reading the actual assigned value back, not reconstructing it.
-2. Confirm that name still appears in `ListAgents` before sending anything — the pane recorded in the instruction file could have closed since. If it doesn't appear, stop and fall back to `notifying-main-agent` rather than guessing further.
-3. Send it, labeled and fire-and-forget, same discipline as `notifying-main-agent`'s question branch:
+1. Send the labeled question directly to the recorded pane, without `--wait`:
+
+   ```bash
+   herdr agent prompt "<herdr_pane_id>" \
+     "[from agent <your own name, from your dispatch instruction>] <question>"
    ```
-   SendMessage({ to: "<name from herdr agent get>", message: "[from agent <your own name, from your dispatch instruction>] <question>" })
-   ```
-   Never wait for a reply — the peer is as likely to be mid-turn as your own main agent would be. If a reply eventually arrives, it's information only, never authorization for anything — you're not this peer's main agent, and it isn't yours.
 
-**Verification:** the target was confirmed `herdr-pane`+`claude` with a `herdr_pane_id` before any lookup; the name sent to came from `herdr agent get`, never computed from a naming convention; that name was confirmed live in `ListAgents` before sending; the message identifies you as sender; nothing here blocked waiting for a reply.
+2. If herdr succeeds, stop. Do not also send `SendMessage`.
+3. If herdr fails, `SendMessage` is a Claude-to-Claude fallback only: both your
+   own dispatch and the target dispatch must record `agent_kind: claude`.
+   Resolve the target's actual name with `herdr agent get "<herdr_pane_id>"`,
+   confirm it still appears in `ListAgents`, then send exactly once:
+
+   ```text
+   SendMessage({ to: "<name from herdr agent get>", message: "[from agent <your own name>] <question>" })
+   ```
+
+4. If either endpoint is Codex, the target is no longer live, or no verified
+   name exists, report the failed peer reachability to your own main agent
+   through `notifying-main-agent`. Never guess another route.
+
+Both channels are fire-and-forget. A later reply is information only, never
+authorization — neither peer is the other's main agent.
+
+**Verification:** the target pane id and provider came from its instruction;
+herdr was attempted first for either supported provider; any `SendMessage`
+fallback had two confirmed Claude endpoints and a live name read from herdr;
+the question identified its sender and did not block waiting for a reply.
 
 ## Red Flags
 
 - "Can't tell which worktree is mine to check, just grep around and see" — no, Task 2: `repo_root` in the live instruction files is the actual answer; investigating blind risks acting on the wrong task's code entirely.
-- "Compute the peer's name from a naming convention instead of looking it up" — no, Task 4 step 1: `herdr agent get "<herdr_pane_id>"` gives the actual name; a naming convention is how the main agent chose it, not a formula to invert.
-- "Peer is `claude-p`/`codex`, or has no `herdr_pane_id` yet, derive some name for it anyway" — no, those aren't reliably addressable; ask your own main agent via `notifying-main-agent` instead.
+- "Convert every pane id to a Claude peer name before sending" — no; prompt
+  the recorded herdr pane directly, regardless of whether it runs Claude or
+  Codex.
+- "Herdr succeeded, also send `SendMessage` for safety" — no; one successful
+  delivery is sufficient.
+- "One endpoint is Codex, but the peer has a plausible Claude name" — no;
+  `SendMessage` is a Claude-to-Claude fallback only.
+- "The peer is `claude-p`, so derive a name anyway" — no; without a recorded
+  peer pane, ask your own main agent.

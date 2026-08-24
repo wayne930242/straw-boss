@@ -54,6 +54,16 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_peer_questions_use_herdr_for_claude_and_codex_panes(self) -> None:
+        skill = (ROOT / "skills" / "asking-peer-agents" / "SKILL.md").read_text()
+
+        self.assertIn(
+            'herdr agent prompt "<herdr_pane_id>"',
+            skill,
+        )
+        self.assertIn("Claude or Codex", skill)
+        self.assertIn("Claude-to-Claude fallback", skill)
+
     def run_script(
         self,
         script_name: str,
@@ -72,7 +82,12 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             timeout=10,
         )
 
-    def dispatch(self, agent_kind: str, task_id: str = "t1") -> Path:
+    def dispatch(
+        self,
+        agent_kind: str,
+        task_id: str = "t1",
+        main_agent_kind: str = "codex",
+    ) -> Path:
         result = self.run_script(
             "dispatch-task.py",
             "write",
@@ -92,8 +107,10 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             task_id,
             "--agent-kind",
             agent_kind,
-            "--main-agent-peer-name",
-            "test-orchestrator",
+            "--main-agent-kind",
+            main_agent_kind,
+            "--main-agent-pane-id",
+            "main:pane",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return Path(json.loads(result.stdout)["instruction_path"])
@@ -104,6 +121,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         instruction = json.loads(instruction_path.read_text())
         plan = json.loads(self.plan_path.read_text())
         self.assertEqual(instruction["agent_kind"], "codex")
+        self.assertEqual(instruction["main_agent_kind"], "codex")
         self.assertEqual(instruction["task_id"], "t1")
         self.assertEqual(plan["tasks"][0]["status"], "dispatched")
 
@@ -127,6 +145,10 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "t1",
             "--agent-kind",
             "codex",
+            "--main-agent-kind",
+            "codex",
+            "--main-agent-pane-id",
+            "main:pane",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         instruction = json.loads(Path(json.loads(result.stdout)["instruction_path"]).read_text())
@@ -134,6 +156,16 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
 
     def test_codex_done_status_unblocks_dependent_task(self) -> None:
         instruction_path = self.dispatch("codex")
+        fake_bin = self.home / "bin"
+        fake_bin.mkdir()
+        capture_path = self.home / "herdr-call.txt"
+        fake_herdr = fake_bin / "herdr"
+        fake_herdr.write_text(
+            "#!/bin/sh\n"
+            "[ -f \"$EXPECTED_STATUS_PATH\" ] || exit 9\n"
+            "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
+        )
+        fake_herdr.chmod(0o755)
         report = self.run_script(
             "report-task-status.py",
             "--instruction-path",
@@ -142,8 +174,16 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "done",
             "--note",
             "Codex prerequisite complete",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "EXPECTED_STATUS_PATH": str(self.plan_dir / "status" / "t1.json"),
+                "HERDR_CAPTURE": str(capture_path),
+            },
         )
         self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertIn("agent prompt main:pane", capture_path.read_text())
+        self.assertIn("STATUS: done", capture_path.read_text())
+        self.assertIn("Codex prerequisite complete", capture_path.read_text())
 
         ready = self.run_script(
             "read-plan-status.py", "--plan", self.plan_slug, "--ready"
@@ -251,11 +291,95 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         self.assertEqual(updated["main_agent_reply"], "continue with the dependency")
         self.assertIn("resolved_by_main_agent_at", updated)
 
-    def test_existing_claude_plan_dispatch_remains_supported(self) -> None:
+    def test_claude_worker_can_report_to_codex_main_without_send_message(self) -> None:
         instruction_path = self.dispatch("claude")
-        self.assertEqual(json.loads(instruction_path.read_text())["agent_kind"], "claude")
+        instruction = json.loads(instruction_path.read_text())
+        self.assertEqual(instruction["agent_kind"], "claude")
+        self.assertEqual(instruction["main_agent_kind"], "codex")
+        self.assertIsNone(instruction["main_agent_send_message_peer"])
 
-    def test_claude_dispatch_still_requires_send_message_peer_name(self) -> None:
+        main_agent = self.run_script(
+            "get-main-agent.py", "--instruction-path", str(instruction_path)
+        )
+        self.assertEqual(main_agent.returncode, 0, main_agent.stderr)
+        reachability = json.loads(main_agent.stdout)
+        self.assertEqual(reachability["main_agent_kind"], "codex")
+        self.assertEqual(reachability["preferred_notification_channel"], "herdr")
+
+        fake_bin = self.home / "bin"
+        fake_bin.mkdir()
+        capture_path = self.home / "claude-to-codex-herdr.txt"
+        fake_herdr = fake_bin / "herdr"
+        fake_herdr.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
+        )
+        fake_herdr.chmod(0o755)
+        report = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Claude worker finished for Codex main",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture_path),
+            },
+        )
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertIn("agent prompt main:pane", capture_path.read_text())
+        self.assertIn("from claude dispatched agent", capture_path.read_text())
+
+    def test_herdr_notification_failure_keeps_durable_status(self) -> None:
+        instruction_path = self.dispatch("codex")
+        fake_bin = self.home / "bin"
+        fake_bin.mkdir()
+        fake_herdr = fake_bin / "herdr"
+        fake_herdr.write_text("#!/bin/sh\nexit 7\n")
+        fake_herdr.chmod(0o755)
+
+        report = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "failed",
+            "--note",
+            "delivery failed after persistence",
+            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+        )
+
+        self.assertNotEqual(report.returncode, 0)
+        self.assertIn("status remains written", report.stderr)
+        status = json.loads((self.plan_dir / "status" / "t1.json").read_text())
+        self.assertEqual(status["status"], "failed")
+
+    def test_main_agent_cancel_does_not_notify_itself(self) -> None:
+        instruction_path = self.dispatch("codex")
+        fake_bin = self.home / "bin"
+        fake_bin.mkdir()
+        fake_herdr = fake_bin / "herdr"
+        fake_herdr.write_text("#!/bin/sh\nexit 7\n")
+        fake_herdr.chmod(0o755)
+
+        report = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "cancelled",
+            "--note",
+            "main agent cancelled the dispatch",
+            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+        )
+
+        self.assertEqual(report.returncode, 0, report.stderr)
+        status = json.loads((self.plan_dir / "status" / "t1.json").read_text())
+        self.assertEqual(status["status"], "cancelled")
+
+    def test_cross_provider_dispatch_rejects_send_message_peer(self) -> None:
         result = self.run_script(
             "dispatch-task.py",
             "write",
@@ -275,9 +399,103 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "t1",
             "--agent-kind",
             "claude",
+            "--main-agent-kind",
+            "codex",
+            "--main-agent-pane-id",
+            "main:pane",
+            "--main-agent-peer-name",
+            "not-a-codex-channel",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("only valid when both agent kinds are 'claude'", result.stderr)
+
+    def test_headless_claude_to_claude_requires_send_message_peer(self) -> None:
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Run the task.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--main-agent-peer-name is required", result.stderr)
+
+    def test_headless_claude_to_claude_uses_send_message_fallback(self) -> None:
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Run the task.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+            "--main-agent-peer-name",
+            "claude-main",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        instruction_path = Path(json.loads(result.stdout)["instruction_path"])
+        reachability = self.run_script(
+            "get-main-agent.py", "--instruction-path", str(instruction_path)
+        )
+        self.assertEqual(reachability.returncode, 0, reachability.stderr)
+        self.assertEqual(
+            json.loads(reachability.stdout)["preferred_notification_channel"],
+            "send_message",
+        )
+
+    def test_herdr_dispatch_requires_main_agent_pane(self) -> None:
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Run the task.",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "codex",
+            "--main-agent-kind",
+            "claude",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--main-agent-pane-id is required", result.stderr)
 
 
 if __name__ == "__main__":

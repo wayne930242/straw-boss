@@ -5,4 +5,4 @@ Every Plan dispatched agent SHALL persist each checkpoint or terminal outcome th
 
 #### Scenario: Dispatched agent reaches a checkpoint requiring the main agent's own action
 - **WHEN** a dispatched agent cannot continue until its main agent takes an action within its own judgment or dispatch authority, rather than a human answering a question
-- **THEN** it SHALL persist `awaiting-main-agent`, naming what action is needed, so the provider-neutral watcher emits it; a Claude agent SHALL additionally send its fast `SendMessage` report
+- **THEN** it SHALL persist `awaiting-main-agent`, naming what action is needed, before the shared status command prompts the recorded main-agent herdr pane; only a Claude-to-Claude pair MAY fall back to `SendMessage`

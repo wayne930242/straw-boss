@@ -60,12 +60,13 @@ One file per dispatch: `<home>/.straw-boss/dispatch/<app>--<short-slug>.json`. P
   "batch": null,
   "session_id": "<uuid>",
   "agent_kind": "claude",
+  "main_agent_kind": "codex",
   "agent_model": null,
   "agent_effort": null,
   "herdr_pane_id": null,
   "herdr_tab_id": null,
   "main_agent_herdr_pane_id": "wF:p9",
-  "main_agent_send_message_peer": "AgentMessaging-orchestrator-wF-p9",
+  "main_agent_send_message_peer": null,
   "status": "pending",
   "created_at": "2026-08-16T10:00:00+08:00",
   "repo_root": "/absolute/path/to/your/repo"
@@ -78,11 +79,20 @@ Write this file — and generate the `session_id` — with the script, not a han
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --app <app> --slug <short-slug> --task "<task text>" --mode claude-p|herdr-pane \
   --repo-root <repo_root> [--batch <label>] [--plan <plan-slug> --task-id <task_id>] \
-  [--agent-kind claude|codex] [--agent-model <model>] [--agent-effort <effort>] \
+  [--agent-kind claude|codex] --main-agent-kind claude|codex \
+  [--agent-model <model>] [--agent-effort <effort>] \
   [--main-agent-pane-id <$HERDR_PANE_ID value>] [--main-agent-peer-name <renamed value>]
 ```
 
-`--agent-kind` defaults to `claude` if omitted — see "Resolving the agent kind" above for how to resolve it before calling this. `--agent-model`/`--agent-effort` are optional, unenforced record-keeping. `--main-agent-pane-id` is the dispatching main agent's current `$HERDR_PANE_ID`; pass it for any `herdr-pane` dispatch and omit it for headless mode. `--main-agent-peer-name` is required only for Claude, whose `SendMessage` path needs a unique resolved target; omit it for Codex, which uses provider-neutral status events and (when interactive) the pane id instead.
+`--agent-kind` defaults to `claude` if omitted — see "Resolving the agent kind" above for how to resolve it before calling this. `--agent-model`/`--agent-effort` are optional, unenforced record-keeping. `--main-agent-pane-id` is the dispatching main agent's current `$HERDR_PANE_ID`; pass it for every `herdr-pane` dispatch so all provider pairings have the primary return channel.
+
+`--main-agent-kind` is required and records the receiver provider independently
+of the dispatched agent. `herdr-pane` mode requires
+`--main-agent-pane-id` for every provider pairing. A
+`--main-agent-peer-name` is valid only when both `--agent-kind` and
+`--main-agent-kind` are `claude`; it is required for that pair only in headless
+mode. The script rejects cross-provider peer names before writing an instruction
+or changing `plan.json`.
 
 Prints `{"session_id": "...", "instruction_path": "..."}` — use that `session_id` for the actual dispatch command below, don't generate a second one. For a plan task (`--plan`/`--task-id` given), this also marks `plan.json`'s matching task `dispatched` and refuses (before writing anything) if that task isn't still `planned` — a double-dispatch never leaves a stray pending file behind. It refuses outright if an instruction already exists at that `--app`/`--slug` pair, too.
 
@@ -94,9 +104,9 @@ Archived (wrapped-up) instructions move to `<home>/.straw-boss/dispatch/archive/
 
 Three scripts, all keyed on the dispatch's own instruction path — a dispatched agent never needs to know or care whether it's a plan or standalone task to use any of them. The main agent has this path from `dispatch-task.py write`'s own result; the dispatched agent has it because the dispatch instruction states it explicitly (`cross-session-coordination.md`'s "What the dispatch instruction states, per mode" — it's computed before `write` is even called, since `write`'s own `--task` argument is this same prompt):
 
-- **`get-main-agent.py --instruction-path <path>`** — reads back `main_agent_herdr_pane_id`/`main_agent_send_message_peer` from the instruction file. Call this right before sending the `SendMessage` push per `skills/notifying-main-agent/SKILL.md`'s "Branch: Report your own status" — it's the authoritative source, not the dispatch prompt's own prose recollection.
+- **`get-main-agent.py --instruction-path <path>`** — reads back `main_agent_kind`, `main_agent_herdr_pane_id`, the optional Claude-to-Claude peer, and `preferred_notification_channel`. It is the authoritative source, not the dispatch prompt's own prose recollection.
 - **`report-progress.py --instruction-path <path> --note "<text>"`** — appends a timestamped note to a sibling `<app>--<slug>.progress.jsonl`. Callable any number of times, at any point in the task. Never sends anything, never touches the instruction file — `peeking-work` reads this log's tail as its first move, so the main agent usually doesn't need to join the dispatched agent's live pane just to see what it's doing.
-- **`report-task-status.py --instruction-path <path> --status <status> --note "<text>"`** — writes this dispatch's state record: for a plan task, the existing `~/.straw-boss/plans/<slug>/status/<task_id>.json`; for a standalone dispatch, a sibling `<app>--<slug>.status.json`. Every Plan agent kind uses this interface. `watch-plan-status.py` turns each Plan file-content revision into an active scheduling event; Claude may additionally send its `notifying-main-agent` push as a fast path.
+- **`report-task-status.py --instruction-path <path> --status <status> --note "<text>"`** — the single worker-facing status interface. It writes this dispatch's state record first: for a plan task, the existing `~/.straw-boss/plans/<slug>/status/<task_id>.json`; for a standalone dispatch, a sibling `<app>--<slug>.status.json`. When the instruction records a main-agent pane, it then sends the self-contained status message with `herdr agent prompt`, for every provider pairing. A failed herdr call returns non-zero without rolling back the status. `watch-plan-status.py` turns each Plan file-content revision into the recoverable scheduling event; only a Claude-to-Claude pair may use `SendMessage` as fallback.
 
 `report-task-status.py` still also accepts its original `--plan`/`--task` form (mutually exclusive with `--instruction-path`) for a caller that already has the plan slug/task_id handy and no instruction path — e.g. the main agent's own `cancelled` write. A dispatched agent reporting on itself should always prefer `--instruction-path`.
 
@@ -145,8 +155,8 @@ cd "<app_dir>" && claude -p --session-id "<uuid from dispatch-task.py write>" $P
 - `claude -p --output-format json` gives a single structured result if the caller needs to parse the outcome programmatically; plain text output is fine for a report-back-to-user case.
 - Once launched, confirm it per "Instruction file" above (`dispatch-task.py confirm --app <app> --slug <short-slug>`, no `--pane-id`/`--tab-id` needed for this mode) — the instruction should not sit `pending` after the process is actually running.
 - If the main agent itself is running inside a herdr pane, launching `claude -p` from it (even via `Bash`) overwrites that pane's own `agent_session` in `herdr pane list`/`agent list` to the subprocess's session id — cosmetic only, confirmed live, nothing documented here reads it, but don't use it to check "is this still my own pane."
-- **A standalone `claude-p` dispatch also sends the `SendMessage` push** (`notifying-main-agent`'s "Branch: Report your own status") right before it exits, on reaching `done`/`failed`/the "ready to merge" checkpoint (or a completed feature-branch push notification, or the "push landing outside its own feature branch" checkpoint) — same requirement as any other dispatch, and it costs nothing extra since the process is exiting either way. This does not replace the process-exit signal below, which is already reliable on its own for `claude-p` specifically (see `design.md`'s Non-Goals in the `push-based-completion-reporting` change) — the two are redundant by design for this mode, not competing.
-- **Detecting the "ready to merge" checkpoint has no separate live-pane signal for a standalone `claude-p` dispatch — the process exiting *is* the fallback signal.** On the full flow, the dispatch instruction tells the agent to stop and report readiness rather than execute a merge, or a push landing outside its own feature branch (see `shipping-task`'s Task 4) — commit, and pushing the task's own feature branch, need no authorization and never stop the agent; the agent pushes on its own, sends the required FYI, and keeps going within the same turn. `claude -p` processes exactly one turn then exits — so a foreground run returning, or a background run's harness-notification firing, means the agent either finished the whole task or (full flow only) hit that stop-and-report point; read its final output (already on stdout for a foreground run) to tell which. On the light flow there's no stop-and-report point at all — a `claude -p` process exiting always means the task actually finished (committed and done), never a checkpoint. A standalone dispatch also has its own terminal-state record now (`report-task-status.py --instruction-path <path>` — see "Reporting scripts" above) — not a plan's `status/` directory, but the same idea; still bookkeeping, not itself the notification.
+- A standalone headless dispatch always writes status through `report-task-status.py --instruction-path` before exit. If the instruction records a main-agent herdr pane, that same command prompts it. With no pane, only a Claude worker whose main agent is also Claude may fall back to `SendMessage`; every other pair relies on the durable record plus process exit.
+- **Detecting the "ready to merge" checkpoint has no separate live-pane signal for a standalone `claude-p` dispatch — process exit remains the fallback signal.** The instruction tells the agent to stop and run the shared status command before gated mutations; pushing its own feature branch is an FYI-and-continue action. A standalone dispatch's status command writes its sibling `.status.json` and prompts any recorded main-agent pane; without one, process exit plus the durable record is the observation path, with `SendMessage` available only to Claude-to-Claude.
 
 ## `claude-p` dispatch (headless, `agent_kind: "codex"`)
 
@@ -177,7 +187,7 @@ The resumed turn overwrites the same Plan status file when it reaches its next c
 
 ## `herdr-pane` dispatch — pane setup (all agent kinds)
 
-0. **Ensure the main agent itself is addressable — once per main-agent session, before the first `herdr-pane` dispatch, never skipped as "probably still fine from last time."** `/rename` does not persist across a session restart (see `cross-session-coordination.md` "Making the main agent addressable"), so a freshly restarted main agent is not addressable even if a prior session already did this. Check first rather than re-running blindly: `ListAgents` excludes the caller's own session, so there is no direct self-lookup — instead, treat "have I renamed myself this session" as a fact to track once and remember, not something to re-derive by calling any inspection command. If unrenamed, run the self-rename now, before writing any dispatch instruction that might need this channel.
+0. **Record the main agent's own provider and herdr pane.** Pass the current main-agent kind as `--main-agent-kind` and its literal `$HERDR_PANE_ID` value as `--main-agent-pane-id`. This pane is the primary return channel for every provider pairing. A Claude main agent needs a peer name only for a Claude-to-Claude fallback; a Codex main agent must never record one.
 
 1. **Resolve the tab.** Default to accumulating dispatched panes into the caller's own currently active tab (`$HERDR_TAB_ID`) rather than always opening a new one — this matches herdr's own guidance to default to a sibling pane in the current tab, and the 2x2-then-new-tab layout this was designed around.
    - If the instruction has a `batch` and another in-progress instruction with the same batch recorded a `herdr_tab_id`, check that tab still exists and has fewer than 4 panes (`herdr tab get <tab_id>` / `herdr pane list --workspace <id>` filtered to that tab) — prefer reusing it over the caller's own tab, so a multi-app batch's panes stay together.

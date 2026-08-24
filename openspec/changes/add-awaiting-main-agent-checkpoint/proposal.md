@@ -1,7 +1,7 @@
 ## Why
 
 A dispatched agent that is blocked on something only its main agent's own judgment or dispatch authority can resolve (redispatching a failed dependency, arbitrating a peer/worktree conflict, deciding whether to redirect or cancel a related task) currently has no dedicated checkpoint for it.
-Before this change, the only channel for reaching the main agent was the informational-question `SendMessage`: fire-and-forget, without durable status coverage, queued behind whatever the main agent was already doing.
+Before this change, the only live channel for reaching the main agent was an informational, provider-specific message without durable checkpoint coverage. The current reporting contract now prefers the recorded herdr pane and permits `SendMessage` only for Claude-to-Claude fallback.
 The result is that the one situation most needing the main agent's active attention is currently the least reliably surfaced, and there have been real cases of a dispatched agent's question being resolved only in the main agent's own reasoning, with the reply never actually sent back to the dispatched agent's pane or session.
 
 ## What Changes
