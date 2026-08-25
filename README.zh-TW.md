@@ -22,21 +22,38 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 
 ## 需求
 
-- Claude Code，plugins 要開。
+- Claude Code（plugins 要開），或支援 plugin 的 Codex CLI。
 - [herdr](https://github.com/herdrdev/herdr)（建議裝，非必要）。沒裝就跑 headless `claude -p`——看不到即時畫面，也不能中途問你問題。`init` 會問你要不要裝。
 
 ## 安裝
+
+### Claude Code
 
 ```
 /plugin marketplace add https://github.com/wayne930242/straw-boss
 /plugin install straw-boss@straw-boss
 ```
 
-每個專案跑一次：
+接著每個專案跑一次：
 
 ```
 /straw-boss:init
 ```
+
+### Codex CLI
+
+```bash
+codex plugin marketplace add wayne930242/straw-boss --ref main
+codex plugin add straw-boss@straw-boss
+```
+
+開一個新的 Codex session，讓它載入剛安裝的 skills 與 hooks；Codex 詢問時，先檢查並信任 bundled hooks，然後在每個專案跑一次：
+
+```text
+$straw-boss:init
+```
+
+也可以先啟動 `codex`，再輸入 `/plugins`，以互動介面瀏覽或管理 plugin。Codex IDE extension 目前不支援 plugins。
 
 `init` 問你要管哪些 app、寫進 `.claude/straw-boss/apps.json`、同步進 root `CLAUDE.md`，缺 agent system 的 app 主動提議建一套，順便問要不要開 herdr。
 

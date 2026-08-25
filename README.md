@@ -22,21 +22,38 @@ An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a
 
 ## Requirements
 
-- Claude Code, with plugins enabled.
+- Claude Code with plugins enabled, or Codex CLI with plugin support.
 - [herdr](https://github.com/herdrdev/herdr) (recommended, optional). Without it, dispatch runs headless `claude -p` — no live view, no mid-task questions. `init` asks whether to enable it.
 
 ## Install
+
+### Claude Code
 
 ```
 /plugin marketplace add https://github.com/wayne930242/straw-boss
 /plugin install straw-boss@straw-boss
 ```
 
-Run once per project:
+Then run once per project:
 
 ```
 /straw-boss:init
 ```
+
+### Codex CLI
+
+```bash
+codex plugin marketplace add wayne930242/straw-boss --ref main
+codex plugin add straw-boss@straw-boss
+```
+
+Start a new Codex session so it loads the installed skills and hooks, review and trust the bundled hooks when prompted, then run once per project:
+
+```text
+$straw-boss:init
+```
+
+You can also browse or manage the installed plugin interactively by starting `codex` and entering `/plugins`. Plugins are not available in the Codex IDE extension.
 
 `init` asks which apps to manage, writes `.claude/straw-boss/apps.json`, syncs your root `CLAUDE.md`, offers to bootstrap a missing agent system per app, and asks whether to enable herdr.
 

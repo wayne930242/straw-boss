@@ -1,0 +1,39 @@
+{
+  "name": "straw-boss",
+  "version": "0.18.0",
+  "description": "Herdr-backed dispatch for Claude Code and Codex: route work into app-rooted agents, track provider-neutral plans, and enforce a coordinated git lifecycle.",
+  "author": {
+    "name": "Wei Hung",
+    "url": "https://github.com/wayne930242"
+  },
+  "homepage": "https://github.com/wayne930242/straw-boss",
+  "repository": "https://github.com/wayne930242/straw-boss",
+  "license": "MIT",
+  "keywords": [
+    "herdr",
+    "dispatch",
+    "multi-app",
+    "monorepo",
+    "agent-harness",
+    "orchestration",
+    "coordination"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "straw-boss",
+    "shortDescription": "Dispatch and coordinate app-rooted agents",
+    "longDescription": "Route implementation, audit, research, and diagnosis work into the right app-rooted Claude or Codex agent, with durable status and lifecycle coordination.",
+    "developerName": "Wei Hung",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/wayne930242/straw-boss",
+    "defaultPrompt": [
+      "Use straw-boss to dispatch and coordinate this work.",
+      "Use straw-boss to audit this app against its own rules.",
+      "Use straw-boss to work through this backlog."
+    ]
+  }
+}
