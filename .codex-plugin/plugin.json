@@ -1,6 +1,6 @@
 {
   "name": "straw-boss",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "description": "Herdr-backed dispatch for Claude Code and Codex: route work into app-rooted agents, track provider-neutral plans, and enforce a coordinated git lifecycle.",
   "author": {
     "name": "Wei Hung",

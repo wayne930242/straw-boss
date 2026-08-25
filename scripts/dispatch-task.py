@@ -223,7 +223,11 @@ def main() -> int:
     write_p = sub.add_parser("write", help="write the pending instruction file")
     write_p.add_argument("--app", required=True)
     write_p.add_argument("--slug", required=True, help="short slug for the filename")
-    write_p.add_argument("--task", required=True, help="full task text for the dispatched session")
+    write_p.add_argument(
+        "--task",
+        required=True,
+        help="outcome-oriented task brief with verified task-specific context",
+    )
     write_p.add_argument("--mode", required=True, choices=["claude-p", "herdr-pane"])
     write_p.add_argument("--repo-root", required=True)
     write_p.add_argument("--batch", default=None)

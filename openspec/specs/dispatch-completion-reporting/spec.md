@@ -40,12 +40,12 @@ Whenever a dispatch instruction records a main-agent herdr pane, the shared stat
 - **WHEN** a Claude worker's status command successfully prompts its Claude main agent's recorded pane
 - **THEN** it SHALL NOT also require `SendMessage`
 
-### Requirement: Dispatch instructions state the provider-appropriate reporting obligation
-Every dispatch instruction SHALL include the exact provider-neutral progress/status commands, the main-agent provider, and only the reachability supported by the sender/receiver pair. A Claude instruction SHALL use `notifying-main-agent` for this routing; a Codex instruction SHALL be self-contained and SHALL NOT point to unavailable Claude skills or `SendMessage`.
+### Requirement: Generated dispatch contracts state the provider-appropriate reporting obligation
+Every generated dispatch contract SHALL include the exact provider-neutral progress/status commands and only the reachability supported by the sender/receiver pair. Task-specific prose SHALL NOT duplicate these mechanics. A Claude or Codex worker uses the same instruction-keyed contract and SHALL NOT need provider-native routing details in its task brief.
 
-#### Scenario: Instruction assembly for a dispatch
-- **WHEN** a specialist skill assembles a dispatch instruction, plan or standalone
-- **THEN** the assembled instruction SHALL include the status/progress commands and only the notification mechanisms available to its resolved agent kind
+#### Scenario: Contract assembly for a dispatch
+- **WHEN** a specialist skill dispatches a plan or standalone task
+- **THEN** the generated contract SHALL include the status/progress commands while the task-specific prose remains focused on the requested outcome and verified context
 
 ### Requirement: Plan active detection is authoritative; standalone active detection remains a fallback
 The main agent SHALL keep the Plan status watcher active for scheduling. For a standalone dispatch, process/pane observation remains the fallback when the provider's notification path is absent or quiet.

@@ -72,8 +72,11 @@ This contract is mandatory for this dispatched session.
   `uv run --script {progress} --instruction-path {instruction_path} --note \"<summary>\"`
 - Send a question or coordination message to the main agent with:
   `uv run --script {message} --instruction-path {instruction_path} --to main --intent question --message \"<message>\"`
-- If you cannot safely continue, report `awaiting-main-agent` with:
-  `uv run --script {status} --instruction-path {instruction_path} --status awaiting-main-agent --note \"<what you need>\"`
+- If you must pause, choose the checkpoint that names who can unblock you:
+  `awaiting-user-input` for a user-owned decision, `awaiting-main-agent` for
+  coordination or action owned by the main agent, or `awaiting-authorization`
+  only when an existing rule requires authorization for the next action. Report it with:
+  `uv run --script {status} --instruction-path {instruction_path} --status <checkpoint> --note \"<what you need>\"`
 - Before stopping, always report terminal `done` or `failed` with the same
   status script. Never finish work and become silently idle.
 - After a checkpoint reply, continue the task. If another blocker appears,

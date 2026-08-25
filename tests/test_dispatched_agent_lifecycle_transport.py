@@ -102,9 +102,32 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         contract = contract_path.read_text()
         self.assertIn(str(instruction_path), contract)
         self.assertIn("report-task-status.py", contract)
+        self.assertIn("awaiting-user-input", contract)
         self.assertIn("awaiting-main-agent", contract)
+        self.assertIn("awaiting-authorization", contract)
         self.assertIn("Before stopping", contract)
         self.assertIn("Do not use SendMessage", contract)
+
+    def test_task_authoring_guidance_prioritizes_outcome_and_context(self) -> None:
+        shipping = (ROOT / "skills" / "shipping-task" / "SKILL.md").read_text()
+        plan_mechanics = (
+            ROOT / "skills" / "dispatching-work" / "references" / "plan-mechanics.md"
+        ).read_text()
+
+        for source in (shipping, plan_mechanics):
+            self.assertIn("clear requested outcome", source)
+            self.assertIn("sufficient verified context", source)
+            self.assertIn("possible implementation", source)
+            self.assertIn("generic lifecycle prose", source)
+
+        self.assertNotIn(
+            "selected lifecycle/worktree, mutation gates, tracker boundary, checkpoints",
+            shipping,
+        )
+        self.assertNotIn(
+            "Task-specific prose adds only tracker boundaries",
+            plan_mechanics,
+        )
 
     def test_herdr_dispatch_requires_main_agent_session_fingerprint(self) -> None:
         result = self.run_script(
