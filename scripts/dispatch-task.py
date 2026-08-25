@@ -33,6 +33,7 @@ from typing import Any
 from dispatch_state import (
     contract_path,
     dump_json,
+    install_runtime_launcher,
     launch_receipt_path,
     load_json,
     render_dispatch_contract,
@@ -105,6 +106,7 @@ def write_instruction(
         assert task_id is not None
         check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
 
+    install_runtime_launcher()
     session_id = str(uuid.uuid4())
     generated_contract_path = contract_path(path)
     contract = render_dispatch_contract(path)

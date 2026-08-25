@@ -8,6 +8,7 @@ wrappers so callers express intent without learning addressing details.
 
 ```text
 dispatch-task.py write
+  -> install/update ~/.straw-boss/bin/run-straw-boss-script.py
   -> instruction.json + instruction.contract.md
   -> launch-dispatched-agent.py
      -> provider injection through herdr
@@ -15,6 +16,10 @@ dispatch-task.py write
   -> dispatch-task.py confirm
 
 worker/main semantic command
+  -> version-neutral runtime launcher
+     -> managed plugin: resolve currently enabled Straw Boss install
+     -> source checkout: retain originating checkout
+     -> resolution unavailable: fall back to originating root
   -> dispatch_transport.py
      -> resolve endpoint from instruction
      -> herdr agent get <recorded pane>
@@ -38,6 +43,27 @@ Caller burden: supply task semantics plus the main agent's pane and session
 identity. The caller does not construct lifecycle prose.
 
 Verification surface: instruction/contract files and deterministic digest.
+
+The generated command targets a version-neutral launcher in
+`~/.straw-boss/bin`, not a script beneath a versioned plugin cache. The contract
+records the originating plugin or checkout root only as a compatibility
+fallback. For a managed Claude or Codex plugin origin, the launcher asks the
+plugin manager for the currently enabled `straw-boss@straw-boss` root on every
+invocation, then executes the requested script from that root. Source-checkout
+dispatches deliberately stay on their checkout so local development remains
+deterministic.
+
+The launcher is a shallow adapter: its public interface is `--origin-root`, an
+optional `--prefer-installed`, one allowlisted `--script`, and the script's
+remaining arguments. Session identity, routing, state transitions, and message
+content remain behind the selected script. `dispatch-task.py write` installs it
+atomically before writing any contract. A monotonic launcher-protocol marker
+prevents an older still-running coordinator from downgrading a newer compatible
+launcher.
+
+Verification surface: a generated contract plus a fake plugin-manager listing
+that points from an old cache root to a new one, with origin fallback when live
+resolution is unavailable.
 
 ### Launch adapter
 
@@ -119,6 +145,21 @@ boundary while the upstream nested-session issue exists.
 Rejected. These values can be shared across sessions and do not bind the live
 foreground process to the dispatch's immutable session id.
 
+### Keep absolute versioned script paths in the immutable contract
+
+Rejected. The observed `calendar-event-model` completion report still invoked
+the `0.18.0` cache after `0.18.2` was installed, so the fixed transport was never
+entered. Contract immutability should preserve behavior and authority, not pin
+implementation defects that a compatible patch update has corrected.
+
+### Rewrite active contracts and launch receipts after an update
+
+Rejected. Changing the contract digest and its historical receipt after launch
+would falsely claim that the new contract was injected before the first model
+turn. Dispatches created before the version-neutral launcher require a one-time
+current-script command or a fresh dispatch; new contracts remain immutable and
+gain update-safe execution through the launcher.
+
 ## Redundancy removal
 
 - Replace repeated JSON/path/status helpers with a small shared state module.
@@ -152,6 +193,13 @@ foreground process to the dispatch's immutable session id.
   implementation failures fail open for unrelated sessions.
 - Codex lacks the same Stop lifecycle seam. The developer-level contract is
   enforced at launch, while process/status monitoring remains the recovery path.
+- A newer script could stop supporting an older instruction schema. Transport
+  and status scripts therefore retain backward compatibility for active
+  instruction files; if installed-root discovery fails or the requested script
+  is absent, the launcher uses the recorded origin instead.
+- The stable launcher is writable by the same local user who owns plugin and
+  dispatch state. Its allowlist prevents contracts from turning it into an
+  arbitrary script executor; filesystem compromise is outside this boundary.
 
 ## Applied precedent
 

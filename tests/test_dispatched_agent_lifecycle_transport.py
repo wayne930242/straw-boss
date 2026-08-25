@@ -114,6 +114,145 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("Before stopping", contract)
         self.assertIn("Do not use SendMessage", contract)
 
+    def test_contract_uses_version_neutral_launcher_that_follows_plugin_updates(
+        self,
+    ) -> None:
+        instruction_path, output = self.write_dispatch("claude")
+        contract = Path(str(output["contract_path"])).read_text()
+        launcher = self.home / ".straw-boss" / "bin" / "run-straw-boss-script.py"
+
+        self.assertTrue(launcher.is_file())
+        self.assertEqual(contract.count(f"uv run --script {launcher}"), 3)
+        self.assertNotIn(
+            f"uv run --script {SCRIPTS / 'report-progress.py'}", contract
+        )
+
+        cache_root = (
+            self.home / ".claude" / "plugins" / "cache" / "straw-boss" / "straw-boss"
+        )
+        old_root = cache_root / "0.18.2"
+        new_root = cache_root / "0.18.3"
+        for root, marker in ((old_root, "old"), (new_root, "new")):
+            script = root / "scripts" / "report-progress.py"
+            script.parent.mkdir(parents=True)
+            script.write_text(
+                "# /// script\n"
+                "# requires-python = \">=3.11\"\n"
+                "# dependencies = []\n"
+                "# ///\n"
+                "import sys\n"
+                f"print({marker!r}, *sys.argv[1:])\n"
+            )
+
+        old_scripts = old_root / "scripts"
+        (old_scripts / "dispatch_state.py").write_text(
+            (SCRIPTS / "dispatch_state.py").read_text()
+        )
+        managed_contract = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys; from pathlib import Path; "
+                    f"sys.path.insert(0, {str(old_scripts)!r}); "
+                    "from dispatch_state import render_dispatch_contract; "
+                    "print(render_dispatch_contract(Path('/tmp/instruction.json')))"
+                ),
+            ],
+            cwd=ROOT,
+            env={**os.environ, "HOME": str(self.home)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(managed_contract.returncode, 0, managed_contract.stderr)
+        self.assertIn("--prefer-installed", managed_contract.stdout)
+
+        fake_bin = self.home / "bin"
+        fake_bin.mkdir(exist_ok=True)
+        fake_claude = fake_bin / "claude"
+        fake_claude.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json\n"
+            f"print(json.dumps([{{'id': 'straw-boss@straw-boss', 'enabled': True, 'installPath': {str(new_root)!r}}}]))\n"
+        )
+        fake_claude.chmod(0o755)
+        env = {
+            **os.environ,
+            "HOME": str(self.home),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+        }
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(launcher),
+                "--origin-root",
+                str(old_root),
+                "--prefer-installed",
+                "--script",
+                "report-progress.py",
+                "--",
+                "--instruction-path",
+                str(instruction_path),
+                "--note",
+                "version probe",
+            ],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("new --instruction-path", result.stdout)
+        self.assertNotIn("old --instruction-path", result.stdout)
+
+        fake_claude.write_text(
+            "#!/usr/bin/env python3\n"
+            "print('[]')\n"
+        )
+        fallback = subprocess.run(
+            [
+                sys.executable,
+                str(launcher),
+                "--origin-root",
+                str(old_root),
+                "--prefer-installed",
+                "--script",
+                "report-progress.py",
+                "--",
+                "--note",
+                "fallback probe",
+            ],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(fallback.returncode, 0, fallback.stderr)
+        self.assertIn("old --note fallback probe", fallback.stdout)
+
+        rejected = subprocess.run(
+            [
+                sys.executable,
+                str(launcher),
+                "--origin-root",
+                str(old_root),
+                "--script",
+                "../dispatch-task.py",
+            ],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("unsupported Straw Boss script", rejected.stderr)
+
     def test_task_authoring_guidance_prioritizes_outcome_and_context(self) -> None:
         shipping = (ROOT / "skills" / "shipping-task" / "SKILL.md").read_text()
         plan_mechanics = (

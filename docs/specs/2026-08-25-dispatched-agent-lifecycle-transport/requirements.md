@@ -15,6 +15,9 @@ address itself.
   priority on every interactive herdr launch.
 - Record enough launch evidence for `dispatch-task.py confirm` to reject a
   session that did not receive the matching contract.
+- Keep generated contract commands usable across plugin patch updates without
+  pinning a dispatched agent to the versioned plugin-cache directory that
+  created the dispatch.
 - Route main-to-agent and agent-to-main messages by instruction path only.
 - Validate the live receiver session against the session recorded in the
   instruction before every herdr prompt.
@@ -37,6 +40,8 @@ address itself.
 - Guaranteeing a Codex stop hook that the Codex CLI does not expose.
 - Modifying Herdr's managed integration hook or server installation.
 - Rebinding an instruction to whichever session Herdr currently reports.
+- Rewriting an already-launched immutable contract or its launch receipt to
+  retrofit dispatches created before the version-neutral launcher existed.
 
 ## Scenarios
 
@@ -62,6 +67,9 @@ address itself.
 9. A pane is genuinely reused by another Claude session; both Herdr metadata
    and the foreground interactive Claude registry disagree with the dispatch,
    so transport refuses before prompting.
+10. A long-running dispatched agent was created from an older managed plugin
+    cache, then Straw Boss is updated with a transport fix; its unchanged
+    contract command resolves and runs the currently enabled plugin script.
 
 ## Confirmed decisions
 
@@ -80,10 +88,19 @@ address itself.
   non-interactive, SDK, or disagreeing evidence fails closed.
 - Corroboration does not rewrite the immutable dispatch or Herdr's stored
   metadata; it authorizes only the current send after rechecking live state.
+- Generated contracts invoke a version-neutral launcher under Straw Boss state.
+  Managed-plugin dispatches resolve the currently enabled plugin on every call;
+  source-checkout dispatches keep using their checkout. If current-plugin
+  resolution is unavailable, the launcher falls back to the originating root.
+- The launcher accepts only the three contract-owned communication scripts and
+  never accepts an arbitrary relative or absolute script path.
 - User confirmation: 2026-08-25, via the instruction to implement the proposed
   design and inspect the current architecture for redundancy.
 - User requested correction of the false session-mismatch failure on
   2026-08-25 after reviewing the diagnosed Herdr metadata pollution.
+- User reported the failure still appearing in long-running dispatches on
+  2026-08-25; live evidence showed those agents were executing commands pinned
+  to the older `0.18.0` cache after `0.18.2` was installed.
 
 ## Open questions
 

@@ -5,6 +5,14 @@
 - `dispatch-task.py write` creates the instruction and a sibling immutable
   contract before any agent launch. The instruction records the contract path
   and SHA-256 digest.
+- Before writing the contract, dispatch installs a version-neutral launcher at
+  `~/.straw-boss/bin/run-straw-boss-script.py`. Contract commands invoke this
+  launcher rather than a script inside a versioned plugin-cache directory.
+- For a contract created from a managed Claude or Codex plugin cache, the
+  launcher resolves the currently enabled `straw-boss@straw-boss` install for
+  each invocation and executes the requested communication script from it. For
+  a source checkout it uses that checkout. Failed installed-root resolution
+  falls back to the originating root recorded in the immutable command.
 - A herdr-addressable main agent must have both a pane id and a session id in a
   new instruction. Endpoint identity is incomplete without the session id.
 - `launch-dispatched-agent.py` is the supported interactive launcher. It passes
@@ -45,6 +53,8 @@ Each generated contract states:
 - that all reports, questions, replies, redirections, and cancellations use the
   supplied scripts rather than provider-native messaging;
 - the exact progress and status commands;
+- version-neutral script commands that allow only `report-progress.py`,
+  `report-task-status.py`, or `send-dispatch-message.py`;
 - that `awaiting-main-agent` is required when the agent cannot safely continue;
 - that a terminal `done` or `failed` report is required before stopping;
 - that an agent must continue after a checkpoint reply or report a new blocking
@@ -54,6 +64,13 @@ Each generated contract states:
 
 - Existing instruction files remain readable for inspection and cancellation,
   but cannot be newly confirmed without a matching launch receipt.
+- Dispatches created before the version-neutral launcher keep their original
+  immutable, version-pinned commands. They require a one-time invocation of the
+  current script path or a fresh dispatch; their contract and historical launch
+  receipt are not silently rewritten.
+- Scripts selected from a newer compatible installation must continue to read
+  active older instruction schemas. If current-install discovery or the selected
+  script is unavailable, launcher execution falls back to the originating root.
 - Legacy plan/task-only status writes remain durable and omit live notification
   because they do not identify a dispatch.
 - Missing herdr, malformed JSON, an absent receiver session, session mismatch,
@@ -80,9 +97,10 @@ dispatch roots and a fake herdr executable. They verify contract generation,
 provider-specific injection, receipt-gated confirmation, two-way session
 validation, foreground Claude corroboration after SDK metadata pollution,
 continued refusal after genuine pane reuse, write-before-notify ordering,
-Stop-hook behavior, and the absence of public direct-routing instructions. The
-full unit suite, Python compilation, OpenSpec validation, and repository
-contradiction scans complete verification.
+version-neutral contract execution after a simulated plugin update with origin
+fallback, Stop-hook behavior, and the absence of public direct-routing
+instructions. The full unit suite, Python compilation, OpenSpec validation, and
+repository contradiction scans complete verification.
 
 ## Applied standards and evidence
 

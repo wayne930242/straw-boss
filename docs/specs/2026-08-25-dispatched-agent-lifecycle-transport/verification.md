@@ -2,7 +2,7 @@
 
 ## Automated evidence
 
-- `python3 -m unittest discover -s tests -v`: 36 tests passed.
+- `python3 -m unittest discover -s tests -v`: 37 tests passed.
 - `python3 -m compileall -q scripts tests`: passed.
 - `openspec validate --all --strict`: 8/8 items passed.
 - `claude plugin validate .`: marketplace validation passed.
@@ -33,6 +33,9 @@ Focused integration tests prove:
 - delivery ledgers store content-free proof (digest and length), not a second
   copy of message content;
 - wrap-up archives contract, receipt, status, progress, and delivery artifacts;
+- generated commands use the version-neutral runtime launcher; a fake managed
+  plugin update proves an old origin selects the new enabled script, while an
+  unavailable plugin-manager result falls back to the origin;
 - active skills expose no provider-native fallback or raw endpoint lookup.
 
 ## Architecture redundancy review
@@ -79,6 +82,10 @@ focused tests plus definition/contradiction scans. The final scan found one
 - Headless dispatches have no live reverse channel. Their generated contract is
   still injected at launch, and durable status plus process/watcher observation
   remains the recovery path.
+- Contracts generated before `0.18.3` retain their immutable absolute script
+  paths. They do not gain the launcher retroactively because rewriting the
+  contract and receipt would invalidate launch evidence; use the current script
+  once or create a fresh dispatch.
 
 ## Live regression evidence
 
@@ -90,7 +97,14 @@ nested-session metadata. Running the production `resolve_endpoint` and
 This check intentionally stopped before `herdr agent prompt`; no message was
 sent during verification and no dispatch or Herdr metadata was rewritten.
 
+The residual failure was separately reproduced from the actual worker
+transcript: `calendar-event-model` invoked the `0.18.0` cached
+`report-task-status.py` at 2026-08-25 19:55 +08:00, after `0.18.2` had been
+installed. The same instruction and pane passed through the current production
+transport. This distinguishes stale command selection from a remaining session
+corroboration defect.
+
 ## Delivery state
 
-Implemented and verified on 2026-08-25 for plugin version 0.18.2. No version
+Implemented and verified on 2026-08-25 for plugin version 0.18.3. No version
 tag, local plugin installation, or release was performed.
