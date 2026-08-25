@@ -2,9 +2,9 @@
 
 ## Automated evidence
 
-- `python3 -m unittest discover -s tests -v`: 32 tests passed.
+- `python3 -m unittest discover -s tests -v`: 36 tests passed.
 - `python3 -m compileall -q scripts tests`: passed.
-- `openspec validate --all --strict`: 7/7 items passed.
+- `openspec validate --all --strict`: 8/8 items passed.
 - `claude plugin validate .`: marketplace validation passed.
 - `git diff --check`: passed.
 - Direct execution of the registered Stop hook with an unrelated session id:
@@ -18,6 +18,11 @@ Focused integration tests prove:
 - `confirm` refuses a missing or mismatched launch receipt;
 - both transport directions resolve from instruction path and refuse a reused
   pane whose live session differs;
+- a Claude receiver remains reachable when a nested SDK run polluted only
+  Herdr's pane metadata, provided the unique foreground Claude PID and its
+  interactive CLI registry still identify the dispatch's expected session;
+- a replacement foreground session and an `sdk-cli` registry both continue to
+  fail closed before `herdr agent prompt`;
 - durable status exists before live notification is attempted;
 - a dispatched Claude Stop is blocked without a checkpoint/terminal report and
   allowed after a valid report;
@@ -75,7 +80,17 @@ focused tests plus definition/contradiction scans. The final scan found one
   still injected at launch, and durable status plus process/watcher observation
   remains the recovery path.
 
+## Live regression evidence
+
+The original failing standalone dispatch
+`rest-api-v3--calendar-event-model-design.json` still records Claude pane
+`wF:p1` and its original main-agent session while Herdr retains the polluted
+nested-session metadata. Running the production `resolve_endpoint` and
+`validate_live_session` seam against that live state passed on 2026-08-25.
+This check intentionally stopped before `herdr agent prompt`; no message was
+sent during verification and no dispatch or Herdr metadata was rewritten.
+
 ## Delivery state
 
-Implemented and verified in the working tree on 2026-08-25. No commit, push,
-version bump, local plugin installation, or release was performed.
+Implemented and verified on 2026-08-25 for plugin version 0.18.2. No version
+tag, local plugin installation, or release was performed.

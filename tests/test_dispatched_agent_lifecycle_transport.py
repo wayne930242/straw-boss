@@ -40,7 +40,9 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             timeout=10,
         )
 
-    def write_dispatch(self, agent_kind: str = "claude") -> tuple[Path, dict[str, object]]:
+    def write_dispatch(
+        self, agent_kind: str = "claude", main_agent_kind: str = "codex"
+    ) -> tuple[Path, dict[str, object]]:
         result = self.run_script(
             "dispatch-task.py",
             "write",
@@ -57,7 +59,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "--agent-kind",
             agent_kind,
             "--main-agent-kind",
-            "codex",
+            main_agent_kind,
             "--main-agent-pane-id",
             "main-pane",
             "--main-agent-session-id",
@@ -83,6 +85,10 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    sessions = json.loads(os.environ.get('HERDR_SESSIONS', '{}'))\n"
             "    session = sessions.get(target, os.environ.get('HERDR_LIVE_SESSION', 'worker-session'))\n"
             "    print(json.dumps({'result': {'agent': {'name': 'worker', 'agent_status': 'idle', 'agent_session': {'value': session}}}}))\n"
+            "elif args[:3] == ['pane', 'process-info', '--pane']:\n"
+            "    target = args[3]\n"
+            "    process_infos = json.loads(os.environ.get('HERDR_PROCESS_INFOS', '{}'))\n"
+            "    print(json.dumps({'result': {'process_info': process_infos.get(target, {'pane_id': target, 'foreground_processes': []})}}))\n"
             "else:\n"
             "    print(json.dumps({'result': {'agent': {'name': 'worker', 'agent_status': 'idle'}}}))\n"
         )
@@ -294,6 +300,185 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("session mismatch", result.stderr)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         self.assertEqual(calls, [["agent", "get", "main-pane"]])
+
+    def test_transport_accepts_expected_claude_session_when_herdr_metadata_was_polluted_by_sdk_child(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude", main_agent_kind="claude")
+        fake_bin, capture = self.install_fake_herdr()
+        claude_sessions = self.home / ".claude" / "sessions"
+        claude_sessions.mkdir(parents=True)
+        (claude_sessions / "4242.json").write_text(
+            json.dumps(
+                {
+                    "pid": 4242,
+                    "sessionId": "main-session",
+                    "kind": "interactive",
+                    "entrypoint": "cli",
+                    "status": "idle",
+                }
+            )
+            + "\n"
+        )
+        env = {
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HERDR_CAPTURE": str(capture),
+            "HERDR_SESSIONS": json.dumps({"main-pane": "sdk-child-session"}),
+            "HERDR_PROCESS_INFOS": json.dumps(
+                {
+                    "main-pane": {
+                        "pane_id": "main-pane",
+                        "foreground_process_group_id": 4242,
+                        "foreground_processes": [
+                            {
+                                "pid": 4242,
+                                "argv0": "claude",
+                                "argv": ["claude", "--dangerously-skip-permissions"],
+                            }
+                        ],
+                    }
+                }
+            ),
+        }
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "question",
+            "--message",
+            "Please arbitrate the specification conflict.",
+            extra_env=env,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(calls[0], ["agent", "get", "main-pane"])
+        self.assertEqual(calls[1], ["pane", "process-info", "--pane", "main-pane"])
+        self.assertEqual(calls[2][:3], ["agent", "prompt", "main-pane"])
+
+    def test_transport_still_refuses_when_foreground_claude_session_does_not_match_dispatch(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude", main_agent_kind="claude")
+        fake_bin, capture = self.install_fake_herdr()
+        claude_sessions = self.home / ".claude" / "sessions"
+        claude_sessions.mkdir(parents=True)
+        (claude_sessions / "4242.json").write_text(
+            json.dumps(
+                {
+                    "pid": 4242,
+                    "sessionId": "replacement-session",
+                    "kind": "interactive",
+                    "entrypoint": "cli",
+                    "status": "idle",
+                }
+            )
+            + "\n"
+        )
+        env = {
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HERDR_CAPTURE": str(capture),
+            "HERDR_SESSIONS": json.dumps({"main-pane": "sdk-child-session"}),
+            "HERDR_PROCESS_INFOS": json.dumps(
+                {
+                    "main-pane": {
+                        "pane_id": "main-pane",
+                        "foreground_process_group_id": 4242,
+                        "foreground_processes": [
+                            {"pid": 4242, "argv0": "claude", "argv": ["claude"]}
+                        ],
+                    }
+                }
+            ),
+        }
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "status",
+            "--message",
+            "done",
+            extra_env=env,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("session mismatch", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(
+            calls,
+            [
+                ["agent", "get", "main-pane"],
+                ["pane", "process-info", "--pane", "main-pane"],
+            ],
+        )
+
+    def test_transport_refuses_sdk_registry_even_when_its_session_id_matches_dispatch(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude", main_agent_kind="claude")
+        fake_bin, capture = self.install_fake_herdr()
+        claude_sessions = self.home / ".claude" / "sessions"
+        claude_sessions.mkdir(parents=True)
+        (claude_sessions / "4242.json").write_text(
+            json.dumps(
+                {
+                    "pid": 4242,
+                    "sessionId": "main-session",
+                    "kind": "interactive",
+                    "entrypoint": "sdk-cli",
+                    "status": "idle",
+                }
+            )
+            + "\n"
+        )
+        env = {
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HERDR_CAPTURE": str(capture),
+            "HERDR_SESSIONS": json.dumps({"main-pane": "sdk-child-session"}),
+            "HERDR_PROCESS_INFOS": json.dumps(
+                {
+                    "main-pane": {
+                        "pane_id": "main-pane",
+                        "foreground_process_group_id": 4242,
+                        "foreground_processes": [
+                            {"pid": 4242, "argv0": "claude", "argv": ["claude"]}
+                        ],
+                    }
+                }
+            ),
+        }
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "status",
+            "--message",
+            "done",
+            extra_env=env,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("session mismatch", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(
+            calls,
+            [
+                ["agent", "get", "main-pane"],
+                ["pane", "process-info", "--pane", "main-pane"],
+            ],
+        )
 
     def test_script_routes_to_worker_without_caller_supplied_endpoint(self) -> None:
         instruction_path, _ = self.write_dispatch("codex")

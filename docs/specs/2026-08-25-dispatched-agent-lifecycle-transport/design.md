@@ -18,7 +18,11 @@ worker/main semantic command
   -> dispatch_transport.py
      -> resolve endpoint from instruction
      -> herdr agent get <recorded pane>
-     -> require recorded session == live session
+     -> accept recorded session == live Herdr session
+     -> otherwise, for Claude only:
+        -> herdr pane process-info --pane <recorded pane>
+        -> require unique foreground Claude PID
+        -> require Claude interactive registry PID/session match
      -> herdr agent prompt <recorded pane> <message>
 ```
 
@@ -54,8 +58,9 @@ Verification surface: fake-herdr argv capture and receipt matching.
 ### Shared transport
 
 `dispatch_transport.py` owns instruction loading, target endpoint resolution,
-live-session lookup, exact fingerprint validation, and herdr prompt execution.
-Its target is `main` or `worker`; its address always comes from the instruction.
+live-session lookup, exact fingerprint validation, narrowly scoped Claude
+foreground-process corroboration, and herdr prompt execution. Its target is
+`main` or `worker`; its address always comes from the instruction.
 
 `send-dispatch-message.py` is the generic CLI. `report-task-status.py` and
 `reply-to-worker.py` remain thin adapters because their state transitions and
@@ -63,8 +68,8 @@ delivery semantics are materially different from generic messaging.
 
 Caller burden: instruction path, intent, and message only.
 
-Verification surface: fake-herdr session lookup and prompt calls, including the
-negative mismatch path.
+Verification surface: fake-herdr session/process lookup and prompt calls,
+including polluted metadata recovery and genuine pane-reuse refusal.
 
 ### Stop guard
 
@@ -97,6 +102,23 @@ Rejected. `report-task-status.py`, `reply-to-worker.py`, and
 validating different identity subsets. The inconsistency is exactly what lets a
 message reach a stale or wrong coordinator.
 
+### Trust Herdr's replacement session or rewrite the instruction
+
+Rejected. In the observed failure Herdr's replacement value belongs to an SDK
+worker, so rebinding would turn a false refusal into delivery to the wrong
+session and weaken immutable dispatch identity.
+
+### Patch the installed Herdr hook
+
+Rejected as the product fix. The hook is managed by Herdr and overwritten on
+integration reinstall or update. Straw Boss still needs a fail-closed transport
+boundary while the upstream nested-session issue exists.
+
+### Infer the receiver from pane name, cwd, or transcript recency
+
+Rejected. These values can be shared across sessions and do not bind the live
+foreground process to the dispatch's immutable session id.
+
 ## Redundancy removal
 
 - Replace repeated JSON/path/status helpers with a small shared state module.
@@ -114,6 +136,14 @@ message reach a stale or wrong coordinator.
 
 - A receipt could become stale if a pane is reused. Confirmation and every send
   independently compare the live session fingerprint.
+- Herdr's session fingerprint can be overwritten by a nested Claude SDK run.
+  The fallback requires agreement among pane id, foreground process identity,
+  Claude PID registry, interactive entrypoint, and expected session id. It does
+  not use cwd, pane name, or the polluted Herdr value as replacement identity.
+- A stale Claude registry file could survive after process exit. Corroboration
+  considers only PIDs returned as live foreground processes by Herdr and requires
+  the registry payload's PID to match its filename/process candidate. Missing or
+  ambiguous evidence fails closed.
 - Herdr may succeed without proving the receiver processed a message. Existing
   reply transcript confirmation remains for checkpoints; durable status remains
   authoritative for task completion.
@@ -131,3 +161,5 @@ message reach a stale or wrong coordinator.
   watcher as provider-neutral recovery.
 - Existing `report-task-status.py`: durable write before best-effort live
   notification.
+- Herdr issue 672: upstream reproduction and security rationale for binding
+  session reports to the pane's foreground process.

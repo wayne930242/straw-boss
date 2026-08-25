@@ -19,7 +19,13 @@
   endpoint identifier.
 - Before prompting, shared transport loads the target pane and expected session
   from the instruction, calls `herdr agent get`, and requires the live
-  `agent_session.value` to match exactly. It then prompts the recorded pane id.
+  `agent_session.value` to match exactly. If it differs and the recorded agent
+  kind is Claude, transport may instead corroborate the expected session by:
+  calling `herdr pane process-info --pane <pane>`; selecting the pane's unique
+  foreground `claude` process; and requiring
+  `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/<pid>.json` to identify that
+  same PID, the expected session id, `kind: interactive`, and `entrypoint: cli`.
+  It prompts the recorded pane only when one of those validation paths passes.
 - `report-task-status.py` writes durable state before using shared transport to
   notify the main agent. Delivery failure never rolls back that write.
 - `reply-to-worker.py` retains checkpoint-state validation and delivery
@@ -52,7 +58,11 @@ Each generated contract states:
   because they do not identify a dispatch.
 - Missing herdr, malformed JSON, an absent receiver session, session mismatch,
   or prompt failure returns non-zero with an actionable error.
-- A main-agent session mismatch is never downgraded to watcher-only success.
+- A session mismatch with missing, ambiguous, malformed, SDK-only, or
+  disagreeing foreground-process evidence remains a refusal. Codex and unknown
+  agent kinds retain exact Herdr fingerprint validation only.
+- A main-agent session mismatch is never downgraded to watcher-only success or
+  accepted by rebinding the instruction to Herdr's reported session.
 - Durable plan status and `watch-plan-status.py` remain the recovery and
   scheduling authority.
 
@@ -68,6 +78,20 @@ Each generated contract states:
 Standard-library integration tests invoke public script CLIs with temporary
 dispatch roots and a fake herdr executable. They verify contract generation,
 provider-specific injection, receipt-gated confirmation, two-way session
-validation, write-before-notify ordering, Stop-hook behavior, and the absence of
-public direct-routing instructions. The full unit suite, Python compilation,
-OpenSpec validation, and repository contradiction scans complete verification.
+validation, foreground Claude corroboration after SDK metadata pollution,
+continued refusal after genuine pane reuse, write-before-notify ordering,
+Stop-hook behavior, and the absence of public direct-routing instructions. The
+full unit suite, Python compilation, OpenSpec validation, and repository
+contradiction scans complete verification.
+
+## Applied standards and evidence
+
+- [Herdr issue 672](https://github.com/herdrdev/herdr/issues/672): documents
+  nested/headless Claude inheriting `HERDR_PANE_ID` and overwriting a pane's
+  stored session because the integration report lacks process identity. This
+  change corroborates process identity at the transport boundary without
+  weakening pane-reuse refusal.
+- `AGENTS.md` working agreements supplied for this workspace: read before write,
+  TDD for source changes, scoped edits, and relevant verification.
+
+User confirmation of this amended specification: 2026-08-25.
