@@ -15,7 +15,7 @@ Every port a worktree's dev server actually binds to gets locked, no exceptions 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" claim-port \
   --app "<app>" --key "<worktree absolute path>" --holder "<app>--<slug>" \
-  --requester-boss "<this dispatch's main-agent pane id or SendMessage peer name>" --note "dev server for <slug>"
+  --requester-instruction-path "<this dispatch instruction path>" --note "dev server for <slug>"
 ```
 
 It derives a starting candidate from `--key` (`hashlib.sha256`, not the randomized `hash()` builtin — that's why this lives in the script rather than a one-off shell one-liner) within `--base`/`--range` (default `3000`/`500`), then acquires it, incrementing on contention up to `--max-attempts` (default 5, never unbounded) before giving up.
@@ -38,7 +38,7 @@ A shared, stateful database can't be isolated by a formula the way a port can. A
 
 ## The lock protocol
 
-`holder` is the dispatch instruction's own filename stem, `<app>--<slug>` — already known at instruction-assembly time, and lets anyone reading a lock file cross-reference `~/.straw-boss/dispatch/<app>--<slug>.json` for full detail without a separate identity scheme. Pass `--requester-boss "<this dispatch's main-agent pane id or SendMessage peer name>"` on every `acquire`/`wait`/`claim-port` too (from the same reachability info the instruction already carries for `notifying-main-agent`) — it's what makes the "courtesy channel between main agents" below possible; skip it and a stuck waiter's main agent has no way to know who to ask.
+`holder` is the dispatch instruction's filename stem, `<app>--<slug>`. Pass the exact `--requester-instruction-path` on every `acquire`/`wait`/`claim-port`; courtesy communication can then address either main agent through the same instruction-keyed transport without storing a raw endpoint.
 
 **This runs inside the agent's own task, not the main agent.** The main agent doesn't pre-acquire before dispatch or babysit the wait — it only decides which case applies (Task 4 of `dispatching-work`/`shipping-task`, when assembling the instruction) and writes the exact `--resource`/`--app`/`--key` values and the relevant command into the dispatch instruction. The agent claims right before it actually needs the resource (starting the dev server, running the migration) — never earlier, so a long implementation phase before that point never holds the lock uselessly against other main agents' unrelated work.
 
@@ -51,7 +51,7 @@ The DB case, and the fixed-port case, both use `wait`:
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" wait \
   --resource "db-migration--<db-identity>" --holder "<app>--<slug>" \
-  --requester-boss "<this dispatch's main-agent pane id or SendMessage peer name>" \
+  --requester-instruction-path "<this dispatch instruction path>" \
   --ttl-seconds 1800 --note "<short reason>"
 # ... run the migration / start the dev server here ...
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" release \
@@ -74,14 +74,14 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" list --prefix 
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" status --resource "<specific resource id>"
 ```
 
-`list` is the live registry of every currently held lock — `resource`, `holder`, `holder_boss`, `age_seconds`, `expired`. This is the answer to "which port is currently assigned to which worker": read it, don't maintain a separate tracking file, and don't assume a resource is free just because no task in *this* main agent's own plan claimed it — `list` covers every main agent on the machine.
+`list` is the live registry of every currently held lock — `resource`, `holder`, `holder_instruction_path`, `age_seconds`, `expired`. This is the answer to "which port is currently assigned to which worker": read it, don't maintain a separate tracking file, and don't assume a resource is free just because no task in *this* main agent's own plan claimed it — `list` covers every main agent on the machine.
 
 **A stale lock that nobody ever re-contends for just sits there — `acquire`'s reactive reclaim only fires when someone actually asks.** That's not a correctness problem (`expired: true` in `list`/`status` already tells the truth about it, and it can never block anything that isn't itself contending for that exact resource), but it can clutter the picture over time. Run `uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" gc` occasionally to sweep every lock already past its own `ttl_seconds` regardless of contention — it never touches anything still within its ttl, so it can't remove a live lock by mistake.
 
 ## Courtesy channel between main agents
 
-The lock is what actually enforces correctness — everything here is optional, and never changes who wins a contended claim. It exists because a stuck waiter finding out *who* holds a lock (via `held_by_boss` on a contended result, or `holder_boss` in `list`/`status`) can do something with that beyond just polling blind.
+The lock is what enforces correctness; courtesy messages never change who wins. A contended result exposes the holder instruction path.
 
-**One stuck waiter, one current holder.** The waiting main agent reaches the holder's main agent directly — same fire-and-forget, informational-only pattern as `notifying-main-agent` (`herdr agent prompt`/`SendMessage`, self-identified, never awaited for a reply): asking for a rough ETA, never asking it to force-release or treating any reply as authorization to skip the lock. The lock's own `ttl_seconds` is still the only real arbiter — a "sure, go ahead" reply from another main agent doesn't override it; only an actual `release` does.
+**One stuck waiter, one current holder.** The waiting main agent calls `send-dispatch-message.py --instruction-path <holder instruction> --to main --intent question` for a rough ETA. It never asks for force-release or treats a reply as authority to skip the lock; only `release` changes ownership.
 
-**Several main agents contending on the same resource around the same time.** The lock records only the current holder, not the waiters — there's no roster to broadcast to. It resolves without one: every waiter's `held_by_boss` names the *same* main agent (the current holder's), so that holder's main agent is the one that naturally accumulates however many "any ETA?" pings arrive from different waiters in the same window, making it — not any waiter — the one that actually knows the full set of interested parties. If it gets more than one, it proposes an order back to whoever asked, then stops. No new role, no file, no "current coordinator" record — this ends the moment that round of replies is sent, and a proposed order is only ever a suggestion: each waiting task still has to win `acquire`/`wait` like anyone else once its turn comes.
+**Several main agents contending.** Each waiter reaches the same holder instruction. The holder may suggest an order, but every task must still win the lock normally.

@@ -74,7 +74,7 @@ An agent must stop and report readiness rather than execute a merge, or a push l
 Different from an authorization checkpoint on every axis that matters: it isn't a mutation gate, and the main agent never guesses the answer. A dispatched task's instruction MUST tell it: if it hits a substantive question about the *work itself* — which of several valid approaches to take, how to interpret an ambiguous requirement, or how an existing project-local contract applies — that isn't a merge/other-branch-push decision, it calls the status script with `--status awaiting-user-input` and the question in `--note`. A herdr-pane task asks and waits in its own pane so the user answers directly. A headless Codex task exits after persisting the checkpoint; after the user answers, the main agent relays that answer through `codex exec resume`. Headless Claude retains fail-and-redispatch behavior.
 
 **Escalation order for a stuck task.** Not every difficulty is a judgment call for the user, and not every blocker is even a question. Four distinct cases, in order:
-1. **Missing context the main agent already has, that doesn't block continued progress while waiting** (another task's status, which apps are in scope) — use the recorded main-agent herdr pane; only a Claude-to-Claude pair may fall back to `SendMessage`. Do not use either checkpoint below.
+1. **Missing context the main agent already has, that doesn't block continued progress while waiting** (another task's status, which apps are in scope) — use `send-dispatch-message.py --to main --intent question`. Do not use either checkpoint below.
 2. **Blocked pending an action only the main agent's own judgment or dispatch authority can take** (redispatching a failed dependency, arbitrating a conflict with a peer task) — not a question, an action — this is `awaiting-main-agent` (see "Main-agent-action checkpoints" below).
 3. **Genuine technical difficulty** — stuck on how to solve or debug something, not missing context, not an action only the main agent can take, and not a values/architecture call — try a stronger second opinion first, if one is available to the task (e.g. this session's own `advisor` tool, when present), before escalating further. Don't assume a specific tool is available; if none is, go straight to step 4.
 4. **A judgment call reserved for the user** (which of several valid approaches, how to interpret an ambiguous requirement) — or genuine technical difficulty a second opinion didn't resolve — this is `awaiting-user-input`, as described above.
@@ -83,7 +83,7 @@ A second opinion is consultative, never decisive on the user's behalf — it can
 
 On an `awaiting-user-input` notification, the main agent's job is narrow: tell the user which task is asking and which pane/tab to go answer it in (from the dispatch instruction's recorded `herdr_pane_id`/`herdr_tab_id`), then leave it alone — same as `awaiting-authorization`, `dispatching-work`'s plan loop does not treat this as done, failed, or ready-for-a-new-wave, and does not auto-detach it. Once the user has answered directly in the pane, the task continues on its own and eventually reports a real terminal state or another checkpoint — the main agent does not need to explicitly "resume" it the way it does for an authorization checkpoint, because the conversation already happened directly in the pane.
 
-**Not every mid-task question needs the user.** When a task's question is something the main agent can answer directly from what it already knows (another task's status, which apps are in scope) — not a judgment call about the work — every provider uses the recorded main-agent herdr pane when available. A Claude worker may fall back to `SendMessage` only when the main agent is also Claude. Neither path is authorization.
+**Not every mid-task question needs the user.** When a task's question is something the main agent can answer directly from what it already knows (another task's status, which apps are in scope) — not a judgment call about the work — every provider calls the instruction-keyed message script. Delivery is not authorization.
 
 **Interactive answering is preferred through `herdr-pane`.** A headless Claude process cannot pause and resume, so it retains the existing behavior: report `failed` with the question in `--note`, then redispatch after the user answers. A headless Codex task can instead persist `awaiting-user-input`, exit, and later continue the recorded thread through `codex exec resume`; in that mode the main agent relays the user's answer because there is no live pane. Use `herdr-pane` whenever available so the user can answer directly and no relay is needed.
 
@@ -98,7 +98,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/reply-to-worker.py" \
 ```
 Delivers the reply, confirms it landed, then records the resolution — one call. `status` stays `awaiting-main-agent` afterward (the worker's own next terminal write closes it out, same as `awaiting-user-input`); the script only adds `resolved_by_main_agent_at`/`main_agent_reply`.
 
-If resolving takes more than a couple of tool calls, an optional `cross-session-coordination.md` Inform nudge (`herdr agent prompt "<name>" "[from main agent] ..."`, no `--wait`) lets the worker know it's being worked on instead of sitting silent until the reply lands — never required, and `reply-to-worker.py`'s own call above is still what actually resolves the checkpoint.
+If resolving takes more than a couple of tool calls, an optional `send-dispatch-message.py --to worker --intent inform` nudge lets the worker know it is being handled. `reply-to-worker.py` is still what resolves the checkpoint.
 
 On this status event (also delivered live through herdr when recorded), the main agent resolves it directly — no "tell the user which pane" step, unlike `awaiting-user-input`.
 
@@ -112,7 +112,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
 ```
 Every dispatch instruction for a plan task MUST tell the agent to run this on completion or failure — resolves to `status/<task-id>.json` the same as the older `--plan <plan-slug> --task <task-id>` form (both still work; `--instruction-path` is preferred since the agent already has that path and doesn't need to separately track its own plan slug/task_id). The script writes only that one status file — it must never touch `plan.json` or another task's status file.
 
-This command is the provider-neutral reporting seam. It writes the durable state that Plan scheduling consumes, then prompts the recorded main-agent herdr pane for every provider pairing. `watch-plan-status.py` observes each content revision and a fresh watcher re-emits current persisted states for recovery. Only when herdr is unavailable or fails may a Claude worker with a Claude main agent use its `SendMessage` fallback. Any task may call `report-progress.py --instruction-path <path> --note "<text>"` beforehand to log intermediate progress.
+This command is the provider-neutral reporting seam. It writes the durable state that Plan scheduling consumes, then calls shared transport for live notification. `watch-plan-status.py` observes each content revision and a fresh watcher re-emits current persisted states for recovery. Any task may call `report-progress.py --instruction-path <path> --note "<text>"` beforehand to log intermediate progress.
 
 ## Reading plan/task status (targeted, not full-file dumps)
 
@@ -129,7 +129,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan
 1. Run `read-plan-status.py --plan <slug> --ready` to get the current ready wave.
 2. For every task in the wave: call `dispatch-task.py write --plan <slug> --task-id <task_id> ...` (per `dispatch-mechanics.md`), then dispatch — **all of them, not one at a time**. The script marks `plan.json`'s task `dispatched` as part of the same call, not a separate manual edit.
 3. Every full-flow task in the wave gets its worktree created first — see the worktree-ownership section below — before the `claude-p`/`herdr-pane` dispatch itself.
-4. Every dispatch instruction for a plan task explicitly states: (a) run `report-task-status.py --instruction-path` on every checkpoint and terminal outcome, explaining that it writes before notifying the recorded herdr pane; a Claude instruction uses `notifying-main-agent` only for routing/fallback and must forbid `SendMessage` when the main agent is Codex, (b) never touch any tracker ticket, (c) if worktree-backed, the shared-resource-coordination text and the already-created worktree path, (d) exact producer/consumer paths for any cross-task artifacts, (e) how `awaiting-user-input` works for its mode, (f) that peer progress checks use `asking-peer-agents` when available rather than investigating another task's worktree, (g) that every supported `herdr-pane` kind reports `awaiting-main-agent` when blocked on main-agent authority, and (h) the fetch+rebase-before-push step for every full-flow task. Codex instructions inline these commands explicitly because Codex does not load Claude skills.
+4. The generated dispatch contract supplies the universal progress, communication, checkpoint, and terminal-report workflow. Task-specific prose adds only tracker boundaries, worktree/shared-resource rules, cross-task artifact paths, user-input behavior, and delivery steps; it never duplicates transport instructions.
 
 ## Monitoring Plan status (provider-neutral scheduling signal)
 
@@ -156,13 +156,12 @@ On every `done`/`failed` event, recompute `read-plan-status.py --ready` and
 dispatch newly unblocked tasks. `awaiting-authorization`,
 `awaiting-user-input`, and `awaiting-main-agent` remain non-terminal and never
 free a slot; handle them through their authority branches above. The status
-command's herdr prompt is the primary live notice. Plan correctness still
-depends on the watcher plus persisted status; `SendMessage` is valid only as a
-Claude-to-Claude fallback.
+command's shared-transport call is the primary live notice. Plan correctness
+still depends on the watcher plus persisted status.
 
 ## Auto-detach on terminal state
 
-**A task_id getting a same-task continuation isn't finished yet — don't call `wrap-up-task.py` for it ("Same-task continuation" below).** That script archives the instruction file and syncs `plan.json`'s `tasks[].status` to a terminal state in one atomic call; running it for a task_id with a later phase still coming would archive the very instruction file that phase still needs (`get-main-agent.py --instruction-path` reads it) and mark the task done before it actually is. Recognizing a task_id isn't really finished yet is the main agent's own call to make from the plan/task context; it never needs the user's sign-off. Only run the steps below once a task_id is genuinely, finally done — no further phase of its own coming.
+**A task_id getting a same-task continuation isn't finished yet — don't call `wrap-up-task.py` for it ("Same-task continuation" below).** That script archives the instruction-keyed contract and transport state and syncs `plan.json`; running it early would remove the same identity phase 2 still needs. Recognizing a continuation is the main agent's own call from plan/task context.
 
 Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization`, `awaiting-user-input`, or `awaiting-main-agent`, none of which is terminal — all three need the session to stay alive: one to be resumed once authorized, one to be answered directly by the user, one to be resolved directly by the main agent via `reply-to-worker.py`.
 
@@ -177,12 +176,16 @@ When the status watcher emits `done`/`failed`, or the main agent has just writte
 
 **Checked before "Auto-detach on terminal state" above ever runs, not after** — once `wrap-up-task.py` has archived the instruction and synced `plan.json`, there's nothing left to reuse. Only when the next work is a later phase of the *same* logical task_id (never a different, independent task — those always get a fresh agent regardless of whether a finished session is sitting idle). This is the main agent's own judgment call, made straight from the plan/task context it already has — it doesn't need to check with the user before compacting and continuing.
 
-For a Claude herdr pane, `/compact` remains the same `herdr agent prompt` mechanism already used for every other prompt:
+For a Claude herdr pane, compact and continue through the instruction-keyed script:
 ```bash
-herdr agent prompt "<same-agent-name>" "/compact <optional focus text>" 
-herdr agent prompt "<same-agent-name>" "<phase 2 task text>" --wait --timeout <ms>
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
+  --instruction-path <path> --to worker --intent control \
+  --message "/compact <optional focus text>"
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
+  --instruction-path <path> --to worker --intent redirect \
+  --message "<phase 2 task text and exact reporting command>"
 ```
-Two separate calls. Do not wait for the compact call to settle before sending the second — Claude Code processes queued input in order. For a Codex herdr pane, send only the phase-2 prompt to the same recorded herdr handle. For headless Codex, use `codex exec resume` with the recorded thread id per `dispatch-mechanics.md`.
+Two calls preserve queue order. Codex uses only the phase-2 message. Headless Codex uses its recorded thread id per `dispatch-mechanics.md`.
 
 **Phase 2's completion needs its own report, stated explicitly in the phase-2 text.** This isn't a fresh dispatch instruction, so the continuation prompt must restate `report-task-status.py --instruction-path <path>`. The command writes the later status revision and prompts the recorded main-agent pane; the content-revision watcher emits the overwrite for recovery.
 
@@ -252,4 +255,4 @@ On a watcher event reporting `status: failed` for a task, read that task's statu
 
 Worktree isolation covers files, not a fixed network port a dev server binds to or a database multiple main agents' tasks might verify migrations against — both live outside any one checkout, and outside any one main agent's own visibility (a main agent has no idea what another, independently running main agent has dispatched). Every worktree-backed dispatch instruction includes, at minimum, this line verbatim (or equivalent): *"This worktree is isolated from other worktrees and the shared dev environment. If you run a local dev server to verify your changes, its default port may collide with another worktree's or the shared environment's port or hot-reload connection — check before assuming a bind failure means something else is wrong."*
 
-If the task will actually run a local dev server or touch a shared (non-per-worktree) database for migration verification, go further — see `references/shared-resource-coordination.md` and put the exact `claim-resource.py claim-port` (flexible port) or `claim-resource.py wait` (fixed port or DB migration) command into the instruction. Set `--requester-boss` to the mode-appropriate main-agent identity already recorded in the instruction: herdr pane id when present, otherwise the Claude peer name; for headless Codex use the instruction's unique dispatch identity. No port is allocated or reassigned automatically beyond what that reference documents.
+If the task will run a local dev server or touch a shared database for migration verification, follow `references/shared-resource-coordination.md` and include the exact `claim-resource.py claim-port` or `wait` command. Set `--requester-instruction-path` to this dispatch's instruction path; no raw main-agent endpoint is stored in the lock.

@@ -26,7 +26,7 @@ State the mode and why before doing anything else.
 
 **Resolve the agent kind independently of mode** — see `references/dispatch-mechanics.md`'s "Resolving the agent kind": the target app's `apps.json` `agentKind` (defaults to `claude`), overridden for this one dispatch only when the task's nature matches a rule in root `CLAUDE.md`'s agent-routing policy (written by `init`'s Task 3, if the project has one) or an explicit request. State the resolved kind and why, same as mode. The same resolution applies to standalone, batch, and Plan tasks; dependency tracking is provider-neutral.
 
-**Resolve the main agent's own provider and reachability before writing the instruction.** Pass `--main-agent-kind` on every dispatch. For `herdr-pane`, pass this session's literal `$HERDR_PANE_ID`; it is the primary return channel for every provider pair. Resolve a peer name only for a Claude worker dispatched by a Claude main agent, as the fallback documented in `references/cross-session-coordination.md`. Never create or guess a peer for a Codex endpoint.
+**Resolve the main agent's own provider and reachability before writing the instruction.** Pass `--main-agent-kind` on every dispatch. For `herdr-pane`, read this session's live herdr record and pass both `$HERDR_PANE_ID` and its exact `agent_session.value` as `--main-agent-pane-id` and `--main-agent-session-id`. The shared transport requires both before sending anything.
 
 **Verification:** mode stated with a reason; `herdr-pane` used whenever `capability.json` doesn't say `claude-p-only` and `HERDR_ENV` is `1` this session; `claude-p` used only because of an explicit opt-out or a genuinely absent live herdr session, never because the task looked simple; agent kind resolved and stated independently of mode; before the first `herdr-pane` dispatch this session, the main agent's own addressability was checked, not assumed.
 
@@ -36,19 +36,17 @@ Several dispatches for one multi-app unit of work share a `batch` label (herdr-p
 
 ## Task 3: Write the instruction, before dispatching
 
-Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates the session_id, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind as `--agent-kind`, this session's provider as required `--main-agent-kind`, and the validated reachability from Task 1 (plus `--agent-model`/`--agent-effort` if chosen). The CLI rejects cross-provider `SendMessage` peers before any write. Never hand-write the JSON or generate a second UUID.
+Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates the session id and immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind, this session's provider, and the validated pane/session pair from Task 1. Never hand-write the JSON, contract, or UUID.
 
-**Verification:** instruction exists with `pending` status before any `claude`/`herdr` command runs.
+**Verification:** instruction and hashed contract exist with `pending` status before any agent starts.
 
 ## Task 4: Dispatch
 
-Follow `references/dispatch-mechanics.md` for the exact `claude`/`herdr` command sequence — don't improvise it from general knowledge.
+Follow `references/dispatch-mechanics.md`. For `herdr-pane`, start and submit the task only through `launch-dispatched-agent.py`; it injects the generated contract before the first model turn and writes the launch receipt consumed by `dispatch-task.py confirm`.
 
 **Mirror the main agent's own permission mode onto the agent.** Detect it from the main agent's own process args (`ps -p "$CLAUDE_PID" -ww -o args=`, exact detection in the reference) and map it through the agent kind's own permission surface (`references/dispatch-mechanics.md`'s "Mapping permission mode across agent kinds" — a per-kind flag combo, not the identical flag string, for anything other than `claude`). An agent must never end up more tightly gated than the main agent dispatching it — never hardcode a specific mode here, and never omit this "to be safe."
 
-For `herdr-pane`, a `herdr agent prompt` success return is not proof of delivery — a first-run interruption can swallow the submission while the CLI still reports success. Confirm delivery (terminal-title check for claude, transcript check via `--source visible` for codex — both in the reference) before proceeding.
-
-Once dispatch succeeds and delivery is confirmed, call `dispatch-task.py confirm` — flips to `in-progress`, records pane/tab ids for `herdr-pane`. For a kind that can't pre-assign a session id (e.g. `codex`), pass `--observed-session-id` with what the launched agent actually reported, per the reference's per-kind confirm step.
+Once the launcher succeeds, call `dispatch-task.py confirm`. It refuses unless the launch receipt matches the instruction, contract digest, provider, pane, and live session; then it flips to `in-progress` and records the receipt's pane/tab/session.
 
 **Verification:** status is `in-progress`; permission mode was detected and mapped through the resolved agent kind's own permission surface, not hardcoded or skipped; pane/tab ids recorded for `herdr-pane`; session_id cross-checked against what herdr/the agent reports (or recorded from what it reported, for a kind that can't pre-assign one).
 
@@ -64,7 +62,7 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 
 **Worktree ownership (full-flow tasks).** The main agent creates every worktree itself, for every managed app uniformly, regardless of the app's own tooling — plain `git worktree add`, never `herdr worktree create` (see `plan-mechanics.md`'s "Worktree ownership" for why). Verify `git rev-parse --show-toplevel` inside it resolves to the worktree's own path — repos with `extensions.worktreeConfig = true` silently don't, regardless of creation method — and repair with a `config.worktree` file if not (exact steps in `plan-mechanics.md`). Never dispatch into an unverified worktree. For `herdr-pane`, join it to the main agent's own existing workspace as a tab (`herdr tab create --workspace`) — a plan's worktrees never scatter across workspaces, and the shared workspace is never closed by this mechanism, only the tabs added to it.
 
-**Agent naming.** Derive the herdr handle from `plan_id`/`task_id` for every kind. For Claude, pass the same value through `claude --name` so it also serves `SendMessage`/`ListAgents`; Codex has no equivalent provider mailbox name, but the herdr handle remains sufficient for pane control and replies.
+**Agent naming.** Derive the herdr handle from `plan_id`/`task_id` for operator visibility. Communication scripts address the instruction, never this name.
 
 **Cross-task artifacts.** When task B depends on task A and genuinely needs A's output, both dispatch instructions state the exact path under `~/.straw-boss/plans/<slug>/artifacts/` — A's says where to write it, B's says where to read it and that it's required input, not optional context. `plan.json`'s `description` field is prose, not a handoff mechanism.
 
@@ -74,10 +72,9 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 | `awaiting-authorization` | merge, or a push landing outside the task's own feature branch (full flow only — light flow's commit needs no authorization) | User, relayed through the main agent (`shipping-task`) | No — main agent resumes after authorizing |
 | `awaiting-user-input` | work-content question needing human judgment, or genuine technical difficulty a second opinion didn't resolve | User directly in an interactive pane; main agent relays into a headless Codex continuation | No — agent continues once answered |
 | `awaiting-main-agent` | blocked pending an action only the main agent's own judgment or dispatch authority can take (not a question) | Main agent via `reply-to-worker.py` for herdr, or `codex exec resume` for headless Codex | No — main agent resolves it, agent continues once resumed |
-| Provider fast question | informational question the main agent can answer from what it already knows, that doesn't block continued progress while waiting | Recorded main-agent herdr pane; `SendMessage` only for Claude-to-Claude fallback | Not a status transition at all |
+| Provider fast question | informational question the main agent can answer from what it already knows, that doesn't block continued progress while waiting | `send-dispatch-message.py --to main` | Not a status transition at all |
 | `watch-plan-status.py` event | every Plan status-file content transition, for every agent kind | Main agent; authoritative scheduling signal | Mirrors the persisted status and drives ready-wave recomputation |
-| herdr status notification | any agent reaches `done`/`failed`/a checkpoint | `report-task-status.py` writes first, then prompts the recorded main-agent pane | Primary live notification for every provider pair |
-| `SendMessage` fallback | a Claude worker cannot use herdr and its main agent is also Claude | Main agent, per `notifying-main-agent` | Never valid across providers |
+| live status notification | any agent reaches `done`/`failed`/a checkpoint | `report-task-status.py` writes first, then calls shared transport | Best-effort notification; durable status remains authoritative |
 
 A task unsure which applies walks `plan-mechanics.md`'s "Escalation order for a stuck task" (full order there, not restated here). `awaiting-authorization` sits outside that order — it's the merge/other-branch-push readiness gate, not a response to being stuck; a push of the task's own feature branch needs no gate at all. Interactive `awaiting-*` checkpoints work for every supported `herdr-pane` kind. Claude also uses `notifying-main-agent`; Codex relies on the provider-neutral status event and the recorded herdr/session identity.
 
@@ -87,7 +84,7 @@ A task unsure which applies walks `plan-mechanics.md`'s "Escalation order for a 
 
 **Progress visibility.** A dispatched task may call `report-progress.py --instruction-path <path> --note "<text>"` at any point during its work — a separate, non-notifying, append-only log (`dispatch-mechanics.md`'s "Reporting scripts"). `peeking-work` reads this trail before joining a task's live pane, so checking on a task usually doesn't require interrupting it.
 
-**Shared-resource coordination.** Every worktree-backed instruction states, verbatim or equivalent, that a local dev server in this worktree may collide with another worktree's or the shared environment's port/HMR — no port is auto-allocated. When the task will actually run a dev server or verify a migration against a shared (non-per-worktree) database, this is not just a caveat but a collision another *main agent's* task can also hit — worktrees don't isolate it. Follow `references/shared-resource-coordination.md` and put its exact `claim-port`/`wait` command into the instruction, with `--requester-boss` set to the mode-appropriate main-agent identity recorded in the instruction; the agent claims and releases the resource itself, inline in its own task.
+**Shared-resource coordination.** A local server or shared database can collide across worktrees and main agents. Follow `references/shared-resource-coordination.md`; put its exact `claim-port`/`wait` command in the task with `--requester-instruction-path` set to this dispatch instruction. The agent claims and releases the resource itself.
 
 **Verification:** every ready-wave task dispatched together; a task with unresolved dependencies never dispatched early; worktree verified before dispatch; `wrap-up-task.py` withheld for any task_id with a same-task continuation coming, checked before it's ever called, not after; plan completion judged by all tasks terminal, never by the first.
 
@@ -118,7 +115,7 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 - "This idle finished session could take the next ready task" — no, a `--ready` task is always a different `task_id`; only that exact task_id's own next phase reuses the session, never something the wave computation surfaced.
 - "This task_id just went `done`, auto-detach it right away, check for a same-task phase 2 afterward if one comes up" — no, the check comes first; `wrap-up-task.py` archives the instruction and marks the task done in `plan.json` in one call, and by then there's nothing left to reuse.
 - "This task_id has its own phase 2 coming, but ask the user before compacting and continuing" — no, recognizing same-task continuation and sending `/compact` is the main agent's own call from context it already has; decide and send it, no sign-off needed.
-- "Compacting a worker session needs a special tool or API beyond what dispatch already uses" — no, `/compact` sent via `herdr agent prompt` is the identical mechanism used for every other prompt into that pane; nothing else is required to use it.
+- "Compacting a worker session can address its pane directly" — no, send `/compact` through `send-dispatch-message.py --to worker --intent control` so the session fingerprint is still checked.
 - "First task in the plan finished, mark the plan done" — no, only once every task is terminal.
 - "This task looks simple/self-contained, use `claude-p` even though herdr's available" — no, mode is an environment check, not a task judgment; `herdr-pane` is used whenever it's available, full stop.
 - "The task's mid-flight question, relay it like an authorization checkpoint" — no: `awaiting-user-input` follows the mode's user-answer path; an informational question the main agent can answer uses the provider's fast channel, not a status transition.
@@ -127,7 +124,7 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 - "A Plan task wrote its status file, so no watcher is needed" — no: the write is durable state, while `watch-plan-status.py` is the active scheduling signal that reacts to every revision and releases ready waves.
 - "The watcher only needs to remember filenames" — no: checkpoints and terminal outcomes overwrite the same file; content-revision detection is what makes every transition observable.
 - "Skip the worktree verify-repair step, herdr worktree create usually works fine" — no, the `config.worktree` bug happens with *any* creation method on a repo with `extensions.worktreeConfig`; verify every time.
-- "The worker is Claude, so record a peer even though this main agent is Codex" — no; Task 1 records both providers, herdr is primary, and the CLI rejects cross-provider peers.
+- "The main pane id is enough" — no; Task 1 records its live session fingerprint too, so pane reuse becomes a hard mismatch rather than a wrong delivery.
 - "This coordination question sounds like something the main agent could reasonably weigh in on, use the provider fast channel" — no, per `cross-session-coordination.md`: any trade-off or "which direction" call is `awaiting-user-input`, full stop, regardless of how qualified the main agent seems.
 - "The worktree isolates this task, so a shared-DB migration check can't collide with another main agent's task" — no, per `shared-resource-coordination.md`: worktree isolation is file-level only; a shared database is outside any one checkout and needs the lock regardless of worktree.
 - "Have the main agent pre-acquire the shared-resource lock before dispatching, so the agent starts already holding it" — no, the agent acquires it itself, right before it actually needs the resource; acquiring earlier holds it uselessly against other main agents during unrelated implementation work.

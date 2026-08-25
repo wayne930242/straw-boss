@@ -27,13 +27,11 @@ import json
 import sys
 from pathlib import Path
 
-
-def mp_dev_root() -> Path:
-    return Path.home() / ".straw-boss"
+from dispatch_state import straw_boss_root
 
 
-def is_dispatched_worker(session_id: str) -> bool:
-    dispatch_dir = mp_dev_root() / "dispatch"
+def dispatched_instruction(session_id: str) -> dict[str, object] | None:
+    dispatch_dir = straw_boss_root() / "dispatch"
     for pattern in ("*.json", "archive/*.json"):
         for path in dispatch_dir.glob(pattern):
             try:
@@ -41,8 +39,8 @@ def is_dispatched_worker(session_id: str) -> bool:
             except (OSError, json.JSONDecodeError):
                 continue
             if payload.get("session_id") == session_id:
-                return True
-    return False
+                return payload
+    return None
 
 
 def orchestrator_stance() -> str:
@@ -61,8 +59,13 @@ def main() -> int:
         return 0  # never block session start over a malformed hook payload
 
     session_id = payload.get("session_id")
-    if session_id and is_dispatched_worker(session_id):
-        return 0
+    if session_id:
+        instruction = dispatched_instruction(session_id)
+        if instruction is not None:
+            contract_path = Path(str(instruction.get("contract_path", "")))
+            if contract_path.is_file():
+                print(contract_path.read_text().strip())
+            return 0
 
     print(orchestrator_stance())
     return 0

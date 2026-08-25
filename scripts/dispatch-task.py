@@ -9,20 +9,15 @@ Two phases, both operating on the same instruction file
 (<home>/.straw-boss/dispatch/<app>--<slug>.json -- see
 skills/dispatching-work/references/dispatch-mechanics.md):
 
-  write   -- before the actual claude/herdr dispatch call. Generates a
-             session_id, writes the instruction file with status
-             "pending", and (for a plan task) marks plan.json's matching
-             task "dispatched". Does not run any claude/herdr command
-             itself -- the caller still does that, using the session_id
-             this prints.
-  confirm -- after the dispatch call succeeds and delivery is confirmed.
-             Flips the instruction to "in-progress" and records
-             herdr_pane_id/herdr_tab_id for herdr-pane mode.
+  write   -- before launch. Generates a session id plus immutable workflow
+             contract, writes the pending instruction, and (for a plan task)
+             marks plan.json's matching task dispatched.
+  confirm -- after launch-dispatched-agent.py writes a matching receipt.
+             Validates its contract/provider/pane/session binding, flips the
+             instruction to in-progress, and records receipt identities.
 
-This script never runs claude/herdr/git itself -- those stay live tool
-calls the orchestrator makes per dispatch-mechanics.md, so their output
-and failures stay visible. This script only keeps the bookkeeping files
-consistent around them.
+This script never launches an agent itself; the launch adapter owns provider
+injection and herdr calls.
 """
 
 from __future__ import annotations
@@ -35,25 +30,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
-def mp_dev_root() -> Path:
-    return Path.home() / ".straw-boss"
+from dispatch_state import (
+    contract_path,
+    dump_json,
+    launch_receipt_path,
+    load_json,
+    render_dispatch_contract,
+    sha256_text,
+    straw_boss_root,
+)
 
 
 def instruction_path(app: str, slug: str) -> Path:
-    return mp_dev_root() / "dispatch" / f"{app}--{slug}.json"
+    return straw_boss_root() / "dispatch" / f"{app}--{slug}.json"
 
 
 def plan_path(plan_slug: str) -> Path:
-    return mp_dev_root() / "plans" / plan_slug / "plan.json"
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text())
-
-
-def dump_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2) + "\n")
+    return straw_boss_root() / "plans" / plan_slug / "plan.json"
 
 
 def load_plan_and_task(plan_slug: str, task_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -95,7 +88,7 @@ def write_instruction(
     agent_model: str | None,
     agent_effort: str | None,
     main_agent_pane_id: str | None,
-    main_agent_peer_name: str | None,
+    main_agent_session_id: str | None,
 ) -> dict[str, Any]:
     path = instruction_path(app, slug)
     if path.exists():
@@ -106,20 +99,16 @@ def write_instruction(
         raise ValueError("--plan and --task-id must be given together, or not at all")
     if mode == "herdr-pane" and not main_agent_pane_id:
         raise ValueError("--main-agent-pane-id is required for herdr-pane mode")
-    both_claude = agent_kind == "claude" and main_agent_kind == "claude"
-    if main_agent_peer_name and not both_claude:
-        raise ValueError(
-            "--main-agent-peer-name is only valid when both agent kinds are 'claude'"
-        )
-    if mode == "claude-p" and both_claude and not main_agent_peer_name:
-        raise ValueError(
-            "--main-agent-peer-name is required for a headless Claude-to-Claude dispatch"
-        )
+    if mode == "herdr-pane" and not main_agent_session_id:
+        raise ValueError("--main-agent-session-id is required for herdr-pane mode")
     if plan_slug is not None:
         assert task_id is not None
         check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
 
     session_id = str(uuid.uuid4())
+    generated_contract_path = contract_path(path)
+    contract = render_dispatch_contract(path)
+    contract_digest = sha256_text(contract)
     payload: dict[str, Any] = {
         "app": app,
         "task": task,
@@ -133,7 +122,9 @@ def write_instruction(
         "herdr_pane_id": None,
         "herdr_tab_id": None,
         "main_agent_herdr_pane_id": main_agent_pane_id,
-        "main_agent_send_message_peer": main_agent_peer_name,
+        "main_agent_session_id": main_agent_session_id,
+        "contract_path": str(generated_contract_path),
+        "contract_sha256": contract_digest,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "repo_root": repo_root,
@@ -143,13 +134,19 @@ def write_instruction(
         payload["task_id"] = task_id
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    generated_contract_path.write_text(contract)
     dump_json(path, payload)
 
     if plan_slug is not None:
         assert task_id is not None
         mark_plan_task(plan_slug, task_id, "dispatched")
 
-    return {"session_id": session_id, "instruction_path": str(path)}
+    return {
+        "session_id": session_id,
+        "instruction_path": str(path),
+        "contract_path": str(generated_contract_path),
+        "contract_sha256": contract_digest,
+    }
 
 
 def confirm_instruction(
@@ -168,6 +165,34 @@ def confirm_instruction(
             f"instruction at {path} is {payload['status']!r}, not 'pending' -- "
             f"refusing to confirm a dispatch that wasn't just written"
         )
+    if payload.get("mode") == "herdr-pane":
+        receipt_path = launch_receipt_path(path)
+        if not receipt_path.is_file():
+            raise ValueError(
+                f"no launch receipt at {receipt_path} -- start this dispatch through "
+                "launch-dispatched-agent.py before confirming it"
+            )
+        receipt = load_json(receipt_path)
+        expected_receipt = {
+            "instruction_path": str(path),
+            "contract_sha256": payload.get("contract_sha256"),
+            "agent_kind": payload.get("agent_kind"),
+        }
+        for field, expected in expected_receipt.items():
+            if receipt.get(field) != expected:
+                raise ValueError(
+                    f"launch receipt {field}={receipt.get(field)!r} does not match {expected!r}"
+                )
+        if pane_id is not None and receipt.get("pane_id") != pane_id:
+            raise ValueError("launch receipt pane id does not match --pane-id")
+        if tab_id is not None and receipt.get("tab_id") != tab_id:
+            raise ValueError("launch receipt tab id does not match --tab-id")
+        if observed_session_id is not None and receipt.get("session_id") != observed_session_id:
+            raise ValueError("launch receipt session id does not match --observed-session-id")
+        pane_id = str(receipt["pane_id"])
+        tab_id = receipt.get("tab_id")
+        observed_session_id = str(receipt["session_id"])
+
     payload["status"] = "in-progress"
     if pane_id is not None:
         payload["herdr_pane_id"] = pane_id
@@ -230,21 +255,13 @@ def main() -> int:
         "--main-agent-pane-id",
         default=None,
         help="the dispatching main agent's own herdr pane id ($HERDR_PANE_ID), for herdr-pane mode -- "
-        "lets the dispatched agent look up its main agent's reachability via get-main-agent.py "
-        "instead of relying only on prose stated in --task; omit for claude-p (no live pane)",
+        "used only by the script-owned transport; omit when the main agent has no live pane",
     )
     write_p.add_argument(
-        "--main-agent-peer-name",
+        "--main-agent-session-id",
         default=None,
-        help="the SendMessage peer name this main agent actually resolved for itself; valid only "
-        "when both --agent-kind and --main-agent-kind are claude, and required for that pair when "
-        "no herdr pane is used -- its own "
-        "claude --name <value> launch flag if it was started with one (detect it from this "
-        "session's own process args, e.g. via ps -p $CLAUDE_PID -ww -o args=), otherwise the "
-        "per-session-unique value from an explicit /rename call (see cross-session-coordination.md's "
-        "'Making the main agent addressable'); required with no default -- two concurrent main "
-        "agents both silently falling back to the same bare literal is a real SendMessage delivery "
-        "hazard, confirmed to have actually happened",
+        help="the dispatching main agent's live herdr agent_session.value; required with "
+        "--main-agent-pane-id so transport can reject a reused or wrong coordinator pane",
     )
 
     confirm_p = sub.add_parser("confirm", help="mark the dispatch in-progress after it lands")
@@ -276,7 +293,7 @@ def main() -> int:
                 agent_model=args.agent_model,
                 agent_effort=args.agent_effort,
                 main_agent_pane_id=args.main_agent_pane_id,
-                main_agent_peer_name=args.main_agent_peer_name,
+                main_agent_session_id=args.main_agent_session_id,
             )
         else:
             result = confirm_instruction(

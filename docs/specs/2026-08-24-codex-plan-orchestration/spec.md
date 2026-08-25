@@ -1,5 +1,8 @@
 # Codex Plan orchestration specification
 
+> Historical record. Live transport behavior is superseded by
+> `docs/specs/2026-08-25-dispatched-agent-lifecycle-transport/`.
+
 ## Observable contract
 
 - `dispatch-task.py write --plan ... --task-id ... --agent-kind codex --main-agent-kind ...`

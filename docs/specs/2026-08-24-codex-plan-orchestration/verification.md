@@ -1,5 +1,8 @@
 # Codex Plan orchestration verification
 
+> Historical evidence for the earlier transport. Current behavior is verified
+> under `docs/specs/2026-08-25-dispatched-agent-lifecycle-transport/`.
+
 ## Automated evidence
 
 - `python3 -m unittest discover -s tests -v`: 15 passed. Covers both endpoint

@@ -13,11 +13,9 @@ different tasks never contend for the same path.
 
 This is the provider-neutral durable state interface. For a plan task,
 watch-plan-status.py turns each file-content revision into the scheduling
-event that drives wave computation. A Claude dispatched agent may also send
-the Claude-to-Claude SendMessage fallback defined by
-skills/notifying-main-agent/SKILL.md. When --instruction-path records a main
-agent herdr pane, this command prompts that pane after the durable write for
-every supported provider pairing.
+event that drives wave computation. When --instruction-path records a live
+main-agent endpoint, this command validates its session and notifies it through
+the shared transport after the durable write.
 
 Two ways to address which task's status file to write, mutually
 exclusive:
@@ -51,28 +49,20 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
-
-def plans_root() -> Path:
-    return Path.home() / ".straw-boss" / "plans"
+from dispatch_state import (
+    load_json,
+    plan_status_path,
+    resolve_instruction_status_path,
+)
+from dispatch_transport import send_instruction_message
 
 
 def status_path(plan_slug: str, task_id: str) -> Path:
-    return plans_root() / plan_slug / "status" / f"{task_id}.json"
-
-
-def standalone_status_path(instruction_path: Path) -> Path:
-    stem = instruction_path.name.removesuffix(".json")
-    return instruction_path.with_name(f"{stem}.status.json")
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text())
+    return plan_status_path(plan_slug, task_id)
 
 
 VALID_STATUSES = (
@@ -106,11 +96,7 @@ def resolve_status_path(plan_slug: str | None, task_id: str | None, instruction_
     if not inst_path.is_file():
         raise ValueError(f"no instruction file at {inst_path}")
     payload = load_json(inst_path)
-    inst_plan_id = payload.get("plan_id")
-    inst_task_id = payload.get("task_id")
-    if inst_plan_id is not None and inst_task_id is not None:
-        return status_path(inst_plan_id.removeprefix("p-"), inst_task_id)
-    return standalone_status_path(inst_path)
+    return resolve_instruction_status_path(inst_path, payload)
 
 
 def report_status(plan_slug: str | None, task_id: str | None, instruction_path: str | None, status: str, note: str) -> Path:
@@ -143,19 +129,7 @@ def notify_main_agent(instruction_path: str, status: str, note: str) -> bool:
         f"[from {agent_kind} dispatched agent {app}/{dispatch_id}] "
         f"STATUS: {status} — {summary}"
     )
-    try:
-        result = subprocess.run(
-            ["herdr", "agent", "prompt", str(pane_id), message],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except FileNotFoundError as exc:
-        raise ValueError("herdr notification failed because the herdr executable was not found") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ValueError("herdr notification timed out") from exc
-    if result.returncode != 0:
-        raise ValueError(f"herdr notification failed with exit code {result.returncode}")
+    send_instruction_message(inst_path, "main", "status", message)
     return True
 
 

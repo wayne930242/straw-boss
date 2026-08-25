@@ -85,12 +85,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from dispatch_state import load_json, straw_boss_root
+
 RESOURCE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 PORT_RESOURCE_RE = re.compile(r"^port--.+--(\d+)$")
-
-
-def mp_dev_root() -> Path:
-    return Path.home() / ".straw-boss"
 
 
 def lock_path(resource: str) -> Path:
@@ -100,7 +98,7 @@ def lock_path(resource: str) -> Path:
             f"(and must stay portable to Windows), use '--' as a separator instead, e.g. "
             f"'db-migration--waydosoft01-staging' or 'port--api--5000'"
         )
-    return mp_dev_root() / "locks" / f"{resource}.json"
+    return straw_boss_root() / "locks" / f"{resource}.json"
 
 
 def port_from_resource(resource: str) -> int | None:
@@ -132,10 +130,6 @@ def port_is_free(port: int) -> bool:
         return False
     finally:
         s.close()
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text())
 
 
 RECLAIM_MUTEX_STALE_SECONDS = 10  # generous multiple of the real work's actual duration
@@ -219,7 +213,7 @@ def age_seconds(acquired_at: str) -> float:
     return (datetime.now(timezone.utc) - acquired).total_seconds()
 
 
-def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, holder_boss: str | None) -> dict[str, Any]:
+def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, holder_instruction_path: str | None) -> dict[str, Any]:
     if ttl_seconds <= 0:
         raise ValueError(
             f"--ttl-seconds {ttl_seconds} must be positive -- zero or negative makes a lock immediately "
@@ -236,7 +230,7 @@ def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, hold
             "acquired": False,
             "resource": resource,
             "held_by": None,
-            "held_by_boss": None,
+            "held_by_instruction_path": None,
             "held_note": "occupied by a process outside claim-resource.py's own tracking, not this plugin's lock",
             "age_seconds": 0.0,
             "held_ttl_seconds": 30,
@@ -249,7 +243,7 @@ def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, hold
     payload = {
         "resource": resource,
         "holder": holder,
-        "holder_boss": holder_boss,
+        "holder_instruction_path": holder_instruction_path,
         "note": note,
         "acquired_at": datetime.now(timezone.utc).isoformat(),
         "ttl_seconds": ttl_seconds,
@@ -276,7 +270,7 @@ def acquire(resource: str, holder: str, ttl_seconds: int, note: str | None, hold
                     "acquired": False,
                     "resource": resource,
                     "held_by": existing["holder"],
-                    "held_by_boss": existing.get("holder_boss"),
+                    "held_by_instruction_path": existing.get("holder_instruction_path"),
                     "held_note": existing.get("note"),
                     "age_seconds": round(age, 1),
                     "held_ttl_seconds": existing["ttl_seconds"],
@@ -332,7 +326,7 @@ WAIT_CHURN_MULTIPLIER = 3  # see wait_for's docstring note below
 
 
 def wait_for(
-    resource: str, holder: str, ttl_seconds: int, note: str | None, holder_boss: str | None, max_wait_seconds: int | None
+    resource: str, holder: str, ttl_seconds: int, note: str | None, holder_instruction_path: str | None, max_wait_seconds: int | None
 ) -> dict[str, Any]:
     """A resource can go unavailable for two different reasons, and the give-up
     deadline has to handle both without an explicit --max-wait-seconds:
@@ -358,7 +352,7 @@ def wait_for(
     max_ttl_seen = ttl_seconds
     while True:
         try:
-            result = acquire(resource, holder, ttl_seconds, note, holder_boss)
+            result = acquire(resource, holder, ttl_seconds, note, holder_instruction_path)
         except ValueError:
             # acquire's own race-exhaustion fallback (two reclaimers colliding
             # on the same stale lock, both attempts lost) -- transient, not a
@@ -375,7 +369,7 @@ def wait_for(
         if max_wait_seconds is not None:
             deadline = min(deadline, max_wait_seconds)
         remaining_budget = deadline - elapsed
-        boss_bit = f" (main agent {result['held_by_boss']!r})" if result.get("held_by_boss") else ""
+        instruction_bit = f" (instruction {result['held_by_instruction_path']!r})" if result.get("held_by_instruction_path") else ""
         if result.get("held_externally"):
             who = "an untracked external process"
             # The 30s held_ttl_seconds acquire() reports for this case is a
@@ -383,7 +377,7 @@ def wait_for(
             # about an untracked occupant "expires" on any schedule we know.
             reclaim_bit = "no way to know when this frees up -- it's outside this script's own tracking"
         else:
-            who = f"{result['held_by']!r}{boss_bit}"
+            who = f"{result['held_by']!r}{instruction_bit}"
             reclaimable_in = max(0.0, result["held_ttl_seconds"] - result["age_seconds"])
             reclaim_bit = f"reclaimable in ~{reclaimable_in:.0f}s if not released sooner"
         print(
@@ -414,7 +408,7 @@ def claim_port(
     holder: str,
     ttl_seconds: int,
     note: str | None,
-    holder_boss: str | None,
+    holder_instruction_path: str | None,
 ) -> dict[str, Any]:
     if port_range < 1:
         raise ValueError(f"--range {port_range} must be at least 1")
@@ -430,7 +424,7 @@ def claim_port(
     for _ in range(max_attempts):
         resource = f"port--{app}--{candidate}"
         try:
-            result = acquire(resource, holder, ttl_seconds, note, holder_boss)
+            result = acquire(resource, holder, ttl_seconds, note, holder_instruction_path)
         except ValueError as exc:
             # acquire's own race-exhaustion fallback -- treat this candidate as
             # contended too (same as a normal lock-file collision) and move on,
@@ -487,7 +481,7 @@ def status(resource: str) -> dict[str, Any]:
         "held": True,
         "resource": resource,
         "holder": existing["holder"],
-        "holder_boss": existing.get("holder_boss"),
+        "holder_instruction_path": existing.get("holder_instruction_path"),
         "note": existing.get("note"),
         "age_seconds": round(age, 1),
         "expired": age > existing["ttl_seconds"],
@@ -495,7 +489,7 @@ def status(resource: str) -> dict[str, Any]:
 
 
 def list_locks(prefix: str | None) -> dict[str, Any]:
-    locks_dir = mp_dev_root() / "locks"
+    locks_dir = straw_boss_root() / "locks"
     if not locks_dir.is_dir():
         return {"locks": []}
     entries = []
@@ -512,7 +506,7 @@ def list_locks(prefix: str | None) -> dict[str, Any]:
             {
                 "resource": resource,
                 "holder": existing["holder"],
-                "holder_boss": existing.get("holder_boss"),
+                "holder_instruction_path": existing.get("holder_instruction_path"),
                 "note": existing.get("note"),
                 "age_seconds": round(age, 1),
                 "expired": age > existing["ttl_seconds"],
@@ -537,7 +531,7 @@ def gc() -> dict[str, Any]:
     after RECLAIM_MUTEX_STALE_SECONDS), but same as a stale lock nobody
     re-asks about, nothing proactively cleans one up if nobody ever
     contends for that resource again."""
-    locks_dir = mp_dev_root() / "locks"
+    locks_dir = straw_boss_root() / "locks"
     if not locks_dir.is_dir():
         return {"removed": []}
     removed = []
@@ -583,9 +577,9 @@ def main() -> int:
     )
     acquire_p.add_argument("--note", default=None)
     acquire_p.add_argument(
-        "--requester-boss",
+        "--requester-instruction-path",
         default=None,
-        help="the dispatching main agent's own herdr pane id or SendMessage peer name -- lets a stuck waiter's main agent reach out directly instead of guessing",
+        help="the exact dispatch instruction path; coordination resolves both main agents through instruction-keyed scripts",
     )
 
     wait_p = sub.add_parser("wait", help="block until the resource is free, then acquire it")
@@ -593,7 +587,7 @@ def main() -> int:
     wait_p.add_argument("--holder", required=True)
     wait_p.add_argument("--ttl-seconds", type=int, default=1800)
     wait_p.add_argument("--note", default=None)
-    wait_p.add_argument("--requester-boss", default=None)
+    wait_p.add_argument("--requester-instruction-path", default=None)
     wait_p.add_argument(
         "--max-wait-seconds",
         type=int,
@@ -615,7 +609,7 @@ def main() -> int:
     claim_port_p.add_argument("--holder", required=True)
     claim_port_p.add_argument("--ttl-seconds", type=int, default=1800)
     claim_port_p.add_argument("--note", default=None)
-    claim_port_p.add_argument("--requester-boss", default=None)
+    claim_port_p.add_argument("--requester-instruction-path", default=None)
 
     release_p = sub.add_parser("release", help="free the resource")
     release_p.add_argument("--resource", required=True)
@@ -634,10 +628,10 @@ def main() -> int:
 
     try:
         if args.action == "acquire":
-            result = acquire(args.resource, args.holder, args.ttl_seconds, args.note, args.requester_boss)
+            result = acquire(args.resource, args.holder, args.ttl_seconds, args.note, args.requester_instruction_path)
         elif args.action == "wait":
             result = wait_for(
-                args.resource, args.holder, args.ttl_seconds, args.note, args.requester_boss, args.max_wait_seconds
+                args.resource, args.holder, args.ttl_seconds, args.note, args.requester_instruction_path, args.max_wait_seconds
             )
         elif args.action == "claim-port":
             result = claim_port(
@@ -649,7 +643,7 @@ def main() -> int:
                 args.holder,
                 args.ttl_seconds,
                 args.note,
-                args.requester_boss,
+                args.requester_instruction_path,
             )
         elif args.action == "release":
             result = release(args.resource, args.holder, args.force)

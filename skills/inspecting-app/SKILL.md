@@ -23,7 +23,7 @@ Invoke `work-on` now. Do not proceed without the target app.
 Apply `boss-say`'s execution-tier judgment (its Task 1), per app: does this audit need the app's own harness (its real `.claude/rules/`/`CLAUDE.md`, and possibly its own local audit skill), or is your own global `inspecting` skill, run right here, enough?
 
 - **Solo:** invoke your `inspecting` skill directly in this session (once per resolved app if `work-on` named more than one), giving it the resolved app's directory as known context — it reads that app's actual rules itself to build its check plan; there's no condensed digest to hand it.
-- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory. The worker decides for itself whether to run the app's own local audit skill or your global `inspecting` skill. The instruction states `report-task-status.py --instruction-path <path> --status <done|failed> --note "<summary>"`, which writes before notifying the recorded herdr pane, plus `notifying-main-agent` routing for Claude workers. `SendMessage` is allowed only as Claude-to-Claude fallback.
+- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory. The worker decides whether to run the app's local audit skill or global `inspecting`; the generated contract supplies instruction-keyed status and communication commands.
 
 Either way, do not run a parallel or simplified audit yourself instead of handing off to the real methodology.
 

@@ -1,5 +1,8 @@
 # Codex Plan orchestration requirements
 
+> Historical record. Live transport requirements are superseded by
+> `docs/specs/2026-08-25-dispatched-agent-lifecycle-transport/`.
+
 ## Outcome and actors
 
 Straw Boss must allow a main agent to place a Codex dispatched agent in the

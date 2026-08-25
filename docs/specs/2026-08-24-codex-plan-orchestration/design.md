@@ -1,5 +1,8 @@
 # Codex Plan orchestration design
 
+> Historical record. Live transport design is superseded by
+> `docs/specs/2026-08-25-dispatched-agent-lifecycle-transport/`.
+
 ## Chosen approach
 
 Use the existing dispatch instruction and status command as the

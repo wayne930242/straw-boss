@@ -29,10 +29,10 @@ In any identifier — skill name, script name, JSON field, CLI flag — "boss" r
 ### Authority — actions on in-flight dispatched work
 
 **Inform**:
-The main agent sends a dispatched agent an FYI about something it discovered, without interrupting its current turn. Mechanically: `herdr agent prompt` (no `send-keys esc`) to a `working` pane — it queues, taking effect only once the agent's current turn ends on its own. Not available for `claude-p` (no live pane to prompt).
+The main agent sends a dispatched agent an FYI with `send-dispatch-message.py --to worker --intent inform`. The script validates the recorded live session and queues the message without interrupting the current turn. Not available for `claude-p`.
 
 **Redirect**:
-The main agent interrupts a dispatched agent mid-task to correct or change its instruction, because the task itself is still right but needs adjustment. Mechanically: `herdr agent send-keys esc` (interrupt) then `herdr agent prompt --wait` (the corrected instruction) — the existing "Mid-task interrupt and correction" mechanism, unchanged. `herdr-pane` only.
+The main agent interrupts a dispatched agent mid-task to correct or change its instruction, because the task itself is still right but needs adjustment. After the lifecycle controller interrupts the recorded pane, `send-dispatch-message.py --to worker --intent redirect` delivers the correction. `herdr-pane` only.
 _Avoid_: interrupt (alone — always pair with what happens after: a redirect, not a cancel)
 
 **Cancel**:

@@ -54,15 +54,12 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def test_peer_questions_use_herdr_for_claude_and_codex_panes(self) -> None:
+    def test_peer_questions_use_the_script_owned_transport(self) -> None:
         skill = (ROOT / "skills" / "asking-peer-agents" / "SKILL.md").read_text()
 
-        self.assertIn(
-            'herdr agent prompt "<herdr_pane_id>"',
-            skill,
-        )
-        self.assertIn("Claude or Codex", skill)
-        self.assertIn("Claude-to-Claude fallback", skill)
+        self.assertIn("send-dispatch-message.py", skill)
+        self.assertNotIn("SendMessage", skill)
+        self.assertNotIn("herdr agent prompt", skill)
 
     def run_script(
         self,
@@ -111,6 +108,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             main_agent_kind,
             "--main-agent-pane-id",
             "main:pane",
+            "--main-agent-session-id",
+            "main-session",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return Path(json.loads(result.stdout)["instruction_path"])
@@ -125,7 +124,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         self.assertEqual(instruction["task_id"], "t1")
         self.assertEqual(plan["tasks"][0]["status"], "dispatched")
 
-    def test_codex_plan_dispatch_does_not_require_claude_peer_name(self) -> None:
+    def test_codex_plan_dispatch_records_main_session_fingerprint(self) -> None:
         result = self.run_script(
             "dispatch-task.py",
             "write",
@@ -149,10 +148,13 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "codex",
             "--main-agent-pane-id",
             "main:pane",
+            "--main-agent-session-id",
+            "main-session",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         instruction = json.loads(Path(json.loads(result.stdout)["instruction_path"]).read_text())
-        self.assertIsNone(instruction["main_agent_send_message_peer"])
+        self.assertEqual(instruction["main_agent_session_id"], "main-session")
+        self.assertNotIn("main_agent_send_message_peer", instruction)
 
     def test_codex_done_status_unblocks_dependent_task(self) -> None:
         instruction_path = self.dispatch("codex")
@@ -164,6 +166,11 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "#!/bin/sh\n"
             "[ -f \"$EXPECTED_STATUS_PATH\" ] || exit 9\n"
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
+            "if [ \"$2\" = get ]; then\n"
+            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"main-session\"}}}}'\n"
+            "else\n"
+            "  printf '%s\\n' '{\"result\":{}}'\n"
+            "fi\n"
         )
         fake_herdr.chmod(0o755)
         report = self.run_script(
@@ -254,6 +261,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         instruction = json.loads(instruction_path.read_text())
         instruction["status"] = "in-progress"
         instruction["herdr_pane_id"] = "w1:p2"
+        instruction["session_id"] = "worker-session"
         instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
         status_path = self.plan_dir / "status" / "t1.json"
         status_path.write_text(
@@ -270,7 +278,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "case \"$2\" in\n"
-            "  get) printf '%s\\n' '{\"result\":{\"agent\":{\"name\":\"codex-task\"}}}' ;;\n"
+            "  get) printf '%s\\n' '{\"result\":{\"agent\":{\"name\":\"codex-task\",\"agent_session\":{\"value\":\"worker-session\"}}}}' ;;\n"
             "  prompt) printf '%s\\n' '{\"result\":{}}' ;;\n"
             "  read) printf '%s\\n' 'continue with the dependency' ;;\n"
             "  *) exit 2 ;;\n"
@@ -291,20 +299,13 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         self.assertEqual(updated["main_agent_reply"], "continue with the dependency")
         self.assertIn("resolved_by_main_agent_at", updated)
 
-    def test_claude_worker_can_report_to_codex_main_without_send_message(self) -> None:
+    def test_claude_worker_reports_to_codex_main_through_shared_transport(self) -> None:
         instruction_path = self.dispatch("claude")
         instruction = json.loads(instruction_path.read_text())
         self.assertEqual(instruction["agent_kind"], "claude")
         self.assertEqual(instruction["main_agent_kind"], "codex")
-        self.assertIsNone(instruction["main_agent_send_message_peer"])
-
-        main_agent = self.run_script(
-            "get-main-agent.py", "--instruction-path", str(instruction_path)
-        )
-        self.assertEqual(main_agent.returncode, 0, main_agent.stderr)
-        reachability = json.loads(main_agent.stdout)
-        self.assertEqual(reachability["main_agent_kind"], "codex")
-        self.assertEqual(reachability["preferred_notification_channel"], "herdr")
+        self.assertNotIn("main_agent_send_message_peer", instruction)
+        self.assertEqual(instruction["main_agent_session_id"], "main-session")
 
         fake_bin = self.home / "bin"
         fake_bin.mkdir()
@@ -313,6 +314,11 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
+            "if [ \"$2\" = get ]; then\n"
+            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"main-session\"}}}}'\n"
+            "else\n"
+            "  printf '%s\\n' '{\"result\":{}}'\n"
+            "fi\n"
         )
         fake_herdr.chmod(0o755)
         report = self.run_script(
@@ -379,7 +385,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         status = json.loads((self.plan_dir / "status" / "t1.json").read_text())
         self.assertEqual(status["status"], "cancelled")
 
-    def test_cross_provider_dispatch_rejects_send_message_peer(self) -> None:
+    def test_dispatch_cli_no_longer_exposes_send_message_peer(self) -> None:
         result = self.run_script(
             "dispatch-task.py",
             "write",
@@ -407,9 +413,9 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "not-a-codex-channel",
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("only valid when both agent kinds are 'claude'", result.stderr)
+        self.assertIn("unrecognized arguments: --main-agent-peer-name", result.stderr)
 
-    def test_headless_claude_to_claude_requires_send_message_peer(self) -> None:
+    def test_headless_dispatch_has_durable_contract_without_a_live_endpoint(self) -> None:
         result = self.run_script(
             "dispatch-task.py",
             "write",
@@ -431,45 +437,13 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "claude",
             "--main-agent-kind",
             "claude",
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("--main-agent-peer-name is required", result.stderr)
-
-    def test_headless_claude_to_claude_uses_send_message_fallback(self) -> None:
-        result = self.run_script(
-            "dispatch-task.py",
-            "write",
-            "--app",
-            "api",
-            "--slug",
-            f"{self.plan_slug}-t1",
-            "--task",
-            "Run the task.",
-            "--mode",
-            "claude-p",
-            "--repo-root",
-            str(ROOT),
-            "--plan",
-            self.plan_slug,
-            "--task-id",
-            "t1",
-            "--agent-kind",
-            "claude",
-            "--main-agent-kind",
-            "claude",
-            "--main-agent-peer-name",
-            "claude-main",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         instruction_path = Path(json.loads(result.stdout)["instruction_path"])
-        reachability = self.run_script(
-            "get-main-agent.py", "--instruction-path", str(instruction_path)
-        )
-        self.assertEqual(reachability.returncode, 0, reachability.stderr)
-        self.assertEqual(
-            json.loads(reachability.stdout)["preferred_notification_channel"],
-            "send_message",
-        )
+        instruction = json.loads(instruction_path.read_text())
+        self.assertIsNone(instruction["main_agent_herdr_pane_id"])
+        self.assertIsNone(instruction["main_agent_session_id"])
+        self.assertTrue(Path(instruction["contract_path"]).is_file())
 
     def test_herdr_dispatch_requires_main_agent_pane(self) -> None:
         result = self.run_script(

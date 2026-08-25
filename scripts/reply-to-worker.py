@@ -10,14 +10,8 @@ See skills/dispatching-work/references/plan-mechanics.md's "Main-agent-
 action checkpoints". Only targets `mode: herdr-pane`; herdr provides the
 provider-neutral live addressing used for both supported agent kinds.
 
-Unlike every other script here, this one shells out to `herdr` instead of
-only reading/writing JSON -- required so "the reply was sent" and "the
-checkpoint is resolved" are the same event, not two steps a caller can
-complete only one of.
-
-Delivers via `herdr agent prompt` (no `--wait` -- the worker may run long
-after resuming) into the worker's own pane, confirms the text reached the
-transcript via a short `herdr agent read` poll, retries once if a full
+It sends through the shared session-validating transport, then confirms the
+text reached the transcript via a short herdr read poll and retries once if a full
 poll window never finds it. `status` stays `awaiting-main-agent` after a
 successful reply -- only `resolved_by_main_agent_at`/`main_agent_reply`
 are added; the worker's own next terminal write closes it out.
@@ -28,14 +22,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SUBPROCESS_TIMEOUT_S = 30
+from dispatch_state import dump_json, load_json, resolve_instruction_status_path
+from dispatch_transport import run_herdr_raw, send_instruction_message
+
 # A generous tail: once the resumed worker starts producing real output, a
 # small window scrolls the reply text itself out of view within seconds,
 # turning "confirmed delivered" into a false "not found" -- retrying then
@@ -45,98 +40,10 @@ CONFIRM_POLL_ATTEMPTS = 6
 CONFIRM_POLL_INTERVAL_S = 2
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text())
-
-
-def dump_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2) + "\n")
-
-
-# -- Status-file path resolution, mirroring report-task-status.py's
-# resolve_status_path -- duplicated rather than imported, consistent with
-# this directory's existing convention of self-contained single-file
-# scripts (no cross-script imports; see e.g. wrap-up-task.py duplicating
-# its own path helpers rather than importing report-task-status.py's).
-
-
-def plans_root() -> Path:
-    return Path.home() / ".straw-boss" / "plans"
-
-
-def plan_status_path(plan_slug: str, task_id: str) -> Path:
-    return plans_root() / plan_slug / "status" / f"{task_id}.json"
-
-
-def standalone_status_path(instruction_path: Path) -> Path:
-    stem = instruction_path.name.removesuffix(".json")
-    return instruction_path.with_name(f"{stem}.status.json")
-
-
-def resolve_status_path(instruction_path: Path, instruction: dict[str, Any]) -> Path:
-    plan_id = instruction.get("plan_id")
-    task_id = instruction.get("task_id")
-    if plan_id is not None and task_id is not None:
-        return plan_status_path(str(plan_id).removeprefix("p-"), str(task_id))
-    return standalone_status_path(instruction_path)
-
-
-def run_herdr_raw(args: list[str]) -> str:
-    try:
-        result = subprocess.run(
-            ["herdr", *args],
-            capture_output=True,
-            text=True,
-            timeout=SUBPROCESS_TIMEOUT_S,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ValueError(f"herdr {' '.join(args)!r} timed out after {SUBPROCESS_TIMEOUT_S}s") from exc
-    except FileNotFoundError as exc:
-        raise ValueError("herdr CLI not found on PATH -- this checkpoint requires a live herdr session") from exc
-
-    if result.returncode != 0:
-        raise ValueError(f"herdr {' '.join(args)!r} failed (exit {result.returncode}): {result.stderr.strip()}")
-    return result.stdout
-
-
-def run_herdr(args: list[str]) -> dict[str, Any]:
-    # JSON-returning subcommands only (`agent get`/`agent prompt`, confirmed
-    # live). `agent read` is a different contract -- see run_herdr_raw.
-    stdout = run_herdr_raw(args)
-    try:
-        return json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"herdr {' '.join(args)!r} returned non-JSON output: {stdout!r}") from exc
-
-
-def resolve_worker_name(herdr_pane_id: str) -> str:
-    # `.result.agent.name` confirmed live against a real herdr session.
-    payload = run_herdr(["agent", "get", herdr_pane_id])
-    agent = payload.get("result", {}).get("agent", {})
-    name = agent.get("name")
-    if not name:
-        raise ValueError(
-            f"could not resolve a live agent name from 'herdr agent get {herdr_pane_id}' -- "
-            f"the worker's pane may no longer exist, or herdr's output shape changed "
-            f"(got: {json.dumps(payload)})"
-        )
-    return str(name)
-
-
-def send_reply(name: str, reply: str) -> None:
-    # No --wait: the worker's pane is idle waiting for this reply, but once
-    # resumed it may do real work (redispatch a dependency, resolve a
-    # conflict) that runs well past any prompt-submission timeout -- --wait
-    # blocks on the *whole turn* finishing, not on delivery, so it would
-    # fail a send that actually succeeded. Fire-and-forget into the idle
-    # pane, same as cross-session-coordination.md's Inform pattern.
-    run_herdr(["agent", "prompt", name, reply])
-
-
-def read_transcript(name: str, agent_kind: str) -> str:
+def read_transcript(target: str, agent_kind: str) -> str:
     # `agent read` (confirmed live) has no JSON output mode at all --
     # `--format` is only `text`/`ansi` -- its stdout *is* the transcript.
-    args = ["agent", "read", name, "--lines", str(CONFIRM_READ_LINES)]
+    args = ["agent", "read", target, "--lines", str(CONFIRM_READ_LINES)]
     if agent_kind == "codex":
         # Confirmed live: herdr's default `recent` source can be empty for a
         # Codex pane even though its visible screen contains the prompt.
@@ -176,9 +83,9 @@ def reply_landed(transcript: str, reply: str) -> bool:
     return normalize_whitespace(transcript).find(normalize_whitespace(reply)) >= 0
 
 
-def confirm_landed(name: str, reply: str, agent_kind: str) -> bool:
+def confirm_landed(target: str, reply: str, agent_kind: str) -> bool:
     for attempt in range(CONFIRM_POLL_ATTEMPTS):
-        if reply_landed(read_transcript(name, agent_kind), reply):
+        if reply_landed(read_transcript(target, agent_kind), reply):
             return True
         if attempt < CONFIRM_POLL_ATTEMPTS - 1:
             time.sleep(CONFIRM_POLL_INTERVAL_S)
@@ -203,7 +110,7 @@ def reply_to_worker(worker_instruction_path: str, reply: str) -> dict[str, Any]:
     if not herdr_pane_id:
         raise ValueError(f"worker {inst_path} has no herdr_pane_id recorded -- was dispatch confirmed?")
 
-    status_path = resolve_status_path(inst_path, instruction)
+    status_path = resolve_instruction_status_path(inst_path, instruction)
     if not status_path.is_file():
         raise ValueError(f"no status file at {status_path} -- worker has not reported awaiting-main-agent")
     status_payload = load_json(status_path)
@@ -213,28 +120,25 @@ def reply_to_worker(worker_instruction_path: str, reply: str) -> dict[str, Any]:
             f"not 'awaiting-main-agent' -- refusing to reply to a checkpoint that isn't open"
         )
 
-    name = resolve_worker_name(str(herdr_pane_id))
-
-    send_reply(name, reply)
+    endpoint = send_instruction_message(inst_path, "worker", "reply", reply)
     # A genuine herdr failure (timeout, pane gone) propagates immediately
     # and never triggers a resend -- only a poll window that completes
     # without ever finding the reply retries below.
-    if not confirm_landed(name, reply, str(agent_kind)):
-        send_reply(name, reply)
-        if not confirm_landed(name, reply, str(agent_kind)):
+    if not confirm_landed(endpoint.pane_id, reply, str(agent_kind)):
+        send_instruction_message(inst_path, "worker", "reply-retry", reply)
+        if not confirm_landed(endpoint.pane_id, reply, str(agent_kind)):
             raise ValueError(
-                f"sent the reply to {name!r} via herdr (that call itself succeeded) but could not "
+                f"sent the reply to pane {endpoint.pane_id!r} via herdr (that call itself succeeded) but could not "
                 f"confirm it landed in the transcript after one retry -- likely still queued in a "
                 f"busy pane rather than lost, but not certain either way. status file left untouched "
-                f"at {status_path}; check the pane directly (`herdr agent read {name} --source "
-                f"visible`) before resending"
+                f"at {status_path}; inspect the pane through the dispatch tooling before resending "
             )
 
     status_payload["resolved_by_main_agent_at"] = datetime.now(timezone.utc).isoformat()
     status_payload["main_agent_reply"] = reply
     dump_json(status_path, status_payload)
 
-    return {"worker_name": name, "status_path": str(status_path)}
+    return {"resolved": True, "status_path": str(status_path)}
 
 
 def main() -> int:

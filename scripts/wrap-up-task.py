@@ -26,42 +26,36 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
-def mp_dev_root() -> Path:
-    return Path.home() / ".straw-boss"
+from dispatch_state import dump_json, load_json, straw_boss_root
 
 
 def instruction_path(app: str, slug: str) -> Path:
-    return mp_dev_root() / "dispatch" / f"{app}--{slug}.json"
+    return straw_boss_root() / "dispatch" / f"{app}--{slug}.json"
 
 
 def archived_path(app: str, slug: str) -> Path:
-    return mp_dev_root() / "dispatch" / "archive" / f"{app}--{slug}.json"
+    return straw_boss_root() / "dispatch" / "archive" / f"{app}--{slug}.json"
 
 
 def sibling_paths(app: str, slug: str) -> list[Path]:
-    """The optional .status.json/.progress.jsonl files a standalone dispatch's
-    report-task-status.py/report-progress.py calls may have written next to
-    its instruction file -- archived alongside it, never left behind live."""
-    base = mp_dev_root() / "dispatch"
+    """Artifacts owned by one instruction and archived with it."""
+    base = straw_boss_root() / "dispatch"
     stem = f"{app}--{slug}"
-    return [base / f"{stem}.status.json", base / f"{stem}.progress.jsonl"]
+    return [
+        base / f"{stem}.status.json",
+        base / f"{stem}.progress.jsonl",
+        base / f"{stem}.contract.md",
+        base / f"{stem}.launch.json",
+        base / f"{stem}.messages.jsonl",
+    ]
 
 
 def plan_path(plan_slug: str) -> Path:
-    return mp_dev_root() / "plans" / plan_slug / "plan.json"
+    return straw_boss_root() / "plans" / plan_slug / "plan.json"
 
 
 def task_status_path(plan_slug: str, task_id: str) -> Path:
-    return mp_dev_root() / "plans" / plan_slug / "status" / f"{task_id}.json"
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text())
-
-
-def dump_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2) + "\n")
+    return straw_boss_root() / "plans" / plan_slug / "status" / f"{task_id}.json"
 
 
 def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> dict[str, Any]:
