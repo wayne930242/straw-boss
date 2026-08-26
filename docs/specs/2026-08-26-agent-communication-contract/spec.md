@@ -41,10 +41,20 @@
 - `done` and `failed` status reports persist first, then notify the validated
   main-agent Herdr endpoint. Notification failure remains visible and leaves the
   durable status available to the watcher.
+- `launch-dispatched-agent.py` resolves the recorded main pane, splits a worker
+  pane from it with the instruction's `repo_root` as cwd, verifies both panes
+  share one tab, and then starts the provider. Callers do not supply worker pane
+  or tab ids.
+- Herdr dispatch never creates or closes a tab. Receipts and confirmed
+  instructions still record the shared tab id for navigation; wrap-up closes
+  only the worker pane.
 
 ## Compatibility and non-goals
 
 - Existing instruction and status JSON remain readable.
+- Existing launch receipts remain readable. The launcher CLI intentionally drops
+  `--pane-id` and `--tab-id`; it owns placement so callers cannot select another
+  tab.
 - Existing transport commands keep `--instruction-path`, `--to`, `--intent`, and
   `--message`; peer calls add sender/correlation arguments and all callers may
   add references without changing existing concise calls.
@@ -70,8 +80,9 @@ allowed sends, peer round-trip correlation, two-sentence rejection, structured
 references, content-free delivery records, and status-note validation.
 Source-contract tests keep skills concise and ensure the delta-only rule is
 stated once. Terminal integration tests cover successful `done` and `failed`
-Herdr notifications. Run the focused and full unittest suites plus Python
-compilation.
+Herdr notifications. Launcher integration tests assert main-pane lookup,
+same-tab pane split, receipt identity, and absence of tab creation. Run the
+focused and full unittest suites plus Python compilation.
 
 ## Human appropriateness
 

@@ -7,10 +7,9 @@
 
 See skills/dispatching-work/references/dispatch-mechanics.md (instruction
 lifecycle) and references/plan-mechanics.md (plan status). This script
-only moves/edits JSON bookkeeping files -- it never closes a herdr
-pane/tab and never removes a worktree, both of which stay live tool
-calls the main agent makes itself (they need live state checks this
-script has no way to perform).
+only moves/edits JSON bookkeeping files -- it never closes the worker pane or
+removes a worktree. Those stay live tool calls the main agent makes itself; the
+shared coordinator tab is never part of dispatch cleanup.
 
 For a plan task, wrap-up only proceeds once the task's own status file
 reports a terminal state (done/failed/cancelled) -- never on

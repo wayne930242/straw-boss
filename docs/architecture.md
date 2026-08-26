@@ -69,7 +69,10 @@ Both are stated, not asked. A user who disagrees overrides it in one sentence, w
 4. Requests resolving to more than one task get confirmed as a Plan (`work-on` Task 4) before anything is dispatched; a single-task request skips straight to dispatch. This plan is dispatch structure, not a product or implementation spec.
 5. The specialist skill (or `boss-say` for a batch item) assembles each task's description from the user's intent and invokes `dispatching-work` when the tier call landed on dispatch (single instruction, or the whole Plan). The dispatched agent enters the target app first, then applies that app's own development and SDD route; Straw Boss neither selects nor runs it.
 6. Interactive tasks discuss work details and authorization directly with the user in their own pane; `shipping-task` points the user there. Headless tasks persist the same checkpoint so the main agent can relay the user's answer without deciding for them. Commit and task-feature-branch pushes need no authorization; the latter is a non-blocking FYI. A dispatched diagnosis reports root cause through the shared completion-status command, which writes before notifying the main agent's validated herdr endpoint.
-7. `dispatching-work`'s wrap-up (single task) or auto-detach (Plan, on each task reaching `done`/`failed`/`cancelled`) closes a finished instruction and any herdr pane/tab it used; for a full-flow task, worktree removal is the main agent's job too, paired with its main-agent-created worktree. A user's own status question or close-out request for one dispatch goes through `boss-say`, which calls `dispatching-work`'s List/Wrap-up branches directly.
+7. `dispatching-work`'s wrap-up closes the finished worker pane and instruction
+   while preserving the coordinator's shared tab; full-flow worktree removal
+   remains the main agent's job. Status and close-out requests go through
+   `boss-say` into the List/Wrap-up branches.
 
 ## Why the app list is project config, not plugin code
 

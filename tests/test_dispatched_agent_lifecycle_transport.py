@@ -80,7 +80,12 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "with open(os.environ['HERDR_CAPTURE'], 'a') as f:\n"
             "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
             "args = sys.argv[1:]\n"
-            "if args[:2] == ['agent', 'get']:\n"
+            "if args[:2] == ['pane', 'get']:\n"
+            "    target = args[2]\n"
+            "    print(json.dumps({'result': {'pane': {'pane_id': target, 'tab_id': os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1')}}}))\n"
+            "elif args[:2] == ['pane', 'split']:\n"
+            "    print(json.dumps({'result': {'pane': {'pane_id': os.environ.get('HERDR_WORKER_PANE_ID', 'worker-pane'), 'tab_id': os.environ.get('HERDR_WORKER_TAB_ID', os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1'))}}}))\n"
+            "elif args[:2] == ['agent', 'get']:\n"
             "    target = args[2]\n"
             "    sessions = json.loads(os.environ.get('HERDR_SESSIONS', '{}'))\n"
             "    session = sessions.get(target, os.environ.get('HERDR_LIVE_SESSION', 'worker-session'))\n"
@@ -358,15 +363,26 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             str(instruction_path),
             "--name",
             "api-worker",
-            "--pane-id",
-            "worker-pane",
-            "--tab-id",
-            "tab-1",
             extra_env=env,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertIn(["pane", "get", "main-pane"], calls)
+        self.assertIn(
+            [
+                "pane",
+                "split",
+                "main-pane",
+                "--direction",
+                "right",
+                "--cwd",
+                str(ROOT),
+                "--no-focus",
+            ],
+            calls,
+        )
+        self.assertFalse(any(call and call[0] == "tab" for call in calls))
         start = next(call for call in calls if call[:2] == ["agent", "start"])
         contract_path = str(instruction["contract_path"])
         self.assertIn("--append-system-prompt-file", start)
@@ -378,6 +394,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertEqual(receipt["contract_sha256"], instruction["contract_sha256"])
         self.assertEqual(receipt["session_id"], instruction["session_id"])
         self.assertEqual(receipt["pane_id"], "worker-pane")
+        self.assertEqual(receipt["tab_id"], "tab-1")
 
     def test_launcher_injects_codex_developer_instructions(self) -> None:
         instruction_path, _ = self.write_dispatch("codex")
@@ -394,8 +411,6 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             str(instruction_path),
             "--name",
             "codex-worker",
-            "--pane-id",
-            "worker-pane",
             extra_env=env,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -407,6 +422,59 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         config_index = start.index("-c")
         self.assertTrue(start[config_index + 1].startswith("developer_instructions="))
         self.assertIn("report-task-status.py", start[config_index + 1])
+
+    def test_launcher_rejects_and_closes_a_worker_pane_in_another_tab(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_MAIN_TAB_ID": "main-tab",
+                "HERDR_WORKER_TAB_ID": "wrong-tab",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("expected main-agent tab", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertIn(["pane", "close", "worker-pane"], calls)
+        self.assertFalse(any(call[:2] == ["agent", "start"] for call in calls))
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+        self.assertFalse(receipt_path.exists())
+
+    def test_dispatch_guidance_never_creates_or_closes_worker_tabs(self) -> None:
+        sources = [
+            (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text(),
+            (
+                ROOT
+                / "skills"
+                / "dispatching-work"
+                / "references"
+                / "dispatch-mechanics.md"
+            ).read_text(),
+            (
+                ROOT
+                / "skills"
+                / "dispatching-work"
+                / "references"
+                / "plan-mechanics.md"
+            ).read_text(),
+            (ROOT / "skills" / "shipping-task" / "SKILL.md").read_text(),
+            (ROOT / "skills" / "init" / "SKILL.md").read_text(),
+        ]
+
+        for source in sources:
+            self.assertNotIn("herdr tab create", source)
+            self.assertNotIn("herdr tab close", source)
+        self.assertIn("same tab", sources[1].lower())
+        self.assertIn("pane split", sources[1])
 
     def test_confirm_requires_a_matching_launch_receipt(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")

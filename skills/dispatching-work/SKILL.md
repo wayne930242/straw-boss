@@ -21,7 +21,7 @@ Whether to dispatch into the app at all, versus handling something with a plain 
 - **`capability.json` says `claude-p-only`** → `claude-p`, always. This is an explicit opt-out the user gave in `init`; honor it even if `HERDR_ENV` is `1` this session.
 - **Otherwise, default to detecting herdr live rather than requiring a recorded capability** — `capability.json` saying `herdr-enabled`, or simply being absent (e.g. this dispatch didn't arrive via a path that ever ran `init`), are treated the same way: check this session's own `HERDR_ENV`.
   - **`HERDR_ENV` is `1`** → `herdr-pane`, always. `claude -p` is a black box with no way to pause for a live reply — there's no task shape that makes it the better choice once herdr exists.
-  - **`HERDR_ENV` isn't `1`** → `claude-p` is the only option — there's no live herdr session for this main agent to join a tab/pane in. If the task looks likely to need mid-task clarification, say so — headless dispatch can't ask mid-task questions (it reports `failed` with the question stated instead of pausing), and running `init` would enable herdr-backed dispatch — but still proceed with `claude-p` if the user doesn't want to set that up now.
+  - **`HERDR_ENV` isn't `1`** → `claude-p` is the only option — there's no live herdr session beside which to open a worker pane. If the task looks likely to need mid-task clarification, say so — headless dispatch can't ask mid-task questions (it reports `failed` with the question stated instead of pausing), and running `init` would enable herdr-backed dispatch — but still proceed with `claude-p` if the user doesn't want to set that up now.
 
 State the mode and why before doing anything else.
 
@@ -33,7 +33,8 @@ State the mode and why before doing anything else.
 
 ## Task 2: Resolve batch membership
 
-Several dispatches for one multi-app unit of work share a `batch` label (herdr-pane tab grouping only). A standalone dispatch has none.
+Several dispatches for one multi-app unit of work share a `batch` label for
+tracking. A standalone dispatch has none.
 
 ## Task 3: Write the instruction, before dispatching
 
@@ -61,7 +62,7 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 
 **Wave dispatch.** Compute the ready wave (`read-plan-status.py --ready`) and dispatch **every task in it at once** — never one at a time, never serialize an independent task through another task's session because it happens to be idle. Each task still goes through Tasks 1-5 individually (mode selection, instruction, dispatch, confirm), with `plan_id`/`task_id` added.
 
-**Worktree ownership (full-flow tasks).** The main agent creates every worktree itself, for every managed app uniformly, regardless of the app's own tooling — plain `git worktree add`, never `herdr worktree create` (see `plan-mechanics.md`'s "Worktree ownership" for why). Verify `git rev-parse --show-toplevel` inside it resolves to the worktree's own path — repos with `extensions.worktreeConfig = true` silently don't, regardless of creation method — and repair with a `config.worktree` file if not (exact steps in `plan-mechanics.md`). Never dispatch into an unverified worktree. For `herdr-pane`, join it to the main agent's own existing workspace as a tab (`herdr tab create --workspace`) — a plan's worktrees never scatter across workspaces, and the shared workspace is never closed by this mechanism, only the tabs added to it.
+**Worktree ownership (full-flow tasks).** The main agent creates every worktree itself, for every managed app uniformly, regardless of the app's own tooling — plain `git worktree add`, never `herdr worktree create` (see `plan-mechanics.md`'s "Worktree ownership" for why). Verify `git rev-parse --show-toplevel` inside it resolves to the worktree's own path — repos with `extensions.worktreeConfig = true` silently don't, regardless of creation method — and repair with a `config.worktree` file if not (exact steps in `plan-mechanics.md`). Never dispatch into an unverified worktree. Record that verified path as `repo_root`; the launcher opens its worker pane beside the coordinator in the same tab.
 
 **Agent naming.** Derive the herdr handle from `plan_id`/`task_id` for operator visibility. Communication scripts address the instruction, never this name.
 
@@ -96,10 +97,13 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 ## Branch: Wrap up an instruction
 
 1. Confirm which instruction (ask if ambiguous).
-2. If `herdr-pane` and the pane/tab is still open and no longer needed, close it first (`herdr pane close`/`herdr tab close` — tab only if it was the last pane in it). `claude-p` has nothing to close.
+2. If `herdr-pane` and its worker pane is still open and no longer needed, close
+   that pane. The coordinator's shared tab remains open. `claude-p` has nothing
+   to close.
 3. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
 
-**Verification:** pane/tab confirmed closed before the file is archived, never assumed.
+**Verification:** the worker pane is confirmed closed before the file is archived;
+the coordinator pane and shared tab remain open.
 
 ## Red Flags
 

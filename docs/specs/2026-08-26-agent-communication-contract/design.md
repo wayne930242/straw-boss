@@ -35,6 +35,13 @@ but current prompts no longer let the main agent originate a competing work
 decision; it may only carry explicit user direction or protect orchestration
 state.
 
+Pane placement moves behind the existing launch adapter. The instruction already
+contains the validated main-agent pane and target `repo_root`, so the launcher
+needs no placement arguments: it gets the main pane, splits a right-hand pane
+with the target cwd, verifies the returned `tab_id` matches the main pane, and
+records both identities in the receipt. This centralizes the invariant and
+deletes tab lifecycle knowledge from dispatch callers.
+
 ## Interface decisions
 
 - Keep the existing generic live-message CLI; add
@@ -53,6 +60,10 @@ state.
 - Exempt exact slash-command control payloads from prose validation.
 - Keep write-before-notify status behavior. Add explicit prompt and integration
   coverage for both terminal outcomes rather than a second Herdr state channel.
+- Replace launcher `--pane-id`/`--tab-id` with instruction-derived placement.
+  Keep `dispatch-task.py confirm` receipt-driven and backward-readable.
+- Close only worker panes at terminal state. The shared tab is coordinator-owned
+  and remains open.
 
 ## Alternatives rejected
 
@@ -72,6 +83,8 @@ state.
 Source authentication depends on live Herdr pane identity; headless status keeps
 its compatibility path. Sentence detection is intentionally a guardrail, not a
 linguistic parser; messages without terminal punctuation count as one sentence.
+Pane split responses are validated for both `pane_id` and same-tab `tab_id`; a
+missing or mismatched identity fails before provider start.
 Public CLI tests are the primary seam because they cover argument parsing,
 endpoint resolution, body/reference validation, envelope construction, and
 persisted proof together.

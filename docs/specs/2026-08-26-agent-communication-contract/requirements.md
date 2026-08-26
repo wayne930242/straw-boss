@@ -26,6 +26,8 @@ only.
   redirect, or cancel work that the user and dispatched agent have decided.
 - Require `done` and `failed` status reports to notify the recorded main-agent
   Herdr endpoint after durable persistence.
+- Place every Herdr-dispatched worker pane in the coordinating main agent's
+  current tab; dispatch never creates a separate tab.
 
 ## Out of scope
 
@@ -60,6 +62,9 @@ only.
     user instead of being decided by the main agent.
 12. Both `done` and `failed` write durable status before notifying the recorded
     main-agent Herdr session.
+13. Launching one or many Herdr workers splits new panes from the recorded main
+    pane. Every launch receipt records the main pane's tab id, and no launch path
+    invokes `herdr tab create`.
 
 ## Confirmed decisions
 
@@ -71,6 +76,8 @@ only.
   main agent is a relay and context integrator, not a substitute decision maker.
 - A Herdr dispatch is an independent agent session. The main agent owns routing,
   dependencies, observation, and cleanup—not the task's implementation choices.
+- The coordinating main pane's tab is the sole visual container for its workers.
+  Terminal cleanup closes worker panes only and preserves the shared tab.
 - Live messages carry only the new fact, action, question, or answer. They use at
   most two sentences; longer material moves to a reference. There is no hard
   character or token limit.

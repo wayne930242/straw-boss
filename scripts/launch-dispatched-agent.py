@@ -12,6 +12,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from dispatch_state import dump_json, launch_receipt_path, load_json, sha256_text
 from dispatch_transport import run_herdr
@@ -25,11 +26,62 @@ def live_agent(pane_id: str) -> dict[str, object]:
     return agent
 
 
+def herdr_pane(pane_id: str) -> dict[str, object]:
+    payload = run_herdr(["pane", "get", pane_id])
+    pane = payload.get("result", {}).get("pane")
+    if not isinstance(pane, dict) or pane.get("pane_id") != pane_id:
+        raise ValueError(f"herdr could not resolve pane {pane_id!r}")
+    if not pane.get("tab_id"):
+        raise ValueError(f"herdr pane {pane_id!r} did not expose a tab id")
+    return pane
+
+
+def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str]:
+    main_pane_id = instruction.get("main_agent_herdr_pane_id")
+    if not isinstance(main_pane_id, str) or not main_pane_id:
+        raise ValueError("dispatch instruction has no main-agent herdr pane")
+    main_pane = herdr_pane(main_pane_id)
+    main_tab_id = str(main_pane["tab_id"])
+
+    cwd = Path(str(instruction.get("repo_root", ""))).resolve()
+    if not cwd.is_dir():
+        raise ValueError(f"dispatch repo_root is not a directory: {cwd}")
+    payload = run_herdr(
+        [
+            "pane",
+            "split",
+            main_pane_id,
+            "--direction",
+            "right",
+            "--cwd",
+            str(cwd),
+            "--no-focus",
+        ]
+    )
+    pane = payload.get("result", {}).get("pane")
+    if not isinstance(pane, dict):
+        raise ValueError("herdr pane split did not return a pane")
+    pane_id = pane.get("pane_id")
+    tab_id = pane.get("tab_id")
+    if not isinstance(pane_id, str) or not pane_id:
+        raise ValueError("herdr pane split did not return a pane id")
+    if tab_id != main_tab_id:
+        try:
+            run_herdr(["pane", "close", pane_id])
+        except ValueError as close_error:
+            raise ValueError(
+                f"worker pane landed in tab {tab_id!r}, expected {main_tab_id!r}; "
+                f"cleanup also failed: {close_error}"
+            ) from close_error
+        raise ValueError(
+            f"worker pane landed in tab {tab_id!r}, expected main-agent tab {main_tab_id!r}"
+        )
+    return pane_id, main_tab_id
+
+
 def launch(
     instruction_path: str,
     name: str,
-    pane_id: str,
-    tab_id: str | None,
     agent_args: list[str],
 ) -> dict[str, Any]:
     inst_path = Path(instruction_path).resolve()
@@ -65,36 +117,44 @@ def launch(
     else:
         raise ValueError(f"unsupported agent kind {agent_kind!r}")
 
-    run_herdr(
-        ["agent", "start", name, "--kind", agent_kind, "--pane", pane_id, "--", *provider_args]
-    )
-    agent = live_agent(pane_id)
-    if agent.get("agent_status") == "blocked":
-        run_herdr(["agent", "send-keys", pane_id, "enter"])
+    pane_id, tab_id = create_worker_pane(instruction)
+    try:
         run_herdr(
-            [
-                "agent",
-                "wait",
-                pane_id,
-                "--until",
-                "idle",
-                "--until",
-                "blocked",
-                "--timeout",
-                "15000",
-            ]
+            ["agent", "start", name, "--kind", agent_kind, "--pane", pane_id, "--", *provider_args]
         )
+        agent = live_agent(pane_id)
+        if agent.get("agent_status") == "blocked":
+            run_herdr(["agent", "send-keys", pane_id, "enter"])
+            run_herdr(
+                [
+                    "agent",
+                    "wait",
+                    pane_id,
+                    "--until",
+                    "idle",
+                    "--until",
+                    "blocked",
+                    "--timeout",
+                    "15000",
+                ]
+            )
 
-    run_herdr(["agent", "prompt", pane_id, str(instruction["task"])])
-    agent = live_agent(pane_id)
-    session_id = agent.get("agent_session", {}).get("value")
-    if not session_id:
-        raise ValueError("launched agent did not expose agent_session.value after its first prompt")
-    if agent_kind == "claude" and session_id != instruction.get("session_id"):
-        raise ValueError(
-            f"launched Claude session {session_id!r} does not match preassigned session "
-            f"{instruction.get('session_id')!r}"
-        )
+        run_herdr(["agent", "prompt", pane_id, str(instruction["task"])])
+        agent = live_agent(pane_id)
+        session_id = agent.get("agent_session", {}).get("value")
+        if not session_id:
+            raise ValueError("launched agent did not expose agent_session.value after its first prompt")
+        if agent_kind == "claude" and session_id != instruction.get("session_id"):
+            raise ValueError(
+                f"launched Claude session {session_id!r} does not match preassigned session "
+                f"{instruction.get('session_id')!r}"
+            )
+    except ValueError as exc:
+        try:
+            run_herdr(["pane", "close", pane_id])
+        except ValueError as close_error:
+            raise ValueError(f"{exc}; worker-pane cleanup also failed: {close_error}") from exc
+        raise
 
     receipt = {
         "instruction_path": str(inst_path),
@@ -115,8 +175,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--instruction-path", required=True)
     parser.add_argument("--name", required=True)
-    parser.add_argument("--pane-id", required=True)
-    parser.add_argument("--tab-id", default=None)
     parser.add_argument(
         "--agent-arg",
         action="append",
@@ -125,9 +183,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        result = launch(
-            args.instruction_path, args.name, args.pane_id, args.tab_id, args.agent_arg
-        )
+        result = launch(args.instruction_path, args.name, args.agent_arg)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

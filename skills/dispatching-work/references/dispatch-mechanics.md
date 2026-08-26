@@ -54,13 +54,16 @@ each flag as one argument; do not depend on shell word splitting.
 
 ## Interactive herdr launch
 
-Create or reuse a tab, split a pane with cwd set to `<app_dir>`, and validate a
-unique operator-visible agent name. Then run only:
+Validate a unique operator-visible agent name. The launcher resolves the
+instruction's recorded main pane and splits the worker into that same tab with
+`repo_root` as cwd. Internally it runs
+`herdr pane split <main-pane> --direction right --cwd <repo_root> --no-focus`.
+Run only:
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/launch-dispatched-agent.py" \
   --instruction-path <instruction path> \
-  --name <agent name> --pane-id <new pane> --tab-id <tab> \
+  --name <agent name> \
   [--agent-arg <one provider argument>]...
 ```
 
@@ -69,10 +72,11 @@ The launcher:
 1. verifies the instruction is pending and the contract digest matches;
 2. injects Claude with `--append-system-prompt-file`, or Codex with
    `developer_instructions`;
-3. starts the provider through herdr and handles an initial trust prompt;
-4. submits the recorded task;
-5. reads `agent_session.value`, cross-checking Claude's preassigned id;
-6. writes `<app>--<slug>.launch.json`.
+3. resolves the main pane and splits a worker pane in the same tab;
+4. starts the provider through herdr and handles an initial trust prompt;
+5. submits the recorded task;
+6. reads `agent_session.value`, cross-checking Claude's preassigned id;
+7. writes `<app>--<slug>.launch.json` with the worker pane and shared tab.
 
 Confirm only after the launcher returns:
 
@@ -122,7 +126,8 @@ observes durable content revisions and remains scheduling authority.
 
 ## Closing an instruction
 
-Close only panes/tabs created for the dispatch. Then call `wrap-up-task.py`; it
+Close only the worker pane created for the dispatch; the shared tab belongs to
+the coordinator. Then call `wrap-up-task.py`; it
 archives the instruction and its contract, receipt, status, progress, and
 delivery artifacts, and synchronizes terminal Plan status. Never archive a
 non-terminal checkpoint or a task with a same-task continuation pending.

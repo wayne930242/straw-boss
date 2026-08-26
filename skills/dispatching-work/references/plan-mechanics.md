@@ -75,7 +75,7 @@ Different from an authorization checkpoint on every axis that matters: it isn't 
 
 **Escalation order.** Discuss work details and judgment with the user directly; a headless task persists `awaiting-user-input` for relay. Ask the main agent only for integrated instructions, cross-task context, or a coordinator-owned action, using a non-blocking question or `awaiting-main-agent`. Ask peers only for factual progress or conclusions.
 
-On an `awaiting-user-input` notification, the main agent's job is narrow: tell the user which task is asking and which pane/tab to go answer it in (from the dispatch instruction's recorded `herdr_pane_id`/`herdr_tab_id`), then leave it alone — same as `awaiting-authorization`, `dispatching-work`'s plan loop does not treat this as done, failed, or ready-for-a-new-wave, and does not auto-detach it. Once the user has answered directly in the pane, the task continues on its own and eventually reports a real terminal state or another checkpoint — the main agent does not need to explicitly "resume" it the way it does for an authorization checkpoint, because the conversation already happened directly in the pane.
+On an `awaiting-user-input` notification, the main agent's job is narrow: tell the user which task is asking and which worker pane to answer (from `herdr_pane_id`), then leave it alone. The plan loop does not treat this as done, failed, or ready for another wave. Once the user answers in that pane, the task continues and later reports another state.
 
 **Not every mid-task question needs the user.** When a task's question is something the main agent can answer directly from what it already knows (another task's status, which apps are in scope) — not a judgment call about the work — every provider calls the instruction-keyed message script. Delivery is not authorization.
 
@@ -167,7 +167,7 @@ still depends on the watcher plus persisted status.
 Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization`, `awaiting-user-input`, or `awaiting-main-agent`, none of which is terminal — all three need the session to stay alive: one to be resumed once authorized, one to be answered directly by the user, one to be resolved directly by the main agent via `reply-to-worker.py`.
 
 When the status watcher emits `done`/`failed`, or the main agent has just written `cancelled` itself (Cancel may also emit through the watcher, but the authoring main agent already knows synchronously):
-1. If it was a full-flow, worktree-backed task, close per the "Worktree ownership" removal steps above (`herdr tab close` + `git worktree remove` — never `herdr workspace close`). Otherwise, if it was `herdr-pane` mode without a worktree, close its pane per `dispatch-mechanics.md`'s wrap-up rules (only close the tab too if it was the last pane in it). If the instruction included a shared-resource lock (above) and the task ended `failed`/`cancelled` before its own release step ran, release it now (`uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" release --resource <id> --holder <app>--<slug>`) — a lock left behind by a task that never got to clean up itself blocks every other main agent on that resource until its `ttl_seconds` expires otherwise.
+1. Close the worker pane only; its tab is shared with the coordinator. For a full-flow task, then remove the worktree with plain git. If the instruction included a shared-resource lock and the task ended `failed`/`cancelled` before releasing it, release it now.
 2. Call `wrap-up-task.py --app <app> --slug <slug> --plan <slug> --task-id <task_id>` — it archives the instruction and syncs `plan.json`'s `tasks[].status` to the terminal status it reads from the status file, in one call. Do not `mv`/`Edit` these by hand.
 3. Do **not** touch `plan.json.status` here — that only becomes `done` once every task in the plan is terminal (check across all tasks, not per-event).
 
@@ -196,11 +196,16 @@ status revision; the watcher emits the overwrite for recovery.
 
 ## Agent naming
 
-Derive both the herdr agent name and any tab label from `plan_id`/`task_id`, e.g. `<plan-slug short>-<task-id>`. Do not use a generic or app-only name once a plan is involved — the point is that herdr's own `agent list`/pane listings reveal the plan/task without cross-referencing files. Validate the derived name before use — format and live-uniqueness both — per `dispatch-mechanics.md`'s step 4 (`check-agent-name.py`).
+Derive the Herdr agent name from `plan_id`/`task_id`, e.g.
+`<plan-slug short>-<task-id>`. Pane and agent listings should reveal the task
+without cross-referencing files. Validate format and live uniqueness with
+`check-agent-name.py`.
 
 ## Worktree ownership (every managed app, uniformly)
 
-**Do not use `herdr worktree create`.** It always opens a brand-new herdr workspace with no way to target an existing one instead (`--workspace` only names the *source* repo, not a destination; confirmed against `herdr api schema --json` and the herdr project's own acknowledgement of this gap in [GitHub Discussion #553](https://github.com/herdrdev/herdr/discussions/553)) — one worktree per plan would mean one stray workspace per task, which is exactly what this mechanism must not do. Create the worktree with plain git instead, then, if the task is herdr-pane mode, add it to the *existing* workspace as a tab:
+**Do not use `herdr worktree create`.** It opens a separate workspace and breaks
+the shared-tab invariant. Create the worktree with plain git; the launcher later
+uses that path as the cwd of a pane split from the coordinator:
 
 ```bash
 git -C "<app_dir>" worktree add "<app_dir>-<slug>" -b "<branch>" "<base_branch>"
@@ -225,20 +230,22 @@ EOF
 
 Skip silently (no error) when a listed source file doesn't exist in the main checkout — not every dev environment has every optional local file set up.
 
-**Joining the plan's shared workspace (herdr-pane mode only).** All worktree-backed tabs for the same plan land in one workspace — never a fresh one per task. That workspace is, by construction, the main agent's own: when the main agent is itself running inside a herdr pane, `$HERDR_WORKSPACE_ID` names it (confirmed set alongside `HERDR_ENV`).
-```bash
-herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "<app_dir>-<slug>" --label "<slug>"
-```
-Confirmed live: `tab create` (unlike `worktree create`) genuinely accepts an explicit `--workspace` target and lands the new tab there. There is no per-task decision to make about which workspace to target or whether it's "shared with the main agent" — it always is, because this mechanism never creates a new one. Without `--no-focus`, the new tab takes focus — on a plan's wave dispatch (every ready task at once), expect focus to jump once per task in the wave. If the main agent is not itself running inside a herdr pane (no `$HERDR_WORKSPACE_ID`), there is no workspace to join — the task falls back to `claude-p` mode per `dispatch-mechanics.md`, where workspace/tab concepts don't apply.
+**Same-tab worker panes (herdr-pane mode only).** Record the verified worktree as
+the instruction's `repo_root`. `launch-dispatched-agent.py` resolves the recorded
+main pane and runs `herdr pane split <main-pane> --direction right --cwd
+<repo_root> --no-focus`. It rejects a split whose returned `tab_id` differs from
+the main pane. Every ready-wave worker therefore appears beside the coordinator
+inside one tab; no task owns a tab lifecycle.
 
 The launcher starts a full-flow task in the verified worktree, so the task brief does not narrate worktree creation or warn the worker not to repeat it. Everything after worktree creation (commit, MR/release mechanics) still follows the target app's own conventions where one exists — only the worktree-creation step moved.
 
-**Removal, symmetrically, never touches the shared workspace itself:**
+**Removal closes only the worker pane:**
 ```bash
-herdr tab close <tab_id>
+herdr pane close <pane_id>
 git -C "<app_dir>" worktree remove "<app_dir>-<slug>"
 ```
-Not `herdr worktree remove` (that primitive assumes the old one-workspace-per-worktree model and errors `not_linked_worktree` once a workspace holds more than one worktree's tab) and not `herdr workspace close` (the workspace is the main agent's own — possibly still in active use by the human user or the main agent itself — and this mechanism never owns its lifecycle, only the tabs it added to it).
+The coordinator pane and shared tab remain open. `herdr worktree remove` and
+workspace-level removal are outside this lifecycle; plain git owns the worktree.
 
 ## Rebase before push (parallel sibling tasks against the same base)
 
