@@ -78,10 +78,19 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" status --resou
 
 **A stale lock that nobody ever re-contends for just sits there — `acquire`'s reactive reclaim only fires when someone actually asks.** That's not a correctness problem (`expired: true` in `list`/`status` already tells the truth about it, and it can never block anything that isn't itself contending for that exact resource), but it can clutter the picture over time. Run `uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" gc` occasionally to sweep every lock already past its own `ttl_seconds` regardless of contention — it never touches anything still within its ttl, so it can't remove a live lock by mistake.
 
-## Courtesy channel between main agents
+## Courtesy channel between dispatched agents
 
 The lock is what enforces correctness; courtesy messages never change who wins. A contended result exposes the holder instruction path.
 
-**One stuck waiter, one current holder.** The waiting main agent calls `send-dispatch-message.py --instruction-path <holder instruction> --to main --intent question` for a rough ETA. It never asks for force-release or treats a reply as authority to skip the lock; only `release` changes ownership.
+**One stuck waiter, one current holder.** The waiting agent asks the holder for a rough ETA through the correlated peer channel:
 
-**Several main agents contending.** Each waiter reaches the same holder instruction. The holder may suggest an order, but every task must still win the lock normally.
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
+  --instruction-path <holder instruction> \
+  --sender-instruction-path <waiter instruction> \
+  --to worker --intent question --message "<resource and ETA question>"
+```
+
+It never asks for force-release or treats a reply as authority to skip the lock; only `release` changes ownership.
+
+**Several agents contending.** Each waiter reaches the same holder instruction. The holder may suggest an order, but every task must still win the lock normally.

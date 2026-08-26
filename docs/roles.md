@@ -30,6 +30,8 @@ The main agent has four distinct ways to act on a task it already dispatched, ea
 
 Inform/redirect/cancel/resolve are all main-agent-initiated, one direction only. A dispatched agent reports its own outcome through the provider-neutral status interface, which writes before shared transport notifies the session-validated main endpoint; `watch-plan-status.py` emits each transition for recovery and scheduling. Whether to redispatch a failed task remains the user's call.
 
+Work-detail discussion and authorization belong directly to the user. An interactive dispatched agent waits in its own session; the main agent relays only when the task is headless. Questions to the main agent are limited to integrated instructions, cross-task context, or coordinator-owned actions.
+
 A third direction, lateral rather than vertical: one dispatched agent reaching another directly (`asking-peer-agents`), to ask about that peer's own progress or conclusion instead of investigating its app/worktree blind. This carries no authority either way — it's the same informational-only channel `notifying-main-agent`'s question branch already gives a dispatched agent toward its main agent, just addressed sideways instead of up; it never substitutes for inform/redirect/cancel, and a reply through it is never authorization.
 
 ## Autonomy boundary

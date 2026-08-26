@@ -40,6 +40,8 @@ The main agent ends a dispatched task outright because it judges the dispatch it
 
 Inform/redirect/cancel are all main-agent-initiated, one direction only. The other direction — a dispatched agent's own outcome reaching the main agent — is untouched by any of this: a task that fails on its own still reports `failed` through its status file the same way it always has (`plan-mechanics.md`'s Monitor notification), and whether to redispatch it is still always the user's call, never the main agent's, exactly as before this authority framework existed.
 
+Work-detail discussion and authorization go directly between an interactive dispatched agent and the user. The main agent relays only for headless tasks, or answers integrated instructions, cross-task context, and coordinator-owned actions.
+
 ### Autonomy boundary
 
 The main agent may, on its own judgment — without asking the user first, but always stated, never silent — adjust an item's spec or add work at two levels: (a) items not yet dispatched, (b) in-flight dispatch-instruction files for already-running tasks (via **inform** or **redirect**, or a **cancel** if the dispatch itself was wrong). It may not silently authorize a merge, or a push landing outside a task's own feature branch, or bypass `forbidDirectCommit` under this authority — those gates are absolute, never a function of scope. Pushing a task's own feature branch is not one of these gates — it needs no authorization to begin with. The same restraint covers tracker-ticket mutations: a dispatched agent never touches a ticket; only the main agent does, once the relevant work is actually complete. It defers to the user, rather than acting alone, whenever an adjustment would diverge substantially from the user's stated direction.

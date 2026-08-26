@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import subprocess
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,9 @@ from dispatch_state import load_json
 
 SUBPROCESS_TIMEOUT_S = 30
 Target = Literal["main", "worker"]
+WORKER_TO_MAIN_INTENTS = frozenset({"question", "inform", "status"})
+MAIN_TO_WORKER_INTENTS = frozenset({"inform", "redirect", "reply", "reply-retry", "control"})
+PEER_INTENTS = frozenset({"question", "answer"})
 
 
 @dataclass(frozen=True)
@@ -144,15 +148,78 @@ def validate_live_session(endpoint: Endpoint) -> None:
     )
 
 
-def append_delivery_record(
-    instruction_path: Path, endpoint: Endpoint, intent: str, message: str
-) -> None:
-    path = instruction_path.with_name(
+def validate_current_sender(endpoint: Endpoint) -> None:
+    current_pane = os.environ.get("HERDR_PANE_ID")
+    if current_pane != endpoint.pane_id:
+        raise ValueError(
+            f"sender pane mismatch: expected {endpoint.pane_id!r}, "
+            f"current {current_pane!r}; refusing to send"
+        )
+    validate_live_session(endpoint)
+
+
+def validate_status_sender(instruction_path: str | Path, status: str) -> None:
+    path = Path(instruction_path).resolve()
+    if not path.is_file():
+        raise ValueError(f"no instruction file at {path}")
+    instruction = load_json(path)
+    if instruction.get("mode") != "herdr-pane":
+        return
+    source = resolve_endpoint(instruction, "main" if status == "cancelled" else "worker")
+    validate_current_sender(source)
+
+
+def _dispatch_label(path: Path, instruction: dict[str, Any]) -> str:
+    app = str(instruction.get("app", "unknown-app"))
+    stem = path.name.removesuffix(".json")
+    dispatch_id = instruction.get("task_id") or stem.removeprefix(f"{app}--")
+    return f"{app}/{dispatch_id}"
+
+
+def _delivery_ledger_path(instruction_path: Path) -> Path:
+    return instruction_path.with_name(
         f"{instruction_path.name.removesuffix('.json')}.messages.jsonl"
     )
+
+
+def validate_peer_reply(
+    sender_path: Path,
+    source: Endpoint,
+    endpoint: Endpoint,
+    in_reply_to: str,
+) -> None:
+    ledger_path = _delivery_ledger_path(sender_path)
+    try:
+        records = [json.loads(line) for line in ledger_path.read_text().splitlines()]
+    except (OSError, json.JSONDecodeError):
+        records = []
+    if not any(
+        record.get("message_id") == in_reply_to
+        and record.get("intent") == "question"
+        and record.get("source_session_id") == endpoint.expected_session_id
+        and record.get("target_session_id") == source.expected_session_id
+        for record in records
+        if isinstance(record, dict)
+    ):
+        raise ValueError(f"unknown peer question {in_reply_to!r} for this sender/receiver pair")
+
+
+def append_delivery_record(
+    instruction_path: Path,
+    source: Endpoint,
+    endpoint: Endpoint,
+    intent: str,
+    message: str,
+    message_id: str,
+    in_reply_to: str | None,
+) -> None:
+    path = _delivery_ledger_path(instruction_path)
     record = {
         "direction": f"to-{endpoint.target}",
         "intent": intent,
+        "message_id": message_id,
+        "in_reply_to": in_reply_to,
+        "source_session_id": source.expected_session_id,
         "target_session_id": endpoint.expected_session_id,
         "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
         "message_length": len(message),
@@ -163,20 +230,81 @@ def append_delivery_record(
 
 
 def send_instruction_message(
-    instruction_path: str | Path, target: Target, intent: str, message: str
+    instruction_path: str | Path,
+    target: Target,
+    intent: str,
+    message: str,
+    *,
+    sender_instruction_path: str | Path | None = None,
+    in_reply_to: str | None = None,
+    message_id: str | None = None,
 ) -> Endpoint:
     path = Path(instruction_path).resolve()
     if not path.is_file():
         raise ValueError(f"no instruction file at {path}")
     instruction = load_json(path)
+
+    sender_path: Path | None = None
+    sender_instruction: dict[str, Any] | None = None
+    if sender_instruction_path is not None:
+        sender_path = Path(sender_instruction_path).resolve()
+        if not sender_path.is_file():
+            raise ValueError(f"no sender instruction file at {sender_path}")
+        if sender_path == path:
+            raise ValueError("peer sender and receiver instructions must differ")
+        sender_instruction = load_json(sender_path)
+
+    if sender_instruction is not None:
+        if target != "worker" or intent not in PEER_INTENTS:
+            raise ValueError(
+                f"peer intent must be question or answer to worker, got {intent!r} to {target}"
+            )
+        if intent == "answer" and not in_reply_to:
+            raise ValueError("peer answer requires --in-reply-to")
+        if intent == "question" and in_reply_to:
+            raise ValueError("peer question cannot set --in-reply-to")
+        source = resolve_endpoint(sender_instruction, "worker")
+    elif target == "main":
+        if intent not in WORKER_TO_MAIN_INTENTS:
+            raise ValueError(f"worker-to-main intent {intent!r} is not allowed")
+        source = resolve_endpoint(instruction, "worker")
+    else:
+        if intent in PEER_INTENTS:
+            raise ValueError(f"peer intent {intent!r} requires --sender-instruction-path")
+        if intent not in MAIN_TO_WORKER_INTENTS:
+            raise ValueError(f"main-to-worker intent {intent!r} is not allowed")
+        source = resolve_endpoint(instruction, "main")
+
+    validate_current_sender(source)
     endpoint = resolve_endpoint(instruction, target)
+    if sender_instruction is not None and intent == "answer":
+        assert sender_path is not None and in_reply_to is not None
+        validate_peer_reply(sender_path, source, endpoint, in_reply_to)
     validate_live_session(endpoint)
+    delivery_id = message_id or str(uuid.uuid4())
     if intent == "control":
         if target != "worker" or not message.startswith("/"):
             raise ValueError("control intent requires a worker target and a slash command")
         envelope = message
+    elif sender_instruction is not None:
+        assert sender_path is not None
+        sender_label = _dispatch_label(sender_path, sender_instruction)
+        if intent == "question":
+            envelope = (
+                f"[peer question id={delivery_id} from={sender_label} "
+                f"reply-to={sender_path}] {message}"
+            )
+        else:
+            envelope = (
+                f"[peer answer id={delivery_id} in-reply-to={in_reply_to} "
+                f"from={sender_label}] {message}"
+            )
+    elif target == "main":
+        envelope = f"[dispatched-agent {intent}] {message}"
     else:
-        envelope = f"[Straw Boss {intent} to {target}] {message}"
+        envelope = f"[main-agent {intent}] {message}"
     run_herdr(["agent", "prompt", endpoint.pane_id, envelope])
-    append_delivery_record(path, endpoint, intent, message)
+    append_delivery_record(
+        path, source, endpoint, intent, message, delivery_id, in_reply_to
+    )
     return endpoint

@@ -13,9 +13,9 @@ different tasks never contend for the same path.
 
 This is the provider-neutral durable state interface. For a plan task,
 watch-plan-status.py turns each file-content revision into the scheduling
-event that drives wave computation. When --instruction-path records a live
-main-agent endpoint, this command validates its session and notifies it through
-the shared transport after the durable write.
+event that drives wave computation. For a live instruction, this command
+validates the reporting sender before writing, then validates and notifies the
+main-agent endpoint through the shared transport.
 
 Two ways to address which task's status file to write, mutually
 exclusive:
@@ -58,7 +58,7 @@ from dispatch_state import (
     plan_status_path,
     resolve_instruction_status_path,
 )
-from dispatch_transport import send_instruction_message
+from dispatch_transport import send_instruction_message, validate_status_sender
 
 
 def status_path(plan_slug: str, task_id: str) -> Path:
@@ -102,6 +102,11 @@ def resolve_status_path(plan_slug: str | None, task_id: str | None, instruction_
 def report_status(plan_slug: str | None, task_id: str | None, instruction_path: str | None, status: str, note: str) -> Path:
     if status not in VALID_STATUSES:
         raise ValueError(f"status must be one of {VALID_STATUSES}, got {status!r}")
+    if not note.strip():
+        raise ValueError("--note must be non-empty and describe the outcome or unblock needed")
+
+    if instruction_path is not None:
+        validate_status_sender(instruction_path, status)
 
     path = resolve_status_path(plan_slug, task_id, instruction_path)
 
@@ -124,10 +129,9 @@ def notify_main_agent(instruction_path: str, status: str, note: str) -> bool:
     agent_kind = payload.get("agent_kind", "unknown")
     app = payload.get("app", "unknown-app")
     dispatch_id = payload.get("task_id") or inst_path.name.removesuffix(".json")
-    summary = note or "no summary provided"
     message = (
         f"[from {agent_kind} dispatched agent {app}/{dispatch_id}] "
-        f"STATUS: {status} — {summary}"
+        f"STATUS: {status} — {note}"
     )
     send_instruction_message(inst_path, "main", "status", message)
     return True
@@ -143,7 +147,7 @@ def main() -> int:
         help="path to this dispatch's own instruction file (alternative to --plan/--task, works for either kind)",
     )
     parser.add_argument("--status", required=True, choices=VALID_STATUSES)
-    parser.add_argument("--note", default="", help="optional free-text note")
+    parser.add_argument("--note", required=True, help="outcome/evidence or blocker/unblock needed")
     args = parser.parse_args()
 
     try:

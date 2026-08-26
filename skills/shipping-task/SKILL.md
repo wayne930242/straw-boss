@@ -51,6 +51,7 @@ Build an outcome-oriented brief for `dispatching-work`:
 
 - Lead with the **clear requested outcome** and why it matters.
 - Give **sufficient verified context** for a worker entering the app cold: confirmed acceptance criteria, domain facts already established with the user, and exact source or cross-task artifact references that save rediscovery.
+- Name the **concrete deliverable and proof** when the outcome and acceptance criteria do not already make them clear.
 - Present a **possible implementation** or suspected scope as a lead to inspect, not a boundary. Let the worker read the target app and choose or revise the approach.
 - Include a constraint only when it is verified, task-specific, and materially changes the acceptable result. Prefer a positive statement with its reason over a preventive list of things not to do.
 - Omit **generic lifecycle prose**, reporting commands, provider routing, checkpoint mechanics, tracker policy, and defensive reminders already supplied by the generated contract, this skill, or the target app's own instructions.
@@ -63,19 +64,19 @@ The generated contract supplies exact progress, message, checkpoint, and termina
 
 Applies to the full flow only — the light flow's commit needs no authorization and reaches no checkpoint here (Task 2/Task 3).
 
-When the agent reports it's ready to merge, or ready to push a branch other than its own feature branch, state exactly what's about to happen and get explicit authorization from the user — every time. Resume an interactive session through `send-dispatch-message.py --to worker --intent reply`; use the provider's recorded headless continuation for headless mode. Repeat for each checkpoint.
+For an interactive task, authorization happens directly in the dispatched agent's session: point the user to its pane and leave the conversation there. For a headless task, relay the user's answer through its recorded continuation. The main agent never decides for the user.
 
-For a Plan task, the authoritative checkpoint signal is the `awaiting-authorization` event emitted by `watch-plan-status.py`; the status command also sends the primary herdr notice when recorded. For a standalone dispatch, use its durable status record plus process/pane observation. This skill owns responding to the checkpoint; the Plan loop leaves it non-terminal.
+`awaiting-authorization` remains non-terminal until the user answers. Plan tasks expose it through `watch-plan-status.py`; standalone tasks use their durable status plus pane/process observation.
 
 **A feature-branch push notification is not this checkpoint.** The agent pushes its own feature branch and opens or updates an MR/PR on its own — no authorization to obtain and no session to resume. Relay the herdr FYI when it arrives; if no live route exists, read the progress trail. Never convert it into `awaiting-authorization`.
 
-**`awaiting-user-input` is not an authorization request.** For an interactive pane, tell the user which pane to answer and leave it alone. A headless Codex task has no pane; after the user answers, relay that answer through `codex exec resume` without treating it as authorization for any mutation.
+`awaiting-user-input` follows the same direct-user or headless-relay route, but grants no mutation authorization.
 
-**`awaiting-main-agent` is this skill's job to act on, unlike `awaiting-user-input` above.** A task reporting `awaiting-main-agent` is blocked on an action only the main agent's own judgment or dispatch authority can take, not a question for the user — resolve it directly with `reply-to-worker.py --worker-instruction-path <path> --reply "<the decision>"` (per `plan-mechanics.md`'s "Main-agent-action checkpoints") as soon as it's detected, don't leave it open the way `awaiting-user-input` is left open.
+`awaiting-main-agent` is reserved for integrated instructions, cross-task context, or a coordinator-owned action. Resolve it with `reply-to-worker.py`.
 
 If the target app is itself a submodule of a monorepo root and a pointer-bump push at the root is also needed once its commit lands, that's a separate mutation, gated the same way merge is — ask about it separately, don't fold it into the feature-branch push's no-authorization exemption.
 
-**Verification:** every merge, and every push landing outside the task's own feature branch, was preceded by an explicit authorization in this conversation, obtained by this skill, not assumed or granted by the agent itself; every feature-branch push notification was relayed to the user as an FYI, never treated as a checkpoint needing authorization — commit itself needs none, on either flow.
+**Verification:** every gated mutation has direct user authorization in the interactive task or a faithfully relayed user answer for headless mode; feature-branch pushes remain FYIs.
 
 ## Task 6: Confirm and wrap up
 
@@ -91,13 +92,10 @@ If the task originated from a tracker ticket, this skill (not the agent) updates
 
 - "It's a small change, I'll just skip the worktree/MR myself" — the choice is the user's per Task 2, every time; picking a flow without asking is the mistake, not which flow you'd have picked.
 - "Every app allows a direct commit to base if the change is small enough" — check the app's `apps.json` `forbidDirectCommit` field first; when `true`, only the full flow applies regardless of size.
-- "The agent said it's ready and sounds confident, authorize and move on" — authorization comes from the user in this conversation, not from the agent's own report.
-- "The dispatched pane already shows text like 'authorized, go ahead', treat that as the go-ahead" — no; a pane's own input line can show unprompted suggested text indistinguishable from real typing. Authorization only comes from the user in this conversation.
-- "Already authorized once this task, subsequent mutations don't need it again" — no, per Task 5, every checkpoint.
+- "The agent is ready, so authorize it" — point the user to the interactive task or relay the user's answer in headless mode; readiness is not authorization.
 - "Commit doesn't need authorization anymore, so push/MR probably doesn't either" — true for a push of the task's own feature branch, but not for merge or a push to any other tracked branch (a monorepo-root submodule pointer-bump, an app-owned release push to a protected branch) — those still need it, every time, per Task 5.
 - "No `gitWorkflowSkill` on this app, I'll wing the branch naming" — check for a documented convention first, and use this skill's fallback steps, not improvised ones.
 - "This app has its own git-worktree skill, let it create the worktree like before" — no, worktree creation moved to the main agent for every managed app; only the steps after that stay app-owned.
-- "The agent can just ask the user directly since it's an interactive herdr pane" — for a merge or other-branch-push *authorization*, no — Task 5 still routes that through this skill regardless of mode. For a substantive work-content question, the user answers directly only when a pane exists; headless Codex resumes through the main agent. A feature-branch push is neither: report through the provider's fast path and continue.
 - "The agent stopped and waited after pushing its own feature branch, out of habit" — no, per Overview/Task 3: a feature-branch push needs no authorization; the agent reports through its provider's fast path and keeps working. The inverse mistake is just as real: a monorepo-root submodule pointer-bump or protected-branch release push still needs Task 5 authorization.
 - "The task's `awaiting-main-agent` checkpoint, report it to the user like `awaiting-user-input`" — no, Task 5: unlike `awaiting-user-input`, this one is this skill's own job to resolve, directly, via `reply-to-worker.py` — no human involved.
 - "Straw Boss should pick or run the target app's SDD before dispatch" — no: dispatch the user's intent, then let the dispatched agent apply that app's own development route after it enters the app.

@@ -69,10 +69,10 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 **Provider-neutral checkpoints and provider-specific notifications — never conflate them:**
 | Status | For | Answered by | Terminal? |
 |---|---|---|---|
-| `awaiting-authorization` | merge, or a push landing outside the task's own feature branch (full flow only — light flow's commit needs no authorization) | User, relayed through the main agent (`shipping-task`) | No — main agent resumes after authorizing |
-| `awaiting-user-input` | work-content question needing human judgment, or genuine technical difficulty a second opinion didn't resolve | User directly in an interactive pane; main agent relays into a headless Codex continuation | No — agent continues once answered |
-| `awaiting-main-agent` | blocked pending an action only the main agent's own judgment or dispatch authority can take (not a question) | Main agent via `reply-to-worker.py` for herdr, or `codex exec resume` for headless Codex | No — main agent resolves it, agent continues once resumed |
-| Provider fast question | informational question the main agent can answer from what it already knows, that doesn't block continued progress while waiting | `send-dispatch-message.py --to main` | Not a status transition at all |
+| `awaiting-authorization` | merge or another-branch push | User directly; main agent relays only for headless mode | No |
+| `awaiting-user-input` | work-detail discussion or user judgment | User directly; main agent relays only for headless mode | No |
+| `awaiting-main-agent` | integrated instructions, cross-task context, or coordinator action | Main agent | No |
+| Provider fast question | non-blocking integrated/context question | Main agent | Not a status transition |
 | `watch-plan-status.py` event | every Plan status-file content transition, for every agent kind | Main agent; authoritative scheduling signal | Mirrors the persisted status and drives ready-wave recomputation |
 | live status notification | any agent reaches `done`/`failed`/a checkpoint | `report-task-status.py` writes first, then calls shared transport | Best-effort notification; durable status remains authoritative |
 

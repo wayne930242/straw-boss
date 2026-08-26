@@ -121,15 +121,18 @@ This contract is mandatory for this dispatched session.
   agent names for cross-session communication.
 - Report progress with:
   `{progress} --instruction-path {shlex.quote(str(instruction_path))} --note '<summary>'`
-- Send a question or coordination message to the main agent with:
+- Discuss work details and authorization directly with the user when this session
+  is interactive. Ask the main agent only for integrated instructions/context or
+  when this session has no direct user channel:
   `{message} --instruction-path {shlex.quote(str(instruction_path))} --to main --intent question --message '<message>'`
 - If you must pause, choose the checkpoint that names who can unblock you:
   `awaiting-user-input` for a user-owned decision, `awaiting-main-agent` for
   coordination or action owned by the main agent, or `awaiting-authorization`
   only when an existing rule requires authorization for the next action. Report it with:
   `{status} --instruction-path {shlex.quote(str(instruction_path))} --status <checkpoint> --note '<what you need>'`
-- Before stopping, always report terminal `done` or `failed` with the same
-  status script. Never finish work and become silently idle.
+- Status notes are required: terminal notes state outcome and verification;
+  checkpoint notes state the blocker and exact unblock needed.
+- Before stopping, report terminal `done` or `failed` with the same status script.
 - After a checkpoint reply, continue the task. If another blocker appears,
   report a new checkpoint instead of waiting silently.
 """

@@ -23,7 +23,7 @@ The task author does not reproduce communication prose in `--task`.
 
 ## Worker to main agent
 
-Questions and FYIs use:
+Integrated/context questions and FYIs use:
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
@@ -34,6 +34,9 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
 Checkpoints and outcomes use `report-task-status.py --instruction-path`; it
 writes durable state before calling the same transport. If live delivery fails,
 the written state remains authoritative.
+
+Work-detail discussion and authorization go directly to the user in an
+interactive task. The main agent relays only for a headless task.
 
 ## Main agent to worker
 

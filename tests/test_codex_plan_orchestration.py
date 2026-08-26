@@ -112,7 +112,13 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "main-session",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        return Path(json.loads(result.stdout)["instruction_path"])
+        instruction_path = Path(json.loads(result.stdout)["instruction_path"])
+        instruction = json.loads(instruction_path.read_text())
+        instruction["status"] = "in-progress"
+        instruction["herdr_pane_id"] = "worker:pane"
+        instruction["session_id"] = "worker-session"
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+        return instruction_path
 
     def test_codex_plan_dispatch_records_kind_and_marks_task_dispatched(self) -> None:
         instruction_path = self.dispatch("codex")
@@ -164,11 +170,12 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr = fake_bin / "herdr"
         fake_herdr.write_text(
             "#!/bin/sh\n"
-            "[ -f \"$EXPECTED_STATUS_PATH\" ] || exit 9\n"
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
             "if [ \"$2\" = get ]; then\n"
-            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"main-session\"}}}}'\n"
+            "  if [ \"$3\" = 'worker:pane' ]; then session='worker-session'; else session='main-session'; fi\n"
+            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent_session\\\":{\\\"value\\\":\\\"$session\\\"}}}}\"\n"
             "else\n"
+            "  [ -f \"$EXPECTED_STATUS_PATH\" ] || exit 9\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
             "fi\n"
         )
@@ -185,6 +192,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "EXPECTED_STATUS_PATH": str(self.plan_dir / "status" / "t1.json"),
                 "HERDR_CAPTURE": str(capture_path),
+                "HERDR_PANE_ID": "worker:pane",
             },
         )
         self.assertEqual(report.returncode, 0, report.stderr)
@@ -278,7 +286,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "case \"$2\" in\n"
-            "  get) printf '%s\\n' '{\"result\":{\"agent\":{\"name\":\"codex-task\",\"agent_session\":{\"value\":\"worker-session\"}}}}' ;;\n"
+            "  get) if [ \"$3\" = 'main:pane' ]; then session='main-session'; else session='worker-session'; fi; printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"name\\\":\\\"codex-task\\\",\\\"agent_session\\\":{\\\"value\\\":\\\"$session\\\"}}}}\" ;;\n"
             "  prompt) printf '%s\\n' '{\"result\":{}}' ;;\n"
             "  read) printf '%s\\n' 'continue with the dependency' ;;\n"
             "  *) exit 2 ;;\n"
@@ -292,7 +300,10 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             str(instruction_path),
             "--reply",
             "continue with the dependency",
-            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_PANE_ID": "main:pane",
+            },
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         updated = json.loads(status_path.read_text())
@@ -315,7 +326,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
             "if [ \"$2\" = get ]; then\n"
-            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"main-session\"}}}}'\n"
+            "  if [ \"$3\" = 'worker:pane' ]; then session='worker-session'; else session='main-session'; fi\n"
+            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent_session\\\":{\\\"value\\\":\\\"$session\\\"}}}}\"\n"
             "else\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
             "fi\n"
@@ -332,6 +344,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             extra_env={
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "HERDR_CAPTURE": str(capture_path),
+                "HERDR_PANE_ID": "worker:pane",
             },
         )
         self.assertEqual(report.returncode, 0, report.stderr)
@@ -343,7 +356,14 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_bin = self.home / "bin"
         fake_bin.mkdir()
         fake_herdr = fake_bin / "herdr"
-        fake_herdr.write_text("#!/bin/sh\nexit 7\n")
+        fake_herdr.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$2\" = get ] && [ \"$3\" = 'worker:pane' ]; then\n"
+            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 7\n"
+        )
         fake_herdr.chmod(0o755)
 
         report = self.run_script(
@@ -354,7 +374,10 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "failed",
             "--note",
             "delivery failed after persistence",
-            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_PANE_ID": "worker:pane",
+            },
         )
 
         self.assertNotEqual(report.returncode, 0)
@@ -367,7 +390,14 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_bin = self.home / "bin"
         fake_bin.mkdir()
         fake_herdr = fake_bin / "herdr"
-        fake_herdr.write_text("#!/bin/sh\nexit 7\n")
+        fake_herdr.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$2\" = get ] && [ \"$3\" = 'main:pane' ]; then\n"
+            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"main-session\"}}}}'\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 7\n"
+        )
         fake_herdr.chmod(0o755)
 
         report = self.run_script(
@@ -378,7 +408,10 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "cancelled",
             "--note",
             "main agent cancelled the dispatch",
-            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_PANE_ID": "main:pane",
+            },
         )
 
         self.assertEqual(report.returncode, 0, report.stderr)

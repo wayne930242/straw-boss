@@ -5,28 +5,24 @@ description: Route a dispatched agent's questions, progress, and status to its r
 
 ## Overview
 
-Use the dispatch instruction path as the only address. Repository scripts own
-the receiver pane, session fingerprint, provider adapter, and delivery record.
-See `docs/roles.md` for authority; a delivered reply is information, never
-authorization for a gated mutation.
+Discuss work details and authorization directly with the user. Use this skill
+only when no direct user channel exists or the main agent must supply integrated
+instructions, cross-task context, or a coordinator-owned action. Address every
+operation by your instruction path.
 
-## Branch: Ask a non-blocking question
-
-Use this for a fact the main agent already knows and continue any independent
-work while waiting:
+## Ask the main agent
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
   --instruction-path <your exact instruction path> \
-  --to main --intent question --message "<self-contained question>"
+  --to main --intent question \
+  --message "<needed context and exact integration question>"
 ```
 
-If delivery fails and the answer becomes blocking, write an
-`awaiting-main-agent` checkpoint. Never substitute a guessed endpoint.
+Continue independent work. If the coordinator's answer becomes blocking, report
+`awaiting-main-agent`; a user-owned question remains `awaiting-user-input`.
 
-**Verification:** the command succeeded, or the blocking state is durable.
-
-## Branch: Report your own status
+## Report status
 
 At every checkpoint and terminal outcome, make exactly one call:
 
@@ -34,26 +30,17 @@ At every checkpoint and terminal outcome, make exactly one call:
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
   --instruction-path <your exact instruction path> \
   --status <done|failed|awaiting-authorization|awaiting-user-input|awaiting-main-agent> \
-  --note "<self-contained summary or blocker>"
+  --note "<outcome and verification, or blocker and exact unblock>"
 ```
 
-The command writes durable status first, then uses the shared transport when a
-live main-agent endpoint exists. A delivery error preserves the status for the
-watcher/process recovery path.
-
-Progress notes remain separate and non-terminal:
+The command writes before notifying. Delivery failure leaves durable status.
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-progress.py" \
   --instruction-path <your exact instruction path> --note "<text>"
 ```
 
-**Verification:** the status command names the written file; a final chat
-response or progress note alone is never completion.
-
-## Branch: Report a feature-branch push and continue
-
-A push of the task's own feature branch is an FYI, not a status transition:
+## Report a feature-branch push
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
@@ -65,10 +52,5 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
 If no live endpoint exists, record the same detail with `report-progress.py`.
 Continue immediately.
 
-## Red flags
-
-- A pane id, session id, agent name, or provider appears in a communication
-  command — use the instruction-keyed script.
-- A notification error is treated as lost status — inspect the preserved file.
-- A reply is treated as authorization — enter the required checkpoint flow.
-- Work is complete but no terminal status command ran — report before stopping.
+**Complete when:** the intended message or durable status exists; terminal work
+always has a terminal status report.

@@ -65,21 +65,15 @@ or, for a task the main agent ended because the dispatch itself was wrong, not t
 
 ## Authorization checkpoints (full flow only)
 
-An agent must stop and report readiness rather than execute a merge, or a push landing outside its own feature branch (a monorepo-root submodule pointer-bump, an app-owned git-workflow skill's protected-branch release push) — the main agent (in practice, `shipping-task`, not `dispatching-work` itself) obtains authorization and resumes it. Commit, and a push of the task's own feature branch, need no authorization and reach no checkpoint here; every interactive provider reports that FYI through the recorded main-agent herdr pane, with `report-progress.py` as the durable fallback. The generated contract supplies `awaiting-authorization` and its status command; the task brief states only a material task-specific authorization boundary that is not already present in the target project's instructions.
+An agent must stop and report readiness rather than execute a merge, or a push landing outside its own feature branch. In an interactive pane the user answers directly; for a headless task the main agent relays the user's answer. Commit and a push of the task's own feature branch need no authorization. The generated contract supplies the checkpoint; task prose states only a material task-specific boundary absent from target-project instructions.
 
-`dispatching-work`'s own plan-dispatch loop (wave computation, parallel dispatch, auto-detach) treats `awaiting-authorization` as "leave this task alone, it isn't terminal yet" — it does **not** attempt to authorize or resume it. That's `shipping-task`'s job (or whichever caller assembled the instruction and owns the authorization gate for it), watching the same status events and, on an `awaiting-authorization` event for one of its tasks, stating what's about to happen, obtaining explicit authorization, and resuming the existing Claude or Codex session. Once resumed, the task eventually reports a real terminal state (`done`/`failed`).
+The plan loop leaves `awaiting-authorization` attached and non-terminal. Its caller points the user to an interactive pane or relays the user's answer to a headless continuation. The task later reports a terminal state.
 
 ## User-clarification checkpoints
 
 Different from an authorization checkpoint on every axis that matters: it isn't a mutation gate, and the main agent never guesses the answer. The generated contract tells every dispatched task to use `awaiting-user-input` when a substantive question about the *work itself* needs user judgment. A herdr-pane task asks and waits in its own pane so the user answers directly. A headless Codex task exits after persisting the checkpoint; after the user answers, the main agent relays that answer through `codex exec resume`. Headless Claude retains fail-and-redispatch behavior. Task prose supplies the context needed to avoid preventable questions; it does not restate this generic checkpoint.
 
-**Escalation order for a stuck task.** Not every difficulty is a judgment call for the user, and not every blocker is even a question. Four distinct cases, in order:
-1. **Missing context the main agent already has, that doesn't block continued progress while waiting** (another task's status, which apps are in scope) — use `send-dispatch-message.py --to main --intent question`. Do not use either checkpoint below.
-2. **Blocked pending an action only the main agent's own judgment or dispatch authority can take** (redispatching a failed dependency, arbitrating a conflict with a peer task) — not a question, an action — this is `awaiting-main-agent` (see "Main-agent-action checkpoints" below).
-3. **Genuine technical difficulty** — stuck on how to solve or debug something, not missing context, not an action only the main agent can take, and not a values/architecture call — try a stronger second opinion first, if one is available to the task (e.g. this session's own `advisor` tool, when present), before escalating further. Don't assume a specific tool is available; if none is, go straight to step 4.
-4. **A judgment call reserved for the user** (which of several valid approaches, how to interpret an ambiguous requirement) — or genuine technical difficulty a second opinion didn't resolve — this is `awaiting-user-input`, as described above.
-
-A second opinion is consultative, never decisive on the user's behalf — it can help the task get unstuck on *how*, it cannot make a call that's inherently the user's to make. It also never substitutes for the informational-question branch (step 1), for `awaiting-main-agent` (step 2), or for the authorization flow below, which is unaffected by any of this.
+**Escalation order.** Discuss work details and judgment with the user directly; a headless task persists `awaiting-user-input` for relay. Ask the main agent only for integrated instructions, cross-task context, or a coordinator-owned action, using a non-blocking question or `awaiting-main-agent`. Ask peers only for factual progress or conclusions.
 
 On an `awaiting-user-input` notification, the main agent's job is narrow: tell the user which task is asking and which pane/tab to go answer it in (from the dispatch instruction's recorded `herdr_pane_id`/`herdr_tab_id`), then leave it alone — same as `awaiting-authorization`, `dispatching-work`'s plan loop does not treat this as done, failed, or ready-for-a-new-wave, and does not auto-detach it. Once the user has answered directly in the pane, the task continues on its own and eventually reports a real terminal state or another checkpoint — the main agent does not need to explicitly "resume" it the way it does for an authorization checkpoint, because the conversation already happened directly in the pane.
 
@@ -89,7 +83,7 @@ On an `awaiting-user-input` notification, the main agent's job is narrow: tell t
 
 ## Main-agent-action checkpoints
 
-For being blocked on an action only the main agent's own judgment or dispatch authority can take (redispatching a failed dependency, arbitrating a conflict with a peer task) — not a mutation gate, not a question. The generated contract supplies `awaiting-main-agent` and its status command; task prose does not restate it.
+Use `awaiting-main-agent` only for integrated instructions, cross-task context, or a coordinator-owned action. It is not a user decision or mutation gate.
 
 **Resolved only through `reply-to-worker.py`** — never a manual pane reply:
 ```bash
@@ -129,7 +123,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan
 1. Run `read-plan-status.py --plan <slug> --ready` to get the current ready wave.
 2. For every task in the wave: call `dispatch-task.py write --plan <slug> --task-id <task_id> ...` (per `dispatch-mechanics.md`), then dispatch — **all of them, not one at a time**. The script marks `plan.json`'s task `dispatched` as part of the same call, not a separate manual edit.
 3. Every full-flow task in the wave gets its worktree created first — see the worktree-ownership section below — before the `claude-p`/`herdr-pane` dispatch itself.
-4. The generated dispatch contract supplies the universal progress, communication, checkpoint, and terminal-report workflow. Each task brief leads with the **clear requested outcome** and gives **sufficient verified context** for a worker entering cold. A **possible implementation** stays a lead to inspect, not a boundary. The brief omits **generic lifecycle prose** and includes only verified, material task-specific constraints; exact cross-task artifact paths remain required context.
+4. The generated dispatch contract supplies the universal progress, communication, checkpoint, and terminal-report workflow. Each task brief leads with the **clear requested outcome**, gives **sufficient verified context**, and names a concrete deliverable/proof when not already clear. Parallel tasks need distinct deliverables; otherwise add a dependency instead of sharing a wave. A **possible implementation** stays a lead, and generic lifecycle prose stays out.
 
 ## Monitoring Plan status (provider-neutral scheduling signal)
 
