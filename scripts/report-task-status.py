@@ -58,7 +58,12 @@ from dispatch_state import (
     plan_status_path,
     resolve_instruction_status_path,
 )
-from dispatch_transport import send_instruction_message, validate_status_sender
+from dispatch_transport import (
+    normalize_references,
+    send_instruction_message,
+    validate_delta_message,
+    validate_status_sender,
+)
 
 
 def status_path(plan_slug: str, task_id: str) -> Path:
@@ -99,11 +104,21 @@ def resolve_status_path(plan_slug: str | None, task_id: str | None, instruction_
     return resolve_instruction_status_path(inst_path, payload)
 
 
-def report_status(plan_slug: str | None, task_id: str | None, instruction_path: str | None, status: str, note: str) -> Path:
+def report_status(
+    plan_slug: str | None,
+    task_id: str | None,
+    instruction_path: str | None,
+    status: str,
+    note: str,
+    references: list[str] | tuple[str, ...] = (),
+) -> Path:
     if status not in VALID_STATUSES:
         raise ValueError(f"status must be one of {VALID_STATUSES}, got {status!r}")
-    if not note.strip():
-        raise ValueError("--note must be non-empty and describe the outcome or unblock needed")
+    try:
+        note = validate_delta_message(note)
+    except ValueError as exc:
+        raise ValueError(str(exc).replace("message", "--note", 1)) from exc
+    normalized_references = normalize_references(references)
 
     if instruction_path is not None:
         validate_status_sender(instruction_path, status)
@@ -115,25 +130,31 @@ def report_status(plan_slug: str | None, task_id: str | None, instruction_path: 
         "note": note,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    if normalized_references:
+        payload["refs"] = list(normalized_references)
     path.write_text(json.dumps(payload, indent=2) + "\n")
     return path
 
 
-def notify_main_agent(instruction_path: str, status: str, note: str) -> bool:
+def notify_main_agent(
+    instruction_path: str,
+    status: str,
+    note: str,
+    references: list[str] | tuple[str, ...] = (),
+) -> bool:
     inst_path = Path(instruction_path)
     payload = load_json(inst_path)
     pane_id = payload.get("main_agent_herdr_pane_id")
     if not pane_id:
         return False
 
-    agent_kind = payload.get("agent_kind", "unknown")
-    app = payload.get("app", "unknown-app")
-    dispatch_id = payload.get("task_id") or inst_path.name.removesuffix(".json")
-    message = (
-        f"[from {agent_kind} dispatched agent {app}/{dispatch_id}] "
-        f"STATUS: {status} — {note}"
+    send_instruction_message(
+        inst_path,
+        "main",
+        "status",
+        f"{status} — {note}",
+        references=references,
     )
-    send_instruction_message(inst_path, "main", "status", message)
     return True
 
 
@@ -147,11 +168,19 @@ def main() -> int:
         help="path to this dispatch's own instruction file (alternative to --plan/--task, works for either kind)",
     )
     parser.add_argument("--status", required=True, choices=VALID_STATUSES)
-    parser.add_argument("--note", required=True, help="outcome/evidence or blocker/unblock needed")
+    parser.add_argument("--note", required=True, help="outcome or exact unblock, at most two sentences")
+    parser.add_argument("--ref", action="append", default=[], help="artifact/evidence reference")
     args = parser.parse_args()
 
     try:
-        path = report_status(args.plan, args.task, args.instruction_path, args.status, args.note)
+        path = report_status(
+            args.plan,
+            args.task,
+            args.instruction_path,
+            args.status,
+            args.note,
+            args.ref,
+        )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -159,7 +188,9 @@ def main() -> int:
     print(f"wrote {path}")
     if args.instruction_path is not None and args.status != "cancelled":
         try:
-            notified = notify_main_agent(args.instruction_path, args.status, args.note)
+            notified = notify_main_agent(
+                args.instruction_path, args.status, args.note, args.ref
+            )
         except ValueError as exc:
             print(f"error: status remains written at {path}, but {exc}", file=sys.stderr)
             return 1

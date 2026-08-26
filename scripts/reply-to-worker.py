@@ -10,8 +10,8 @@ See skills/dispatching-work/references/plan-mechanics.md's "Main-agent-
 action checkpoints". Only targets `mode: herdr-pane`; herdr provides the
 provider-neutral live addressing used for both supported agent kinds.
 
-It sends through the shared session-validating transport, then confirms the
-text reached the transcript via a short herdr read poll and retries once if a full
+It sends a short delta plus optional references through the shared
+session-validating transport, then confirms the text reached the transcript via a short herdr read poll and retries once if a full
 poll window never finds it. `status` stays `awaiting-main-agent` after a
 successful reply -- only `resolved_by_main_agent_at`/`main_agent_reply`
 are added; the worker's own next terminal write closes it out.
@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from dispatch_state import dump_json, load_json, resolve_instruction_status_path
-from dispatch_transport import run_herdr_raw, send_instruction_message
+from dispatch_transport import normalize_references, run_herdr_raw, send_instruction_message
 
 # A generous tail: once the resumed worker starts producing real output, a
 # small window scrolls the reply text itself out of view within seconds,
@@ -92,7 +92,11 @@ def confirm_landed(target: str, reply: str, agent_kind: str) -> bool:
     return False
 
 
-def reply_to_worker(worker_instruction_path: str, reply: str) -> dict[str, Any]:
+def reply_to_worker(
+    worker_instruction_path: str,
+    reply: str,
+    references: list[str] | tuple[str, ...] = (),
+) -> dict[str, Any]:
     inst_path = Path(worker_instruction_path)
     if not inst_path.is_file():
         raise ValueError(f"no worker instruction file at {inst_path}")
@@ -120,12 +124,21 @@ def reply_to_worker(worker_instruction_path: str, reply: str) -> dict[str, Any]:
             f"not 'awaiting-main-agent' -- refusing to reply to a checkpoint that isn't open"
         )
 
-    endpoint = send_instruction_message(inst_path, "worker", "reply", reply)
+    normalized_references = normalize_references(references)
+    endpoint = send_instruction_message(
+        inst_path, "worker", "reply", reply, references=normalized_references
+    )
     # A genuine herdr failure (timeout, pane gone) propagates immediately
     # and never triggers a resend -- only a poll window that completes
     # without ever finding the reply retries below.
     if not confirm_landed(endpoint.pane_id, reply, str(agent_kind)):
-        send_instruction_message(inst_path, "worker", "reply-retry", reply)
+        send_instruction_message(
+            inst_path,
+            "worker",
+            "reply-retry",
+            reply,
+            references=normalized_references,
+        )
         if not confirm_landed(endpoint.pane_id, reply, str(agent_kind)):
             raise ValueError(
                 f"sent the reply to pane {endpoint.pane_id!r} via herdr (that call itself succeeded) but could not "
@@ -136,6 +149,8 @@ def reply_to_worker(worker_instruction_path: str, reply: str) -> dict[str, Any]:
 
     status_payload["resolved_by_main_agent_at"] = datetime.now(timezone.utc).isoformat()
     status_payload["main_agent_reply"] = reply
+    if normalized_references:
+        status_payload["main_agent_reply_refs"] = list(normalized_references)
     dump_json(status_path, status_payload)
 
     return {"resolved": True, "status_path": str(status_path)}
@@ -149,10 +164,11 @@ def main() -> int:
         help="path to the blocked worker's own dispatch instruction file",
     )
     parser.add_argument("--reply", required=True, help="the reply text to deliver into the worker's pane")
+    parser.add_argument("--ref", action="append", default=[], help="instruction/context reference")
     args = parser.parse_args()
 
     try:
-        result = reply_to_worker(args.worker_instruction_path, args.reply)
+        result = reply_to_worker(args.worker_instruction_path, args.reply, args.ref)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

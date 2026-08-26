@@ -123,6 +123,10 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("awaiting-authorization", contract)
         self.assertIn("Before stopping", contract)
         self.assertIn("Do not use SendMessage", contract)
+        self.assertIn("delta-only", contract)
+        self.assertIn("--ref", contract)
+        self.assertIn("independent agent", contract)
+        self.assertIn("notifies the main agent through Herdr", contract)
 
     def test_contract_uses_version_neutral_launcher_that_follows_plugin_updates(
         self,
@@ -298,6 +302,21 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("directly in the dispatched agent's session", shipping)
         self.assertLessEqual(len(peer.splitlines()), 55)
         self.assertLessEqual(len(notify.splitlines()), 60)
+        self.assertIn("at most two sentences", peer)
+        self.assertIn("at most two sentences", notify)
+
+    def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:
+        roles = (ROOT / "docs" / "roles.md").read_text()
+        context = (ROOT / "CONTEXT.md").read_text()
+        orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
+        boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
+
+        for source in (roles, context, orchestrator):
+            self.assertIn("own the loop, not the work", source.lower())
+            self.assertNotIn("adjust an item's spec", source)
+        self.assertIn("accept", roles.lower())
+        self.assertIn("user and dispatched agent", roles)
+        self.assertNotIn('--reply "<the decision>"', boss_say)
 
     def test_herdr_dispatch_requires_main_agent_session_fingerprint(self) -> None:
         result = self.run_script(
@@ -426,6 +445,50 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("non-empty", result.stderr)
         self.assertFalse(status_path.exists())
+
+    def test_status_rejects_more_than_two_sentences_before_persistence(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        status_path = instruction_path.with_name("api--contract-claude.status.json")
+
+        result = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Built it. Tests pass. See the attached proof.",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("at most two sentences", result.stderr)
+        self.assertFalse(status_path.exists())
+
+    def test_live_message_rejects_more_than_two_sentences_before_delivery(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "question",
+            "--message",
+            "First fact. Second fact. What next?",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("at most two sentences", result.stderr)
+        self.assertFalse(capture.exists())
 
     def test_live_worker_cannot_write_another_workers_status(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
@@ -1081,6 +1144,10 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "inform",
             "--message",
             secret_message,
+            "--ref",
+            "artifact://plan/result.json",
+            "--ref",
+            "schema-a.ts:214",
             extra_env={
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "HERDR_CAPTURE": str(capture),
@@ -1096,7 +1163,13 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertNotIn("message", record)
         self.assertEqual(record["message_length"], len(secret_message))
         self.assertRegex(record["message_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(record["reference_count"], 2)
+        self.assertEqual(len(record["reference_sha256"]), 2)
         self.assertNotIn(secret_message, ledger_path.read_text())
+        self.assertNotIn("artifact://plan/result.json", ledger_path.read_text())
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompt = next(call[3] for call in calls if call[:2] == ["agent", "prompt"])
+        self.assertIn('refs=["artifact://plan/result.json","schema-a.ts:214"]', prompt)
 
     def test_shared_resource_lock_records_instruction_path_not_raw_main_endpoint(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")

@@ -1,39 +1,61 @@
 # Roles & Authority
 
-Who the actors are, how they're named, and who decides what — read this before executing any skill that mentions "main agent," "dispatched agent," "user," or "subagent." This is the single definition; no skill redefines these terms locally.
+This is the single execution-time definition of who decides what.
 
 ## Cast
 
-**User** — the human who hands work to straw-boss and gives direction. The actual "boss" per the plugin's own ranch-foreman naming metaphor (the plugin works alongside the crew, it doesn't sit in an office issuing orders).
+**User** — owns the requested outcome, work-detail decisions, and authorization.
+The user is the actual "boss" in Straw Boss naming.
 
-**Main agent** — the orchestrating Claude Code session, the "straw-boss"/foreman itself. Triages scale and execution tier, dispatches work, never touches app code directly. The canonical term used in skill prose.
+**Main agent** — owns orchestration: pre-launch routing, dispatch mechanics,
+dependency scheduling, shared resources, status observation, and cleanup. It does
+not implement app work.
 
-**Dispatched agent** — a session `dispatching-work` spawns, rooted in a target app's own directory, running through `herdr-pane` or `claude-p`, under a resolved agent kind (`claude` by default; `dispatching-work`'s own resolution can pick another where the app/task calls for it). A `claude`-kind dispatch uses the app's Claude harness (skills/hooks/rules); a different kind works from the explicit task instruction and the app's own conventions (e.g. `AGENTS.md`). Either kind may participate in a Plan because dependency scheduling consumes provider-neutral status events.
+**Dispatched agent** — an independent task owner once launched through Herdr. It
+works in the target app with that app's harness and decides implementation details
+with the user. Its conclusions and user-approved decisions do not require a
+second approval from the main agent.
 
-**Subagent** — an ephemeral `Agent`-tool call for self-contained work that doesn't need the target app's own harness. No app-dir rooting; `dispatching-work` is never invoked for one.
+**Subagent** — an ephemeral agent-tool call for self-contained work that does not
+need the target app's own harness.
 
-## Naming convention
+## Naming
 
-"boss" in any identifier — skill name, script name, JSON field, CLI flag — refers only to the user, never to the main agent. `boss-say` is correctly named: the user speaks, the plugin acts. A name that instead means "notify/reach the main agent" must not use "boss."
+"boss" in an identifier means the user, never the main agent. Use "main agent"
+for the coordinating session and "dispatched agent" for a launched task session.
 
-## Authority over in-flight dispatched work
+## Authority boundary
 
-The main agent has four distinct ways to act on a task it already dispatched, each with a different blast radius:
+**Own the loop, not the work.** Before launch, the main agent chooses routing and
+dispatch mechanics. After launch, the user and dispatched agent own the task
+conversation, approach, and work-detail decisions; the main agent accepts their
+decision and keeps the orchestration loop moving.
 
-**Inform** — send a dispatched agent an FYI about something the main agent discovered, without interrupting its current turn. Mechanically: `send-dispatch-message.py --to worker --intent inform`; shared transport queues it after validating the recorded session. Not available for `claude-p`.
+Main-to-worker operations serve that boundary:
 
-**Redirect** — interrupt a dispatched agent mid-task to correct or change its instruction, because the task itself is still right but needs adjustment. The lifecycle controller interrupts the recorded pane, then `send-dispatch-message.py --to worker --intent redirect` delivers the correction. `herdr-pane` only.
+- **Inform** carries a verified cross-task fact or explicit user direction.
+- **Redirect** carries an explicit user change or repairs an objectively wrong
+  dispatch/dependency instruction. It does not originate a competing work-detail
+  decision.
+- **Cancel** handles explicit user direction or an objectively invalid,
+  duplicate, or unreachable dispatch. It never expresses disagreement with the
+  worker's implementation choice.
+- **Resolve** supplies integrated context or the result of a coordinator-owned
+  action. A work-content decision goes to the user instead.
 
-**Cancel** — end a dispatched task outright because the main agent judges the dispatch itself was wrong (wrong app, wrong scope, superseded) — distinct from the dispatched agent's own work failing. Ends in the `cancelled` status, never `done`/`failed`, so failure reporting and the failed-task redispatch-ask-the-user flow (both about the *agent's own* failures) aren't corrupted by a main-agent-initiated stop. `herdr-pane`: interrupt (`send-keys esc`) then close pane/tab/worktree without expecting further output. `claude-p`: `TaskStop` on the backgrounded process, discarding whatever it was mid-way through — the same mechanism already used to abort an undeliverable redirect, repurposed here to record `cancelled` instead of redispatching fresh.
+If orchestration facts conflict with a decision made by the user and dispatched
+agent, the main agent surfaces the conflict to the user and preserves the
+worker's current direction until the user responds.
 
-**Resolve** — answer a dispatched agent's `awaiting-main-agent` checkpoint: an action only the main agent's own judgment or dispatch authority can take, that the agent has stopped and is genuinely waiting on (not mid-turn like Redirect's target, so no interrupt step). Mechanically: `reply-to-worker.py` (`dispatching-work`'s `references/plan-mechanics.md` "Main-agent-action checkpoints") — one atomic call that both delivers the reply and records the resolution. This works for every supported agent kind in `herdr-pane`; a headless Codex continuation uses its recorded thread id with `codex exec resume`.
+Interactive work-detail questions and authorization stay in the dispatched
+agent's pane. The main agent relays them only for a headless task. Peer messages
+are factual and carry no direction or authorization.
 
-Inform/redirect/cancel/resolve are all main-agent-initiated, one direction only. A dispatched agent reports its own outcome through the provider-neutral status interface, which writes before shared transport notifies the session-validated main endpoint; `watch-plan-status.py` emits each transition for recovery and scheduling. Whether to redispatch a failed task remains the user's call.
+Every dispatched agent reports terminal `done` or `failed` through
+`report-task-status.py`. The command persists status before notifying the
+validated main-agent Herdr endpoint; the watcher remains recovery evidence.
 
-Work-detail discussion and authorization belong directly to the user. An interactive dispatched agent waits in its own session; the main agent relays only when the task is headless. Questions to the main agent are limited to integrated instructions, cross-task context, or coordinator-owned actions.
-
-A third direction, lateral rather than vertical: one dispatched agent reaching another directly (`asking-peer-agents`), to ask about that peer's own progress or conclusion instead of investigating its app/worktree blind. This carries no authority either way — it's the same informational-only channel `notifying-main-agent`'s question branch already gives a dispatched agent toward its main agent, just addressed sideways instead of up; it never substitutes for inform/redirect/cancel, and a reply through it is never authorization.
-
-## Autonomy boundary
-
-The main agent may, on its own judgment — without asking the user first, but always stated, never silent — adjust an item's spec or add work at two levels: items not yet dispatched, and in-flight dispatch-instruction files for already-running tasks (via inform, redirect, or cancel). It may not silently authorize a merge, or a push landing outside a task's own feature branch (a monorepo-root submodule pointer-bump, an app-owned release push to a protected branch), or bypass `forbidDirectCommit` under this authority — those gates are absolute, never a function of scope. Pushing a task's own feature branch is not one of these gates — it needs no authorization to begin with, so there is nothing for this autonomy to bypass there. The same restraint covers tracker-ticket mutations: a dispatched agent never touches a ticket; only the main agent does, once the relevant work is actually complete. It defers to the user, rather than acting alone, whenever an adjustment would diverge substantially from the user's stated direction.
+The main agent may autonomously schedule ready work, coordinate shared resources,
+observe status, and clean up terminal dispatches. User-gated mutations remain
+user decisions. Tracker mutations remain coordinator-owned and happen only after
+the relevant work is complete.

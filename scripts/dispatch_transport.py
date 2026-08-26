@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ Target = Literal["main", "worker"]
 WORKER_TO_MAIN_INTENTS = frozenset({"question", "inform", "status"})
 MAIN_TO_WORKER_INTENTS = frozenset({"inform", "redirect", "reply", "reply-retry", "control"})
 PEER_INTENTS = frozenset({"question", "answer"})
+SENTENCE_END_RE = re.compile(r"[.!?。！？]+(?=\s|$)")
 
 
 @dataclass(frozen=True)
@@ -169,6 +171,31 @@ def validate_status_sender(instruction_path: str | Path, status: str) -> None:
     validate_current_sender(source)
 
 
+def validate_delta_message(message: str) -> str:
+    text = message.strip()
+    if not text:
+        raise ValueError("message must be non-empty")
+    endings = list(SENTENCE_END_RE.finditer(text))
+    sentence_count = len(endings)
+    if not endings or text[endings[-1].end() :].strip():
+        sentence_count += 1
+    sentence_count = max(sentence_count, len([line for line in text.splitlines() if line.strip()]))
+    if sentence_count > 2:
+        raise ValueError("live message must be delta-only and at most two sentences; use --ref for detail")
+    return text
+
+
+def normalize_references(references: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for reference in references:
+        value = reference.strip()
+        if not value:
+            raise ValueError("--ref must be non-empty")
+        if value not in normalized:
+            normalized.append(value)
+    return tuple(normalized)
+
+
 def _dispatch_label(path: Path, instruction: dict[str, Any]) -> str:
     app = str(instruction.get("app", "unknown-app"))
     stem = path.name.removesuffix(".json")
@@ -212,6 +239,7 @@ def append_delivery_record(
     message: str,
     message_id: str,
     in_reply_to: str | None,
+    references: tuple[str, ...],
 ) -> None:
     path = _delivery_ledger_path(instruction_path)
     record = {
@@ -223,6 +251,10 @@ def append_delivery_record(
         "target_session_id": endpoint.expected_session_id,
         "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
         "message_length": len(message),
+        "reference_count": len(references),
+        "reference_sha256": [
+            hashlib.sha256(reference.encode()).hexdigest() for reference in references
+        ],
         "submitted_at": datetime.now(timezone.utc).isoformat(),
     }
     with path.open("a") as stream:
@@ -238,11 +270,18 @@ def send_instruction_message(
     sender_instruction_path: str | Path | None = None,
     in_reply_to: str | None = None,
     message_id: str | None = None,
+    references: list[str] | tuple[str, ...] = (),
 ) -> Endpoint:
     path = Path(instruction_path).resolve()
     if not path.is_file():
         raise ValueError(f"no instruction file at {path}")
     instruction = load_json(path)
+    normalized_references = normalize_references(references)
+    if intent == "control":
+        if normalized_references:
+            raise ValueError("control intent does not accept --ref")
+    else:
+        message = validate_delta_message(message)
 
     sender_path: Path | None = None
     sender_instruction: dict[str, Any] | None = None
@@ -282,6 +321,11 @@ def send_instruction_message(
         validate_peer_reply(sender_path, source, endpoint, in_reply_to)
     validate_live_session(endpoint)
     delivery_id = message_id or str(uuid.uuid4())
+    reference_suffix = (
+        f" refs={json.dumps(normalized_references, separators=(',', ':'))}"
+        if normalized_references
+        else ""
+    )
     if intent == "control":
         if target != "worker" or not message.startswith("/"):
             raise ValueError("control intent requires a worker target and a slash command")
@@ -292,19 +336,29 @@ def send_instruction_message(
         if intent == "question":
             envelope = (
                 f"[peer question id={delivery_id} from={sender_label} "
-                f"reply-to={sender_path}] {message}"
+                f"reply-to={sender_path}{reference_suffix}] {message}"
             )
         else:
             envelope = (
                 f"[peer answer id={delivery_id} in-reply-to={in_reply_to} "
-                f"from={sender_label}] {message}"
+                f"from={sender_label}{reference_suffix}] {message}"
             )
     elif target == "main":
-        envelope = f"[dispatched-agent {intent}] {message}"
+        envelope = (
+            f"[dispatched-agent {intent} from={_dispatch_label(path, instruction)}"
+            f"{reference_suffix}] {message}"
+        )
     else:
-        envelope = f"[main-agent {intent}] {message}"
+        envelope = f"[main-agent {intent}{reference_suffix}] {message}"
     run_herdr(["agent", "prompt", endpoint.pane_id, envelope])
     append_delivery_record(
-        path, source, endpoint, intent, message, delivery_id, in_reply_to
+        path,
+        source,
+        endpoint,
+        intent,
+        message,
+        delivery_id,
+        in_reply_to,
+        normalized_references,
     )
     return endpoint

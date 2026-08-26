@@ -112,9 +112,9 @@ the same contract content again.
 ## Reporting and communication
 
 - Progress: `report-progress.py --instruction-path ... --note ...`
-- Checkpoint/outcome: `report-task-status.py --instruction-path ... --status ...`
-- Generic question/FYI: `send-dispatch-message.py --instruction-path ...`
-- Checkpoint reply: `reply-to-worker.py --worker-instruction-path ...`
+- Checkpoint/outcome: `report-task-status.py --instruction-path ... --status ... [--ref ...]`
+- Generic question/FYI: `send-dispatch-message.py --instruction-path ... [--ref ...]`
+- Checkpoint reply: `reply-to-worker.py --worker-instruction-path ... [--ref ...]`
 
 Only these public scripts send cross-session messages. They resolve endpoints
 from the instruction and validate live session fingerprints. The Plan watcher

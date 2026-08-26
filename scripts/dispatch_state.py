@@ -117,22 +117,29 @@ def render_dispatch_contract(instruction_path: Path) -> str:
 This contract is mandatory for this dispatched session.
 
 - Your canonical instruction path is `{instruction_path}`.
+- In `herdr-pane`, you are an independent agent after launch. You and the user
+  own work-detail and implementation decisions; the main agent coordinates and
+  accepts those decisions without a second approval.
 - Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or
   agent names for cross-session communication.
 - Report progress with:
   `{progress} --instruction-path {shlex.quote(str(instruction_path))} --note '<summary>'`
+- Live agent messages are delta-only and at most two sentences. Do not repeat
+  identity, intent, history, or detailed evidence; add repeatable
+  `--ref '<artifact/source>'` arguments for detail.
 - Discuss work details and authorization directly with the user when this session
   is interactive. Ask the main agent only for integrated instructions/context or
   when this session has no direct user channel:
-  `{message} --instruction-path {shlex.quote(str(instruction_path))} --to main --intent question --message '<message>'`
+  `{message} --instruction-path {shlex.quote(str(instruction_path))} --to main --intent question --message '<delta>' [--ref '<source>']`
 - If you must pause, choose the checkpoint that names who can unblock you:
   `awaiting-user-input` for a user-owned decision, `awaiting-main-agent` for
   coordination or action owned by the main agent, or `awaiting-authorization`
   only when an existing rule requires authorization for the next action. Report it with:
-  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status <checkpoint> --note '<what you need>'`
-- Status notes are required: terminal notes state outcome and verification;
-  checkpoint notes state the blocker and exact unblock needed.
-- Before stopping, report terminal `done` or `failed` with the same status script.
+  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status <checkpoint> --note '<what you need>' [--ref '<proof>']`
+- Status notes follow the same two-sentence limit: state the outcome or exact
+  unblock, and put verification detail in `--ref`.
+- Before stopping, report terminal `done` or `failed` with the same status
+  script; after persistence it notifies the main agent through Herdr.
 - After a checkpoint reply, continue the task. If another blocker appears,
   report a new checkpoint instead of waiting silently.
 """

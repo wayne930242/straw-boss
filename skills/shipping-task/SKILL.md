@@ -72,7 +72,9 @@ For an interactive task, authorization happens directly in the dispatched agent'
 
 `awaiting-user-input` follows the same direct-user or headless-relay route, but grants no mutation authorization.
 
-`awaiting-main-agent` is reserved for integrated instructions, cross-task context, or a coordinator-owned action. Resolve it with `reply-to-worker.py`.
+`awaiting-main-agent` is reserved for integrated context or a coordinator-owned
+action result. Resolve it with `reply-to-worker.py`; a work-content decision
+returns to the user in the dispatched agent's session.
 
 If the target app is itself a submodule of a monorepo root and a pointer-bump push at the root is also needed once its commit lands, that's a separate mutation, gated the same way merge is — ask about it separately, don't fold it into the feature-branch push's no-authorization exemption.
 
@@ -97,7 +99,7 @@ If the task originated from a tracker ticket, this skill (not the agent) updates
 - "No `gitWorkflowSkill` on this app, I'll wing the branch naming" — check for a documented convention first, and use this skill's fallback steps, not improvised ones.
 - "This app has its own git-worktree skill, let it create the worktree like before" — no, worktree creation moved to the main agent for every managed app; only the steps after that stay app-owned.
 - "The agent stopped and waited after pushing its own feature branch, out of habit" — no, per Overview/Task 3: a feature-branch push needs no authorization; the agent reports through its provider's fast path and keeps working. The inverse mistake is just as real: a monorepo-root submodule pointer-bump or protected-branch release push still needs Task 5 authorization.
-- "The task's `awaiting-main-agent` checkpoint, report it to the user like `awaiting-user-input`" — no, Task 5: unlike `awaiting-user-input`, this one is this skill's own job to resolve, directly, via `reply-to-worker.py` — no human involved.
+- "The task's `awaiting-main-agent` checkpoint needs a technical decision" — only integrated context or a coordinator-owned action result belongs there; work-content judgment stays with the user and dispatched agent.
 - "Straw Boss should pick or run the target app's SDD before dispatch" — no: dispatch the user's intent, then let the dispatched agent apply that app's own development route after it enters the app.
 - "The agent reported done, so any shared-resource lock it claimed is fine to leave alone" — no, Task 6: check and release it if the agent's report doesn't confirm release, especially on a `failed` outcome where the agent may never have reached its own release step.
 - "This finding needs DB/infra access I don't have, so I'll defer it" — test that claim before writing it into a deliverable or carrying it into a dispatch instruction. Check the specific tool's actual installed capability (e.g. `--version`/`--help`) before concluding it's unusable — a skill doc's documented invocation may assume a newer version than what's installed here. "I lack permission" and "the tool I first reached for isn't installed at the version a doc assumed" are different claims — don't conflate them.

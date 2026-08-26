@@ -5,7 +5,8 @@ description: Internal machinery that starts, tracks, lists, and closes out the a
 
 ## Overview
 
-See `docs/roles.md` for the cast of characters and the authority framework (inform/redirect/cancel) this skill implements the mechanics of — not redefined here.
+See `docs/roles.md` for the **own the loop, not the work** boundary. This skill
+implements dispatch mechanics; a launched Herdr agent owns its work with the user.
 
 **The unit this skill manages is the agent, not the app.** An app (`.claude/straw-boss/apps.json`, resolved upstream by `work-on`) is only *where* an agent is rooted — this skill starts the agent there, tracks it, and closes it out; it never itself decides which app a request belongs to. Every dispatched task is one agent, tracked as one instruction file under `~/.straw-boss/dispatch/` — the user's home directory, not the target project checkout (see `init`). This skill covers: **dispatch** a single agent (Tasks 1-5), **dispatch a plan** (Branch below, when `work-on` produced a multi-task dependency graph — one agent per task), **list**, and **wrap up**. Exact CLI/JSON syntax lives in `references/` — `dispatch-mechanics.md` (single-agent dispatch + permission-mode detection), `plan-mechanics.md` (plan/status schemas, worktree repair heredoc, and the provider-neutral status watcher), `cross-session-coordination.md` (making the main agent addressable — herdr pane id primary, with provider-specific fast channels — plus mid-task interrupt syntax), `shared-resource-coordination.md` (a worktree isolates files, not a fixed port or a shared DB another *main agent's* task might collide on — one command per case: `claim-port` for a flexible port, `wait` for a fixed port or DB migration) — read the relevant one for the exact command before running it. Every requirement below is real, not a pointer to go read something else first. For a specific agent's actual live content or progress — not just its status — invoke `peeking-work` instead of reading a pane/transcript inline here.
 
@@ -114,7 +115,7 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 - "3 ready tasks, dispatch one at a time to keep it simple" — no, all at once, always.
 - "This idle finished session could take the next ready task" — no, a `--ready` task is always a different `task_id`; only that exact task_id's own next phase reuses the session, never something the wave computation surfaced.
 - "This task_id just went `done`, auto-detach it right away, check for a same-task phase 2 afterward if one comes up" — no, the check comes first; `wrap-up-task.py` archives the instruction and marks the task done in `plan.json` in one call, and by then there's nothing left to reuse.
-- "This task_id has its own phase 2 coming, but ask the user before compacting and continuing" — no, recognizing same-task continuation and sending `/compact` is the main agent's own call from context it already has; decide and send it, no sign-off needed.
+- **Same-task continuation:** reuse the agent only for a later phase already defined in the user-confirmed plan; compact and continue that plan without another mechanics checkpoint.
 - "Compacting a worker session can address its pane directly" — no, send `/compact` through `send-dispatch-message.py --to worker --intent control` so the session fingerprint is still checked.
 - "First task in the plan finished, mark the plan done" — no, only once every task is terminal.
 - "This task looks simple/self-contained, use `claude-p` even though herdr's available" — no, mode is an environment check, not a task judgment; `herdr-pane` is used whenever it's available, full stop.

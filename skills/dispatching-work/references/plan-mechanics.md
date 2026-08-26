@@ -55,7 +55,7 @@ or, for a task that hit a substantive work-content question, not a git mutation 
 ```json
 {"status": "awaiting-user-input", "note": "the question it's asking -- e.g. \"which of two existing approaches should this follow?\"", "timestamp": "..."}
 ```
-or, for a task the main agent ended because the dispatch itself was wrong, not the agent's execution of it (see `docs/roles.md`'s Cancel; mechanics in `cross-session-coordination.md`):
+or, for a dispatch cancelled under `docs/roles.md`'s explicit user/objective-invalidity boundary (mechanics in `cross-session-coordination.md`):
 ```json
 {"status": "cancelled", "note": "why the dispatch itself was wrong, not what the agent did", "timestamp": "..."}
 ```
@@ -83,7 +83,9 @@ On an `awaiting-user-input` notification, the main agent's job is narrow: tell t
 
 ## Main-agent-action checkpoints
 
-Use `awaiting-main-agent` only for integrated instructions, cross-task context, or a coordinator-owned action. It is not a user decision or mutation gate.
+Use `awaiting-main-agent` only for integrated context or a coordinator-owned
+action result. It is not a work-content decision or mutation gate; those stay
+with the user and dispatched agent.
 
 **Resolved only through `reply-to-worker.py`** — never a manual pane reply:
 ```bash
@@ -94,7 +96,9 @@ Delivers the reply, confirms it landed, then records the resolution — one call
 
 If resolving takes more than a couple of tool calls, an optional `send-dispatch-message.py --to worker --intent inform` nudge lets the worker know it is being handled. `reply-to-worker.py` is still what resolves the checkpoint.
 
-On this status event (also delivered live through herdr when recorded), the main agent resolves it directly — no "tell the user which pane" step, unlike `awaiting-user-input`.
+On this status event (also delivered live through Herdr when recorded), the main
+agent supplies the owned fact or action result. Route work-content judgment to
+the user instead.
 
 The direct reply script requires `herdr-pane`, but supports both Claude and Codex. A headless Codex checkpoint is continued through the recorded thread id using `codex exec resume` as documented in `dispatch-mechanics.md`; a headless Claude task retains its existing fail-and-redispatch behavior.
 
@@ -106,7 +110,10 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
 ```
 The generated contract tells every dispatched task to run this on completion or failure — it resolves to `status/<task-id>.json` the same as the older `--plan <plan-slug> --task <task-id>` form (both still work; `--instruction-path` is preferred since the agent already has that path and doesn't need to separately track its own plan slug/task_id). The script writes only that one status file — it must never touch `plan.json` or another task's status file.
 
-This command is the provider-neutral reporting seam. It writes the durable state that Plan scheduling consumes, then calls shared transport for live notification. `watch-plan-status.py` observes each content revision and a fresh watcher re-emits current persisted states for recovery. Any task may call `report-progress.py --instruction-path <path> --note "<text>"` beforehand to log intermediate progress.
+This command is the provider-neutral reporting seam. For `done` and `failed`, it
+writes durable state first and then notifies the recorded main-agent Herdr
+endpoint. `watch-plan-status.py` observes each revision and re-emits persisted
+state for recovery. Any task may report intermediate progress beforehand.
 
 ## Reading plan/task status (targeted, not full-file dumps)
 
@@ -155,7 +162,7 @@ still depends on the watcher plus persisted status.
 
 ## Auto-detach on terminal state
 
-**A task_id getting a same-task continuation isn't finished yet — don't call `wrap-up-task.py` for it ("Same-task continuation" below).** That script archives the instruction-keyed contract and transport state and syncs `plan.json`; running it early would remove the same identity phase 2 still needs. Recognizing a continuation is the main agent's own call from plan/task context.
+**A task_id getting a same-task continuation isn't finished yet — don't call `wrap-up-task.py` for it ("Same-task continuation" below).** That script archives the instruction-keyed contract and transport state and syncs `plan.json`; running it early would remove the same identity a later phase in the user-confirmed plan still needs.
 
 Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization`, `awaiting-user-input`, or `awaiting-main-agent`, none of which is terminal — all three need the session to stay alive: one to be resumed once authorized, one to be answered directly by the user, one to be resolved directly by the main agent via `reply-to-worker.py`.
 
@@ -168,7 +175,7 @@ When the status watcher emits `done`/`failed`, or the main agent has just writte
 
 ## Same-task continuation
 
-**Checked before "Auto-detach on terminal state" above ever runs, not after** — once `wrap-up-task.py` has archived the instruction and synced `plan.json`, there's nothing left to reuse. Only when the next work is a later phase of the *same* logical task_id (never a different, independent task — those always get a fresh agent regardless of whether a finished session is sitting idle). This is the main agent's own judgment call, made straight from the plan/task context it already has — it doesn't need to check with the user before compacting and continuing.
+**Checked before "Auto-detach on terminal state" above ever runs, not after** — once `wrap-up-task.py` has archived the instruction and synced `plan.json`, there's nothing left to reuse. Continue only when the already user-confirmed plan defines a later phase of the same logical task_id. A different task gets a fresh agent, and the main agent does not invent a new phase.
 
 For a Claude herdr pane, compact and continue through the instruction-keyed script:
 ```bash
@@ -177,11 +184,15 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
   --message "/compact <optional focus text>"
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
   --instruction-path <path> --to worker --intent redirect \
-  --message "<phase 2 task text and exact reporting command>"
+  --message "Continue phase 2 from the referenced instruction." \
+  --ref "<phase-2 instruction artifact>"
 ```
 Two calls preserve queue order. Codex uses only the phase-2 message. Headless Codex uses its recorded thread id per `dispatch-mechanics.md`.
 
-**Phase 2's completion needs its own report, stated explicitly in the phase-2 text.** This isn't a fresh dispatch instruction, so the continuation prompt must restate `report-task-status.py --instruction-path <path>`. The command writes the later status revision and prompts the recorded main-agent pane; the content-revision watcher emits the overwrite for recovery.
+**Phase 2's artifact contains the full instruction and its own report command.**
+This isn't a fresh dispatch instruction, so the referenced content must include
+`report-task-status.py --instruction-path <path>`. The command writes the later
+status revision; the watcher emits the overwrite for recovery.
 
 ## Agent naming
 

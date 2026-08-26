@@ -188,6 +188,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "done",
             "--note",
             "Codex prerequisite complete",
+            "--ref",
+            "tests/test_codex_plan_orchestration.py",
             extra_env={
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "EXPECTED_STATUS_PATH": str(self.plan_dir / "status" / "t1.json"),
@@ -197,14 +199,57 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         )
         self.assertEqual(report.returncode, 0, report.stderr)
         self.assertIn("agent prompt main:pane", capture_path.read_text())
-        self.assertIn("STATUS: done", capture_path.read_text())
+        self.assertIn("status from=api/t1", capture_path.read_text())
+        self.assertIn("done — Codex prerequisite complete", capture_path.read_text())
+        self.assertIn('refs=["tests/test_codex_plan_orchestration.py"]', capture_path.read_text())
         self.assertIn("Codex prerequisite complete", capture_path.read_text())
+        persisted = json.loads((self.plan_dir / "status" / "t1.json").read_text())
+        self.assertEqual(persisted["refs"], ["tests/test_codex_plan_orchestration.py"])
 
         ready = self.run_script(
             "read-plan-status.py", "--plan", self.plan_slug, "--ready"
         )
         self.assertEqual(ready.returncode, 0, ready.stderr)
         self.assertEqual([task["task_id"] for task in json.loads(ready.stdout)], ["t2"])
+
+    def test_failed_status_notifies_main_agent_through_herdr(self) -> None:
+        instruction_path = self.dispatch("codex")
+        fake_bin = self.home / "bin"
+        fake_bin.mkdir()
+        capture_path = self.home / "failed-herdr-call.txt"
+        fake_herdr = fake_bin / "herdr"
+        fake_herdr.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
+            "if [ \"$2\" = get ]; then\n"
+            "  if [ \"$3\" = 'worker:pane' ]; then session='worker-session'; else session='main-session'; fi\n"
+            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent_session\\\":{\\\"value\\\":\\\"$session\\\"}}}}\"\n"
+            "else\n"
+            "  printf '%s\\n' '{\"result\":{}}'\n"
+            "fi\n"
+        )
+        fake_herdr.chmod(0o755)
+
+        report = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "failed",
+            "--note",
+            "Dependency contract is invalid",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture_path),
+                "HERDR_PANE_ID": "worker:pane",
+            },
+        )
+
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertIn("agent prompt main:pane", capture_path.read_text())
+        self.assertIn("failed — Dependency contract is invalid", capture_path.read_text())
+        persisted = json.loads((self.plan_dir / "status" / "t1.json").read_text())
+        self.assertEqual(persisted["status"], "failed")
 
     def test_status_watcher_emits_every_content_transition_and_recovers_on_restart(self) -> None:
         watcher_path = SCRIPTS / "watch-plan-status.py"
@@ -300,6 +345,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             str(instruction_path),
             "--reply",
             "continue with the dependency",
+            "--ref",
+            "plan://mixed-plan/t2",
             extra_env={
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "HERDR_PANE_ID": "main:pane",
@@ -308,6 +355,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         updated = json.loads(status_path.read_text())
         self.assertEqual(updated["main_agent_reply"], "continue with the dependency")
+        self.assertEqual(updated["main_agent_reply_refs"], ["plan://mixed-plan/t2"])
         self.assertIn("resolved_by_main_agent_at", updated)
 
     def test_claude_worker_reports_to_codex_main_through_shared_transport(self) -> None:
@@ -349,7 +397,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         )
         self.assertEqual(report.returncode, 0, report.stderr)
         self.assertIn("agent prompt main:pane", capture_path.read_text())
-        self.assertIn("from claude dispatched agent", capture_path.read_text())
+        self.assertIn("status from=api/t1", capture_path.read_text())
+        self.assertNotIn("from claude dispatched agent", capture_path.read_text())
 
     def test_herdr_notification_failure_keeps_durable_status(self) -> None:
         instruction_path = self.dispatch("codex")
