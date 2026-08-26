@@ -9,7 +9,13 @@ Read-only. Never interrupts a `working` pane, never sends input, never substitut
 
 ## Task 1: Resolve the target dispatch
 
-Identify which dispatch to peek at — from a task_id/plan slug, a session_id, or a description the caller gave you. Read its instruction file (`~/.straw-boss/dispatch/<app>--<slug>.json`, or the plan status file under `~/.straw-boss/plans/<slug>/status/` for a plan task) to get its `mode`, `session_id`, `cwd`, and — for `herdr-pane` — its agent name. Ask the caller if more than one dispatch could match.
+Identify which dispatch to peek at from a task id/plan slug, session id, or
+description. Resolve the canonical instruction at
+`~/.straw-boss/dispatch/<app>--<slug>.json`; for a plan task, use its
+`plan_id`/`task_id` correlation rather than treating the status record as
+routing data. The instruction supplies `mode`, `session_id`, and `repo_root`.
+For `herdr-pane`, its launch receipt supplies the agent name and pane. Ask the
+caller when more than one instruction matches.
 
 **Verification:** the target dispatch is confirmed from its actual instruction/status file, not guessed from a name alone.
 
@@ -35,15 +41,6 @@ Follow `references/peek-mechanics.md` for the exact command — don't improvise 
 Summarize what the agent is currently doing in plain language — not a raw dump of the trail or read/tail output. If the peek shows the agent is effectively stuck on something its status file hasn't caught up to yet, say so — but don't act on it here: resolving a checkpoint goes through the agent's own pane, or `dispatching-work`'s checkpoint handling, not this skill.
 
 **Verification:** the caller gets a plain-language answer to "what's it doing", not unfiltered raw output.
-
-## Red Flags
-
-- "Peeked, now let me just fix it directly in that pane" — no, peeking is read-only; anything more goes through the actual checkpoint/dispatch flow.
-- "Just eyeball the status label instead of peeking" — that's `dispatching-work`'s list branch, a shallower, different answer.
-- "Reconstruct the transcript path or herdr flags from memory" — no, always `references/peek-mechanics.md`.
-- "This other skill needs a quick peek, just inline a read here instead of calling peeking-work" — no, every peek in this plugin goes through this skill; no duplicate implementations.
-- "Skip the progress trail, just read the live pane, it's more thorough anyway" — no, Task 2: check the trail first; a live read that wasn't actually needed interrupts nothing technically but defeats the reason the trail exists — most peeks should be answerable from it alone.
-- "No progress log file yet, treat that as the task being stuck" — no, the log is only created on the dispatched agent's first `report-progress.py` call; an empty/missing trail just means it hasn't logged anything yet (or is a task predating this convention) — fall through to Task 3, don't diagnose from absence alone.
 
 ## References
 

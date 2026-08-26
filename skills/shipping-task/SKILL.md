@@ -87,27 +87,22 @@ If the target app is itself a submodule of a monorepo root and a pointer-bump pu
 
 ## Task 6: Confirm and wrap up
 
-Once the agent reports the lifecycle is complete (merged on the full flow, committed on the light flow), confirm the result — merge reference (MR/PR number or commit) or commit hash(es) — rather than assuming it from the dispatch report alone. If Task 4's instruction included a shared-resource lock and the agent's own report doesn't confirm it released, check and release it. Then invoke `dispatching-work`'s wrap-up branch to close only the worker pane and instruction; on the full flow, remove the worktree with plain git. The coordinator's shared tab remains open.
+Once the agent reports the lifecycle is complete (merged on the full flow,
+committed on the light flow), confirm the merge or commit reference. If the
+worker reports claiming a shared-resource lock without confirming release,
+check and release that claim. Then invoke `dispatching-work`'s wrap-up branch to
+close the worker pane and instruction; on the full flow, remove the worktree
+with plain git. The coordinator's shared tab remains open.
 
-**On the full flow, once the worktree is removed, sync the app's primary checkout too** (`git -C <app_dir> fetch && git -C <app_dir> pull --ff-only`) — otherwise it silently drifts behind the base branch, and the next thing dispatched directly into it (a light-flow task, most commonly) starts from stale history with no signal that it's stale. Check the primary checkout is clean first (`git -C <app_dir> status --porcelain`) — same likely cause as Task 2's light-flow check if it isn't (confirmed live: a `git pull` into a checkout in exactly this state fails outright with git's own "local changes would be overwritten" rather than clobbering anything) — surface that to the user and leave the sync for later rather than treating it as a merge-completion blocker.
+If the primary checkout tracks the merged base, is clean, and is intended for
+subsequent direct work, fast-forward it after removing the full-flow worktree.
+Use the app's established remote/tracking configuration. When those conditions
+do not hold, report the merged reference and leave checkout synchronization to
+the owning workflow.
 
 If the task originated from a tracker ticket, this skill (not the agent) updates it now that the lifecycle is actually complete.
 
 **Verification:** the completion reference is confirmed, not assumed; the dispatch instruction is wrapped up, not left `in-progress`; on the full flow, the worktree is removed by this skill; any originating ticket is updated by this skill, not the agent.
-
-## Red Flags
-
-- "It's a small change, I'll just skip the worktree/MR myself" — the choice is the user's per Task 2, every time; picking a flow without asking is the mistake, not which flow you'd have picked.
-- "Every app allows a direct commit to base if the change is small enough" — check the app's `apps.json` `forbidDirectCommit` field first; when `true`, only the full flow applies regardless of size.
-- "The agent is ready, so authorize it" — point the user to the interactive task or relay the user's answer in headless mode; readiness is not authorization.
-- "Commit doesn't need authorization anymore, so push/MR probably doesn't either" — true for a push of the task's own feature branch, but not for merge or a push to any other tracked branch (a monorepo-root submodule pointer-bump, an app-owned release push to a protected branch) — those still need it, every time, per Task 5.
-- "No `gitWorkflowSkill` on this app, I'll wing the branch naming" — check for a documented convention first, and use this skill's fallback steps, not improvised ones.
-- "This app has its own git-worktree skill, let it create the worktree like before" — no, worktree creation moved to the main agent for every managed app; only the steps after that stay app-owned.
-- "The agent stopped and waited after pushing its own feature branch, out of habit" — no, per Overview/Task 3: a feature-branch push needs no authorization; the agent reports through its provider's fast path and keeps working. The inverse mistake is just as real: a monorepo-root submodule pointer-bump or protected-branch release push still needs Task 5 authorization.
-- "The task's `awaiting-main-agent` checkpoint needs a technical decision" — only integrated context or a coordinator-owned action result belongs there; work-content judgment stays with the user and dispatched agent.
-- "Straw Boss should pick or run the target app's SDD before dispatch" — no: dispatch the user's intent, then let the dispatched agent apply that app's own development route after it enters the app.
-- "The agent reported done, so any shared-resource lock it claimed is fine to leave alone" — no, Task 6: check and release it if the agent's report doesn't confirm release, especially on a `failed` outcome where the agent may never have reached its own release step.
-- "This finding needs DB/infra access I don't have, so I'll defer it" — test that claim before writing it into a deliverable or carrying it into a dispatch instruction. Check the specific tool's actual installed capability (e.g. `--version`/`--help`) before concluding it's unusable — a skill doc's documented invocation may assume a newer version than what's installed here. "I lack permission" and "the tool I first reached for isn't installed at the version a doc assumed" are different claims — don't conflate them.
 
 ## References
 

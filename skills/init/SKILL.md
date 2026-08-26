@@ -24,22 +24,24 @@ Figure out which directories are the project's apps and how each should be match
 1. **Scan for candidates.** Look for a common monorepo layout — `apps/*`, `packages/*`, `services/*`, `cmd/*`, or top-level directories that each contain their own `package.json`/`*.csproj`/`go.mod`/`pyproject.toml`. Present the candidates found and let the user confirm, trim, or add to the list rather than typing every path from scratch.
 2. **No obvious layout, or the scan misses something.** Ask directly: app name, and its directory relative to repo root.
 
-For each confirmed app, also get its `match` phrases — words or descriptions someone would use to refer to it in a request ("the backend", "the mobile app", short names, common misnomers). Derive a first guess from the directory name and, if present, `package.json`'s `name`/`description`, and confirm/adjust with the user rather than asking from a blank page every time.
+For every confirmed app, dispatch bounded reconnaissance rooted in each confirmed app. Candidate scanning in this session is limited to directory names and manifest filenames; the worker reads app content so the app's own agent system and local context load only there. A provisional app name and absolute `repo_root` are enough to launch this one-off investigation before `apps.json` exists.
 
-Then investigate the less common per-app settings yourself before asking anything — a blind "does any app need X" is unanswerable to the user without the same digging this session can already do. For each app, check the concrete signal behind each field:
+Each reconnaissance returns proposed fields with evidence references:
 
-- `redirectTo`: do two apps look like the same product at different stages — one's `CLAUDE.md`/README self-describes as legacy/deprecated, or another app's config still points at a service this one has replaced? Add an optional `note` if the retired app doesn't otherwise look deprecated.
-- `forbidDirectCommit`: read each app's `git log --oneline` shape (flat commits straight to the base branch vs. a merge/PR pattern) and, if reachable, its actual branch protection (`gh api repos/<owner>/<repo>/branches/<base>/protection`). A personal or free-tier repo with no protection and a flat history needs nothing.
-- `agentKind`: does the app carry a persistent non-`claude` CLI setup (its own `.codex/`, `.cursor/`, etc. directory with agent-specific instructions, not a symlinked mirror of the claude ones) that reflects a standing team/project default — not just the user's personal habit of switching which CLI they open? Most apps leave this unset; see Task 3 for the separate, project-wide work-type routing question.
-- `gitWorkflowSkill`: grep the app's own skills for one that already handles commits, PRs, or releases.
-- `localFiles`: diff the app's `.gitignore` against what actually exists on disk and against `git ls-files` — only a gitignored file that currently exists *and* isn't already tracked belongs here. Flag a sensitive one (credentials, live secrets) with `sensitive: true` and a note that the user must approve before it's ever copied into a worktree.
-- `crossAppSkills`: grep every app's skills for a hard-coded reference to another app's directory or repo (e.g. a skill that writes output into a sibling app's source tree).
+- `name` and `match`, grounded in the app's manifest, README, or established terminology;
+- `redirectTo` and optional `note`, when app-local evidence identifies a replacement or retirement relationship;
+- `forbidDirectCommit`, grounded in the repository's actual workflow or reachable branch policy;
+- `agentKind`, only when persistent app-owned provider configuration establishes a project default;
+- `gitWorkflowSkill`, when an app-owned skill handles commits, PRs, or releases;
+- `localFiles`, limited to existing, untracked, gitignored files, with sensitive material identified for later user approval;
+- `crossAppSkills`, when an app-owned skill contains a concrete cross-app path or repository dependency;
+- an agent-system inventory for Task 9.
 
-Present what the investigation actually found, per app and field, as a recommendation — not a blank open question — and let the user confirm, correct, or add what the investigation couldn't see (a private branch-protection setup `gh` can't reach, an unwritten team policy). Most projects still end up with none of these fields set; investigating isn't license to pad the config, it's what makes the one open question answerable instead of asked cold.
+Use a confirmed lower-tier investigation route when it can still produce an explanatory, evidence-backed result. Integrate the reports into one recommendation, show the evidence behind every proposed optional field, and let the user confirm, correct, or add private team policy that the workers could not observe. Empty optional fields are a valid result.
 
 Write the result to `<repo-root>/.claude/straw-boss/apps.json` (same repo-root resolution as Task 1) per `references/apps-config-schema.md`'s exact field names and shapes.
 
-**Verification:** every app in the written config has a `name`, `dir`, and at least one `match` phrase; every optional field present was either grounded in a concrete signal the investigation found and confirmed by the user, or something the user volunteered beyond what the investigation could see — never a blind guess and never invented without confirmation.
+**Verification:** every app in the written config has a `name`, `dir`, and at least one `match` phrase; the coordinator did not read target-app histories, ignore files, skills, or agent instructions; every proposed optional field arrived with evidence references and was confirmed by the user or supplied directly by the user.
 
 ## Task 3: Configure work routes
 
@@ -101,30 +103,32 @@ Ask the user whether to enable herdr-backed dispatch (`herdr-pane` mode). Explai
 
 ## Task 9: Offer to bootstrap a missing agent system, per app
 
-For each app resolved in Task 2 (newly added or already-configured — this check is about the app's own directory, not about whether `apps.json` itself changed this run), check whether it already has any agent system at all: does `<app-dir>/CLAUDE.md` exist, **or** does `<app-dir>/.claude/` contain any of `skills/`, `rules/`, `hooks/`? A `.claude/` holding only `settings.json` is not an agent system — permissions/plugin config alone isn't guidance or enforcement, so it doesn't count as exempt.
+Use Task 2's worker-reported agent-system inventory for each app. For an
+unchanged configured app that has no current-run report, dispatch the same
+bounded inventory rooted in that app. An agent system exists when
+`<app-dir>/CLAUDE.md` exists or `<app-dir>/.claude/` contains `skills/`,
+`rules/`, or `hooks/`; settings alone are configuration rather than app
+guidance.
 
-- **Either condition met:** nothing to do for this app — some agent system is already there, even a minimal one; this task doesn't second-guess its adequacy.
-- **Neither:** tell the user this app has no agent system yet, and ask whether to bootstrap a lightweight one now — a `CLAUDE.md`, one guard hook, and one skill-authoring rule, via `create-great-harness` — or skip it. Ask per app, not once for the whole batch; a vendored or generated app, for instance, may deliberately warrant none.
-  - **Yes:** this answer *is* the confirmation `create-great-harness`'s own Task 1 would otherwise ask for — carry that into the dispatch instruction below rather than asking the user twice.
-  - **Skip:** move on. This check is live, not a remembered decision — a future `init` run checks again, but stops asking the moment the exemption condition is actually met, however it got there.
+For an app with an existing agent system, record the evidence and continue. For
+an app without one, show that finding and ask whether to bootstrap it through
+`create-great-harness`. Ask per app because ownership and generation policy may
+differ. `CLAUDE.md` is the only unconditional artifact; optional hook or rule
+work requires concrete project evidence or explicit confirmed scope.
 
-**Dispatch, don't invoke inline.** `create-great-harness` writes into the app's own checkout (`<app-dir>/CLAUDE.md`, `<app-dir>/.claude/settings.json`, `<app-dir>/.claude/rules/`) — the same reason every other mutation into an app directory goes through `dispatching-work` rather than running from this session's own cwd. Two things differ from how a specialist skill like `shipping-task` normally reaches `dispatching-work`, and both are deliberate, not gaps:
+For every confirmed bootstrap, dispatch `create-great-harness` through
+`dispatching-work` with the app's already-resolved directory and the user's
+confirmed scope. Carry that confirmation into the brief. When several apps are
+confirmed, they may share a batch label while remaining independent dispatches.
+Use `dispatching-work` as the single source for provider routing, instruction
+creation, launch confirmation, status observation, and wrap-up.
 
-- **No `work-on` call.** The app is already resolved — it came straight from Task 2's `apps.json`, with nothing ambiguous to classify. `work-on` exists to resolve a request *to* an app; there's no request to resolve here.
-- **No execution-tier judgment.** Unlike a `boss-say`-routed item, there's no "does this need the app's own harness" question to weigh — the app by definition has none yet, and the whole point of this task is to create it in the app's own directory. Every "yes" dispatches, full stop.
+Before `init` ends, report each bootstrap as terminal and wrapped up, or name
+the still-running instruction and how the user can inspect it.
 
-For each app the user said yes to: assemble the task description for `dispatching-work` — `create-great-harness`'s confirmed scope plus the provider/mode instruction content from `cross-session-coordination.md`. Include the exact instruction path and pass both provider kinds. Every `herdr-pane` dispatch records the main-agent pane; pass a peer only when both the worker and this main agent are Claude. If more than one app needs bootstrapping, share one batch label. Dispatch each through Tasks 1-5 and track it until it reports back.
-
-**Detect completion from durable instruction status plus the dispatch transport.** Every provider calls `report-task-status.py --instruction-path`, which writes status before shared transport validates and notifies the recorded main-agent session. Confirm durable status against process/pane observation:
-
-- **Headless (`claude-p` or Codex `exec`):** run each dispatch in the background so independent apps' bootstraps run concurrently rather than serializing this turn; the background-process notification carries the final output and exit status. Match it to the instruction's terminal status before wrap-up.
-- **`herdr-pane`:** complete `dispatching-work`'s full Tasks 1-5 for that app first — through delivery confirmation, session-id cross-check, and the flip to `in-progress` — before waiting. Then use `herdr agent wait "<name>" --until idle --until blocked --timeout 120000` (repeated-`--until` form — see `dispatch-mechanics.md`) per app as a background call, so multiple apps' waits still run concurrently. A `blocked` return is not completion — surface it to the user. On `idle`, use the provider-appropriate transcript read described in `dispatch-mechanics.md`, and match the report to the instruction's terminal status. On timeout, the task is still running, not failed.
-
-Confirm what was created against each report, then call `dispatching-work`'s wrap-up branch to close the instruction and its worker pane. The coordinator's tab remains open. Dispatch every app's bootstrap independently as soon as its own yes/skip answer lands — the concurrency lives in running these background waits together (once each dispatch's own Tasks 1-5 are done), not in serializing the dispatches themselves.
-
-Before this run of `init` ends, every bootstrap dispatch it started this run should be terminal and wrapped up. If one hasn't reported back yet, tell the user it's still running and how to check on it (`dispatching-work`'s List branch, or `peeking-work`) rather than holding this turn open indefinitely.
-
-**Verification:** every app from Task 2 was checked against the exemption condition above, not just "does `.claude/` exist"; an app that already met it was never asked; an app that didn't got an explicit yes/skip answer before this task moved on; every "yes" was dispatched (never run inline in this session), with the confirmation carried into the instruction rather than re-asked; Claude received its peer name and Codex did not; for `herdr-pane`, waiting began only after delivery was confirmed and status became `in-progress`; a `blocked` wait result was surfaced, never wrapped up as done; terminal instruction status was matched to process or pane evidence before wrap-up; every bootstrap dispatch this run started is either wrapped up or explicitly flagged as still running before this run of `init` ends.
+**Verification:** every app has an evidence-backed inventory result; every
+bootstrap has an explicit per-app confirmation; app mutations occurred only in
+rooted workers; dispatch state and completion follow `dispatching-work`.
 
 ## Task 10: Sync the managed-apps section in root CLAUDE.md
 
@@ -148,30 +152,6 @@ Full config (routing, redirects, per-app rules): `.claude/straw-boss/apps.json`.
 If the markers already exist, replace only the content between them — leave the rest of `CLAUDE.md` untouched. If they don't exist, append the block at the end of the file, separated from any existing content by exactly one blank line (so a file that doesn't already end in a newline still renders as valid Markdown, and a file that does doesn't gain extra blank lines). This is the section a future main-agent session reads to know the project's managed scope, so keep it in sync every time Task 2 changes the config, not just on first run.
 
 **Verification:** root `CLAUDE.md` exists and contains an up-to-date managed-apps section between the markers, listing only app names and directories; nothing outside the markers was touched; no per-app rule detail leaked into this section from `apps.json`; if any Task 9 dispatch targeted the repo root itself, it was confirmed terminal before this task wrote root `CLAUDE.md`.
-
-## Red Flags
-
-- "The apps config already exists, skip straight to using it" — no, Task 1 requires showing current state and asking, every `init` run.
-- "The directory scan found everything, skip confirming with the user" — no, present candidates and let the user confirm/trim/add.
-- "Ask every app about forbidDirectCommit/gitWorkflowSkill/localFiles/crossAppSkills one by one" — no, investigate every app once, then present the findings as one recommendation; most apps need none of them.
-- "Just ask the user whether any app needs these fields, skip checking git history/gitignore/skills first" — no, per Task 2: investigate the concrete signal behind each field before asking anything; a blind open question is unanswerable without the digging this session can already do itself.
-- "Root CLAUDE.md doesn't have the markers, just append a second copy" — no, search for the markers first; only append when truly absent.
-- "Add the Notes column back, it's more useful at a glance" — no, per Task 10: every nested session inherits root `CLAUDE.md`, so per-app detail belongs in `apps.json` only, never duplicated into the root file.
-- "The user said yes to herdr, persist it now" — no, Task 7 still has to confirm the server and integration are actually there.
-- "Integration install is just a config tweak, no need to call out the global scope" — no, it's a machine-wide hook; say so every time it's about to run, not just the first.
-- "Just set crossSessionInbound to accept, it's obviously useful" — no, Task 8 still explains what it does and asks first, same as every other setting change in this skill.
-- "An app has neither CLAUDE.md nor .claude/, but it's probably fine, skip asking" — no, Task 9 asks explicitly per app; only an app that meets the exemption condition is skipped.
-- "The app has a `.claude/settings.json` with a couple of permission rules, that counts as having an agent system" — no, Task 9: settings alone isn't guidance or enforcement; the exemption needs `CLAUDE.md` or actual `skills/`/`rules/`/`hooks/` content.
-- "Ask once for the whole app list whether to bootstrap agent systems" — no, Task 9: per app, since a vendored/generated app may deliberately warrant none.
-- "This app's bootstrap is quick, just do it inline in this session instead of dispatching" — no, Task 9: `create-great-harness` writes into the app's own checkout, same reason every other mutation into an app directory gets dispatched rather than run from this session's own cwd.
-- "The user already said yes per-app, but let `create-great-harness` ask again too, as a safety net" — no, Task 9's dispatch instruction carries the confirmation; a second ask has no one to answer it under `claude -p` and is redundant under `herdr-pane`.
-- "Several apps need bootstrapping, dispatch them one at a time and wait for each before starting the next" — no, Task 9: they're independent; dispatch every yes as soon as it lands.
-- "This run of `init` is otherwise done, leave a bootstrap dispatch running and end the turn" — no, Task 9: confirm each dispatch is terminal and wrapped up, or explicitly tell the user it's still running, before the run ends.
-- "Every bootstrap must use `notifying-main-agent`" — no: that skill is Claude-only. Codex receives the explicit status/progress contract and reports through its process or herdr pane.
-- "The bootstrap's instruction status says done, that's enough" — no: match durable terminal status to the process exit or pane transcript before wrap-up.
-- "Submitted the task, start the completion wait right away" — no, Task 9: finish `dispatching-work`'s Tasks 1-5 for that app first (through step 6.5's delivery confirmation and `in-progress` flip); a wait started right after submission can catch a swallowed first-run prompt and misread the still-idle agent as a finished, empty bootstrap.
-- "`agent wait` came back, that means the bootstrap finished" — no, Task 9: `blocked` means the agent stalled on a prompt, not that it's done; only `idle` (confirmed via `agent read`'s actual content) means the turn ended.
-- "The bootstrapped app's dir is the repo root, sync root CLAUDE.md in Task 10 right away like any other run" — no, per Task 10: check whether Task 9 dispatched into that exact `<app-dir>` and wait for it to finish first — both tasks would otherwise write the same file concurrently.
 
 ## References
 

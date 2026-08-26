@@ -253,11 +253,16 @@ A full-flow task's worktree is created once, at wave-dispatch time, from whateve
 
 **Confirmed live, twice in one plan round** (two different full-flow tasks, each caught only because the main agent independently diffed against the live remote branch before authorizing the push): `git diff --stat origin/<base_branch>..HEAD` showed a sibling task's already-merged files listed as deletions — the tell that this worktree's base predates that merge, not that this task's own change actually deletes anything.
 
-Every full-flow dispatch instruction in a plan/batch MUST tell the agent: immediately before pushing or opening the MR (not only at worktree creation), run
+When parallel tasks target the same moving base or the remote base advanced
+since worktree creation, the dispatch instruction tells the worker to refresh
+immediately before pushing or opening the MR:
 ```bash
 git fetch origin && git merge --ff-only origin/<base_branch>
 ```
-(or an equivalent rebase) and resolve to a clean, non-diverged state first. This is a standing instruction, not something the main agent should have to notice and prompt for after the fact — the round that first hit this gap didn't have the reminder in its dispatch instructions and needed two separate manual interventions; the fix is to always include it, not to catch it via review.
+(or use the app's equivalent rebase workflow) and resolve to a clean,
+non-diverged state first. The confirmed incident above grounds this instruction
+for moving-base concurrency; otherwise the app's established git workflow owns
+the pre-push sequence.
 
 ## Failure handling
 
@@ -265,4 +270,9 @@ On a watcher event reporting `status: failed` for a task, read that task's statu
 
 ## Shared-resource coordination (ports, DB migrations — cross-main-agent, not just cross-task)
 
-Worktree isolation covers files, not a fixed network port a dev server binds to or a database multiple main agents' tasks might verify migrations against — both live outside any one checkout, and outside any one main agent's own visibility (a main agent has no idea what another, independently running main agent has dispatched). Do not add a generic collision warning to every task. If the task is actually expected to run a local dev server or touch a shared database for migration verification, follow `references/shared-resource-coordination.md` and include the exact `claim-resource.py claim-port` or `wait` command as material task context. Set `--requester-instruction-path` to this dispatch's instruction path; no raw main-agent endpoint is stored in the lock.
+Worktree isolation covers files. When user input, a dependency report, or
+verified coordination state identifies a port or database shared by concurrent
+tasks, carry that constraint into the brief and point the worker to
+`references/shared-resource-coordination.md`. The worker resolves the app-local
+resource identity and exact command immediately before use, with this dispatch's
+instruction path as requester identity.

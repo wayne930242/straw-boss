@@ -30,22 +30,14 @@ route, but do not invent a model choice outside the configured route.
 Frame the audit around which rules apply, how the target behaves against them,
 and what consequence follows. Require evidence references to the exact rule
 source and observed implementation, test, log, or artifact. The deliverable is
-an evidence-backed assessment, not a yes-or-no answer about compliance. The
+an explanatory, evidence-backed assessment. The
 worker decides whether to run the app's local audit skill or global `inspecting`;
 the generated contract supplies instruction-keyed status and communication
 commands.
 
-Do not read target-app rules or files or run a parallel audit in the main-agent
-session. Integrate the worker's assessment and evidence references when it
-returns.
+Target-app rule and file access stays inside the worker. The main agent
+integrates the worker's assessment and evidence references when it returns.
 
 **Verification:** the audit ran inside the app's dispatched worker against its
 real rule sources; its report explains the assessment and carries evidence
 references; the main agent did not load the target app's files.
-
-## Red Flags
-
-- "I'll just review it myself inline instead of invoking inspecting" — no, that's a different, less thorough process than what this skill exists to trigger.
-- "work-on asked a clarifying question, I'll just pick the more likely app" — no, surface the question, don't guess.
-- "Ask whether it complies and return yes or no" — no, require the applicable
-  rule, observed behavior, consequence, and evidence.

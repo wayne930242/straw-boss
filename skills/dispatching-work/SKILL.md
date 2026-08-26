@@ -34,29 +34,28 @@ State the mode and why before doing anything else.
 
 ## Task 2: Resolve batch membership
 
-Several dispatches for one multi-app unit of work share a `batch` label for
-tracking. A standalone dispatch has none.
+Several dispatches may share a `batch` label for tracking. A batch may contain
+independent items; it is a reporting/group label, not proof of one multi-app
+unit or a dependency relationship. A standalone dispatch has none.
 
 ## Task 3: Write the instruction, before dispatching
 
 Build a concise brief from the user requirement, requested outcome, necessary
 hints, explicit constraints, dependencies, and verified coordination facts
-already available to the main agent. Do not investigate the target app to enrich
-the brief: the worker owns implementation, precedent, and local-context
-discovery in its own working directory and harness. Resolve only enough project
-structure to route the task and operate the dispatch machinery.
+already available to the main agent. Target-app implementation, precedent, and
+local-context discovery stays with the worker in its own working directory and
+harness. The coordinator resolves the routing and dispatch mechanics.
 
-For investigation, audit, or diagnosis, ask for the current behavior, mechanism,
-cause, or impact to be explained with evidence references. Do not reduce the
-brief to a yes-or-no existence question. A bounded fact-gathering task may use a
-confirmed lower-tier work route; route resolution still comes from Task 1, not
-an ad hoc model downgrade.
+For investigation, audit, or diagnosis, ask for an explanatory account of the
+current behavior, mechanism, cause, or impact with evidence references. A
+bounded fact-gathering task may use a confirmed lower-tier work route; route
+resolution still comes from Task 1.
 
 Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates the session id and immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind, this session's provider, and the validated pane/session pair from Task 1. Never hand-write the JSON, contract, or UUID.
 
 **Verification:** every brief statement traces to the user request, a necessary
-hint/constraint, or already-known coordination state; no target-app investigation
-was performed to author it; instruction and hashed contract exist with `pending`
+hint or constraint, or already-known coordination state; target-app discovery is
+assigned to the worker; instruction and hashed contract exist with `pending`
 status before any agent starts.
 
 ## Task 4: Dispatch
@@ -103,7 +102,11 @@ A task unsure which applies walks `plan-mechanics.md`'s "Escalation order for a 
 
 **Progress visibility.** A dispatched task may call `report-progress.py --instruction-path <path> --note "<text>"` at any point during its work — a separate, non-notifying, append-only log (`dispatch-mechanics.md`'s "Reporting scripts"). `peeking-work` reads this trail before joining a task's live pane, so checking on a task usually doesn't require interrupting it.
 
-**Shared-resource coordination.** A local server or shared database can collide across worktrees and main agents. Follow `references/shared-resource-coordination.md`; put its exact `claim-port`/`wait` command in the task with `--requester-instruction-path` set to this dispatch instruction. The agent claims and releases the resource itself.
+**Shared-resource coordination.** When known coordination state identifies a
+resource shared by concurrent tasks, include that constraint and point the
+worker to `references/shared-resource-coordination.md`. The worker resolves the
+app's concrete resource identity, claims immediately before use, and releases
+afterward.
 
 **Verification:** every ready-wave task dispatched together; a task with unresolved dependencies never dispatched early; worktree verified before dispatch; `wrap-up-task.py` withheld for any task_id with a same-task continuation coming, checked before it's ever called, not after; plan completion judged by all tasks terminal, never by the first.
 
@@ -121,33 +124,3 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 
 **Verification:** the worker pane is confirmed closed before the file is archived;
 the coordinator pane and shared tab remain open.
-
-## Red Flags
-
-- "No herdr session available, ask the user to open one anyway" — last resort only; default to `claude-p` first.
-- "No `capability.json`, stop and tell the user to run `init` first" — no, and don't default to `claude-p` either; a missing file isn't an opt-out, check `HERDR_ENV` live and use `herdr-pane` if it's `1`.
-- "No `capability.json`, so herdr isn't confirmed available, use `claude-p`" — no, only an explicit `claude-p-only` opts out; absence means check `HERDR_ENV` live instead of assuming unavailable.
-- "Skip writing the instruction until dispatch succeeds" — no, write it `pending` first; a stray pending file on failure is signal, not noise.
-- "Reconstruct the herdr command sequence from memory" — no, always the reference.
-- "This agent's mode doesn't matter, use whatever's default" — no, mirror the main agent's actual mode every time.
-- "Pane looks closed already, skip confirming" — no, check via `herdr pane get`/`agent get` first.
-- "This standalone dispatch has no plan, so wrap it up whenever, no status to check" — no, `wrap-up-task.py` now refuses if its own `.status.json` (if one was written) reports a non-terminal status, same guard a plan task already has.
-- "Two unrelated dispatches, share a batch to save a tab" — no, batch is one multi-app unit of work only.
-- "3 ready tasks, dispatch one at a time to keep it simple" — no, all at once, always.
-- "This idle finished session could take the next ready task" — no, a `--ready` task is always a different `task_id`; only that exact task_id's own next phase reuses the session, never something the wave computation surfaced.
-- "This task_id just went `done`, auto-detach it right away, check for a same-task phase 2 afterward if one comes up" — no, the check comes first; `wrap-up-task.py` archives the instruction and marks the task done in `plan.json` in one call, and by then there's nothing left to reuse.
-- **Same-task continuation:** reuse the agent only for a later phase already defined in the user-confirmed plan; compact and continue that plan without another mechanics checkpoint.
-- "Compacting a worker session can address its pane directly" — no, send `/compact` through `send-dispatch-message.py --to worker --intent control` so the session fingerprint is still checked.
-- "First task in the plan finished, mark the plan done" — no, only once every task is terminal.
-- "This task looks simple/self-contained, use `claude-p` even though herdr's available" — no, mode is an environment check, not a task judgment; `herdr-pane` is used whenever it's available, full stop.
-- "The task's mid-flight question, relay it like an authorization checkpoint" — no: `awaiting-user-input` follows the mode's user-answer path; an informational question the main agent can answer uses the provider's fast channel, not a status transition.
-- "A task is genuinely blocked until I act, but not a human judgment call, so let it send an informational question" — no, that's `awaiting-main-agent`, not the fire-and-forget channel — it needs to be tracked, not queued at the same priority as any other async question.
-- "I figured out the answer to this worker's `awaiting-main-agent` checkpoint, that's resolved" — no, only `reply-to-worker.py` resolves it; a reply typed manually into the pane, or only reasoned about, leaves the checkpoint silently stale.
-- "A Plan task wrote its status file, so no watcher is needed" — no: the write is durable state, while `watch-plan-status.py` is the active scheduling signal that reacts to every revision and releases ready waves.
-- "The watcher only needs to remember filenames" — no: checkpoints and terminal outcomes overwrite the same file; content-revision detection is what makes every transition observable.
-- "Skip the worktree verify-repair step, herdr worktree create usually works fine" — no, the `config.worktree` bug happens with *any* creation method on a repo with `extensions.worktreeConfig`; verify every time.
-- "The main pane id is enough" — no; Task 1 records its live session fingerprint too, so pane reuse becomes a hard mismatch rather than a wrong delivery.
-- "This coordination question sounds like something the main agent could reasonably weigh in on, use the provider fast channel" — no, per `cross-session-coordination.md`: any trade-off or "which direction" call is `awaiting-user-input`, full stop, regardless of how qualified the main agent seems.
-- "The worktree isolates this task, so a shared-DB migration check can't collide with another main agent's task" — no, per `shared-resource-coordination.md`: worktree isolation is file-level only; a shared database is outside any one checkout and needs the lock regardless of worktree.
-- "Have the main agent pre-acquire the shared-resource lock before dispatching, so the agent starts already holding it" — no, the agent acquires it itself, right before it actually needs the resource; acquiring earlier holds it uselessly against other main agents during unrelated implementation work.
-- "This app's configured `agentKind` is `codex`, force its plan task back to Claude" — no: Plan status and dependency scheduling are provider-neutral; preserve the resolved kind and inline the explicit status-report contract Codex needs.

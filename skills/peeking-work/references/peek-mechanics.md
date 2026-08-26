@@ -2,7 +2,13 @@
 
 ## Resolving the target
 
-Every dispatch's instruction file (`~/.straw-boss/dispatch/<session_id>.json`, or the plan status file under `~/.straw-boss/plans/<slug>/status/<task_id>.json`) records: `mode` (`claude-p` / `herdr-pane`), `session_id`, `cwd` (the worktree or app directory dispatched into), and — for `herdr-pane` — the agent name used at dispatch (the same value as the trailing `claude --name` flag; see `dispatching-work`'s `dispatch-mechanics.md`). Read the instruction/status file first — never guess these values.
+The canonical instruction is
+`~/.straw-boss/dispatch/<app>--<slug>.json`. The instruction records mode,
+session_id, and repo_root. For a plan task, correlate it by `plan_id` and
+`task_id`. Its status record supplies progress state, note, optional evidence
+references, timestamps, and checkpoint-resolution metadata rather than routing
+data. The launch receipt records the agent name and pane for `herdr-pane`
+dispatches. Read these artifacts before choosing the live-read mechanism.
 
 ## `herdr-pane`: `herdr agent read`
 
@@ -14,10 +20,13 @@ Read-only — does not interrupt a `working` pane, does not join it, does not co
 
 ## `claude-p`: transcript tail
 
-`claude -p` has no pane to read — its own transcript file is the only source. Path: `~/.claude/projects/<encoded-cwd>/<session_id>.jsonl`, where `<encoded-cwd>` is the dispatch's `cwd` with the leading `/` and every subsequent `/` replaced with `-` (confirmed convention — this is the same scheme Claude Code uses for every session's own transcript path).
+`claude -p` has no pane to read — its own transcript file is the source. Path:
+`~/.claude/projects/<encoded-repo-root>/<session_id>.jsonl`, where
+`<encoded-repo-root>` is the instruction's `repo_root` with the leading `/` and
+every subsequent `/` replaced with `-`.
 
 ```
-tail -n 40 ~/.claude/projects/<encoded-cwd>/<session_id>.jsonl \
+tail -n 40 ~/.claude/projects/<encoded-repo-root>/<session_id>.jsonl \
   | jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text'
 ```
 

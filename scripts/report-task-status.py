@@ -52,6 +52,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from time import monotonic, sleep
 
 from dispatch_state import (
     load_json,
@@ -78,6 +79,32 @@ VALID_STATUSES = (
     "awaiting-main-agent",
     "cancelled",
 )
+
+
+def validate_status_sender_when_ready(
+    instruction_path: str,
+    status: str,
+    *,
+    timeout_seconds: float = 15.0,
+    poll_interval_seconds: float = 0.25,
+) -> None:
+    deadline = monotonic() + timeout_seconds
+    while True:
+        try:
+            validate_status_sender(instruction_path, status)
+            return
+        except ValueError:
+            instruction = load_json(Path(instruction_path))
+            if (
+                status == "cancelled"
+                or instruction.get("status") != "pending"
+                or instruction.get("herdr_pane_id")
+            ):
+                raise
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise
+            sleep(min(poll_interval_seconds, remaining))
 
 
 def resolve_status_path(plan_slug: str | None, task_id: str | None, instruction_path: str | None) -> Path:
@@ -121,7 +148,7 @@ def report_status(
     normalized_references = normalize_references(references)
 
     if instruction_path is not None:
-        validate_status_sender(instruction_path, status)
+        validate_status_sender_when_ready(instruction_path, status)
 
     path = resolve_status_path(plan_slug, task_id, instruction_path)
 

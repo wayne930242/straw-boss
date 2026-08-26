@@ -12,6 +12,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from time import monotonic, sleep
 from typing import Any
 
 from dispatch_state import dump_json, launch_receipt_path, load_json, sha256_text
@@ -100,6 +101,32 @@ def live_agent(pane_id: str) -> dict[str, object]:
     if not isinstance(agent, dict):
         raise ValueError(f"herdr could not resolve the launched agent in pane {pane_id!r}")
     return agent
+
+
+def wait_for_agent_session(
+    pane_id: str,
+    *,
+    timeout_seconds: float = 15.0,
+    poll_interval_seconds: float = 0.25,
+) -> str:
+    deadline = monotonic() + timeout_seconds
+    last_status: object = None
+    while True:
+        agent = live_agent(pane_id)
+        last_status = agent.get("agent_status")
+        session = agent.get("agent_session")
+        if isinstance(session, dict):
+            value = session.get("value")
+            if isinstance(value, str) and value:
+                return value
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            raise ValueError(
+                "launched agent did not expose agent_session.value within "
+                f"{timeout_seconds:g}s after its first prompt "
+                f"(last status: {last_status!r})"
+            )
+        sleep(min(poll_interval_seconds, remaining))
 
 
 def herdr_pane(pane_id: str) -> dict[str, object]:
@@ -202,10 +229,32 @@ def launch(
 
     pane_id, tab_id = create_worker_pane(instruction)
     try:
-        run_herdr(
-            ["agent", "start", name, "--kind", agent_kind, "--pane", pane_id, "--", *provider_args]
-        )
-        agent = live_agent(pane_id)
+        start_error: ValueError | None = None
+        try:
+            run_herdr(
+                [
+                    "agent",
+                    "start",
+                    name,
+                    "--kind",
+                    agent_kind,
+                    "--pane",
+                    pane_id,
+                    "--",
+                    *provider_args,
+                ]
+            )
+        except ValueError as exc:
+            start_error = exc
+
+        try:
+            agent = live_agent(pane_id)
+        except ValueError:
+            if start_error is not None:
+                raise start_error
+            raise
+        if start_error is not None and agent.get("agent_status") != "blocked":
+            raise start_error
         if agent.get("agent_status") == "blocked":
             run_herdr(["agent", "send-keys", pane_id, "enter"])
             run_herdr(
@@ -223,10 +272,7 @@ def launch(
             )
 
         run_herdr(["agent", "prompt", pane_id, str(instruction["task"])])
-        agent = live_agent(pane_id)
-        session_id = agent.get("agent_session", {}).get("value")
-        if not session_id:
-            raise ValueError("launched agent did not expose agent_session.value after its first prompt")
+        session_id = wait_for_agent_session(pane_id)
         if agent_kind == "claude" and session_id != instruction.get("session_id"):
             raise ValueError(
                 f"launched Claude session {session_id!r} does not match preassigned session "

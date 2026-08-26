@@ -70,7 +70,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit and push its own feature branch freely, get authorization before every merge (and any push outside that branch) |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
-| `create-great-harness` | Bootstrap a minimal agent system for an app that has none — a short `CLAUDE.md`, one guard hook, and one live-fetched skill-authoring rule |
+| `create-great-harness` | Bootstrap a minimal agent system for an app that has none — an evidence-grounded `CLAUDE.md`, plus optional hook or rule artifacts when confirmed scope or project evidence requires them |
 | `inspecting-app` | Dispatch an evidence-bearing rules audit into the app; bounded audits may use a confirmed lower-tier route |
 | `investigating-app` | Dispatch current-state research into the app and return an explanation with evidence, not a binary answer |
 | `troubleshooting-app` | Dispatch evidence-bearing app diagnosis, then hand the fix back to `boss-say` once root cause is known |

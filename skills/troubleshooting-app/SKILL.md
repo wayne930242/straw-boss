@@ -43,15 +43,15 @@ lower-tier work route, but do not invent a model choice outside that route.
 
 Frame the task around the failure mechanism and root cause to explain. Require
 reproduction observations and evidence references to logs, tests, commands,
-files, or artifacts. The deliverable is a falsifiable root-cause explanation,
-not a yes-or-no answer about whether one suspected cause exists. The worker
+files, or artifacts. The deliverable is an explanatory, falsifiable root-cause
+account. The worker
 reports through `report-task-status.py --instruction-path <path> --status done
 --note "<root cause>" --ref "<evidence>"`, which writes before notifying the
 recorded main-agent herdr pane. It never invokes `boss-say` or dispatches anything
 itself.
 
-Do not read target-app files or reproduce the failure in the main-agent session.
-Do not fix anything here: this task ends at "here's the root cause," not a patch.
+Target-app file access and reproduction stay inside the worker. This task ends
+with a root-cause account; implementation is routed separately.
 
 **Verification:** the dispatched report states a specific root cause or an
 explicitly exhausted hypothesis set, includes evidence references, and never
@@ -59,16 +59,8 @@ escalates to a fix on its own.
 
 ## Task 4: Hand off to the fix
 
-Once root cause is known — from your own diagnosis, or a dispatched worker's completion report — tell the user and hand off to `boss-say` for the actual fix — it triages the fix (normally one item, so it routes straight to `shipping-task`) and makes its own execution-tier call for it. Don't start editing files in the current, non-worktree checkout, and don't call `shipping-task` around `boss-say`.
+Once root cause is known from a dispatched worker's completion report, tell the
+user and hand the requested fix to `boss-say`, which owns its scale and
+execution-tier decision.
 
 **Verification:** any code change is handed to `boss-say`, not made inline here.
-
-## Red Flags
-
-- "It's probably infra, I'll just say that without checking" — Task 2's verification requires stated evidence, not a guess.
-- "I found the cause, let me just fix it now" — no, see Task 4. Diagnosis and fix are different skills for a reason: the fix needs a worktree and review gate.
-- "Small fix, I'll edit directly instead of handing it to `boss-say`" — no, every code change goes back through the main agent for dispatch.
-- "The fix is obviously one task, call `shipping-task` directly and skip `boss-say`" — no, dispatch triage is the main agent's, even when the answer is 'one task'.
-- "The dispatched diagnosis found root cause, have it call `boss-say`/`shipping-task` itself to save a round trip" — no, a worker only runs its shared completion-status command; deciding what happens with a root cause stays with the session that dispatched it.
-- "Ask whether the suspected cause exists" — no, ask the worker to explain the
-  failure mechanism and return evidence that supports or falsifies the hypothesis.

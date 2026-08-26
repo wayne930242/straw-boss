@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -96,16 +97,37 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "with open(os.environ['HERDR_CAPTURE'], 'a') as f:\n"
             "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
             "args = sys.argv[1:]\n"
+            "with open(os.environ['HERDR_CAPTURE']) as f:\n"
+            "    captured = [json.loads(line) for line in f if line.strip()]\n"
             "if args[:2] == ['pane', 'get']:\n"
             "    target = args[2]\n"
             "    print(json.dumps({'result': {'pane': {'pane_id': target, 'tab_id': os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1')}}}))\n"
             "elif args[:2] == ['pane', 'split']:\n"
             "    print(json.dumps({'result': {'pane': {'pane_id': os.environ.get('HERDR_WORKER_PANE_ID', 'worker-pane'), 'tab_id': os.environ.get('HERDR_WORKER_TAB_ID', os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1'))}}}))\n"
+            "elif args[:2] == ['agent', 'start'] and os.environ.get('HERDR_FAIL_START_BLOCKED') == '1':\n"
+            "    print(json.dumps({'error': {'code': 'agent_not_ready', 'message': 'agent is blocked during startup'}}), file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
+            "elif args[:2] == ['agent', 'start'] and os.environ.get('HERDR_FAIL_START') == '1':\n"
+            "    print(json.dumps({'error': {'code': 'agent_start_failed', 'message': 'agent process did not start'}}), file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
+            "elif args[:2] == ['agent', 'get'] and os.environ.get('HERDR_FAIL_START') == '1':\n"
+            "    print(json.dumps({'error': {'code': 'agent_not_found', 'message': 'no live agent'}}), file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
             "elif args[:2] == ['agent', 'get']:\n"
             "    target = args[2]\n"
             "    sessions = json.loads(os.environ.get('HERDR_SESSIONS', '{}'))\n"
             "    session = sessions.get(target, os.environ.get('HERDR_LIVE_SESSION', 'worker-session'))\n"
-            "    print(json.dumps({'result': {'agent': {'name': 'worker', 'agent_status': 'idle', 'agent_session': {'value': session}}}}))\n"
+            "    recovered = any(call[:2] == ['agent', 'send-keys'] for call in captured)\n"
+            "    blocked = os.environ.get('HERDR_FAIL_START_BLOCKED') == '1' and not recovered\n"
+            "    prompt_positions = [i for i, call in enumerate(captured) if call[:2] == ['agent', 'prompt']]\n"
+            "    get_after_prompt = 0\n"
+            "    if prompt_positions:\n"
+            "        get_after_prompt = sum(call[:2] == ['agent', 'get'] for call in captured[prompt_positions[-1] + 1:])\n"
+            "    delay = int(os.environ.get('HERDR_SESSION_DELAY_GETS', '0'))\n"
+            "    agent = {'name': 'worker', 'agent_status': 'blocked' if blocked else 'idle'}\n"
+            "    if not blocked and (not prompt_positions or get_after_prompt > delay):\n"
+            "        agent['agent_session'] = {'value': session}\n"
+            "    print(json.dumps({'result': {'agent': agent}}))\n"
             "elif args[:3] == ['pane', 'process-info', '--pane']:\n"
             "    target = args[3]\n"
             "    process_infos = json.loads(os.environ.get('HERDR_PROCESS_INFOS', '{}'))\n"
@@ -469,7 +491,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             normalize(roles),
         )
         self.assertIn(
-            "Do not investigate the target app to enrich the brief",
+            "Target-app implementation, precedent, and local-context discovery stays with the worker",
             normalize(dispatching),
         )
         self.assertIn("dispatching-work Task 3's brief boundary", normalize(shipping))
@@ -483,7 +505,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             normalize(contract_source),
         )
 
-    def test_target_app_research_dispatches_for_evidence_not_a_boolean(self) -> None:
+    def test_target_app_research_dispatches_for_explanatory_evidence(self) -> None:
         roles = (ROOT / "docs" / "roles.md").read_text()
         context = (ROOT / "CONTEXT.md").read_text()
         orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
@@ -516,7 +538,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             normalized = normalize(source)
             self.assertIn("always dispatches", normalized)
             self.assertIn("evidence references", normalized)
-            self.assertIn("not a yes-or-no answer", normalized)
+            self.assertIn("explanatory", normalized)
             self.assertNotIn("- **Solo:**", source)
 
     def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:
@@ -690,6 +712,81 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertNotIn(contract, developer_arg)
         self.assertNotIn("\n", developer_arg)
         self.assertNotIn("`", developer_arg)
+
+    def test_launcher_recovers_when_start_reports_a_live_blocked_agent(self) -> None:
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "blocked-codex-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_FAIL_START_BLOCKED": "1",
+                "HERDR_LIVE_SESSION": "recovered-codex-session",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertTrue(any(call[:2] == ["agent", "send-keys"] for call in calls))
+        self.assertTrue(any(call[:2] == ["agent", "wait"] for call in calls))
+        self.assertTrue(any(call[:2] == ["agent", "prompt"] for call in calls))
+
+    def test_launcher_preserves_a_genuine_start_failure_and_closes_pane(self) -> None:
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "failed-codex-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_FAIL_START": "1",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("agent_start_failed", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertIn(["pane", "close", "worker-pane"], calls)
+        self.assertFalse(any(call[:2] == ["agent", "prompt"] for call in calls))
+
+    def test_launcher_waits_for_codex_session_after_prompt(self) -> None:
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "delayed-session-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_SESSION_DELAY_GETS": "1",
+                "HERDR_LIVE_SESSION": "delayed-codex-session",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompt_index = next(
+            index for index, call in enumerate(calls) if call[:2] == ["agent", "prompt"]
+        )
+        gets_after_prompt = [
+            call for call in calls[prompt_index + 1 :] if call[:2] == ["agent", "get"]
+        ]
+        self.assertGreaterEqual(len(gets_after_prompt), 2)
 
     def test_launcher_applies_codex_profile_model_and_effort(self) -> None:
         instruction_path, _ = self.write_dispatch(
@@ -1612,6 +1709,45 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             },
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(status_path.read_text())["status"], "done")
+
+    def test_worker_status_waits_for_pending_instruction_confirmation(self) -> None:
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+        env = {
+            **os.environ,
+            "HOME": str(self.home),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HERDR_CAPTURE": str(capture),
+            "HERDR_PANE_ID": "worker-pane",
+            "HERDR_SESSIONS": json.dumps(
+                {"worker-pane": "worker-session", "main-pane": "main-session"}
+            ),
+        }
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(SCRIPTS / "report-task-status.py"),
+                "--instruction-path",
+                str(instruction_path),
+                "--status",
+                "done",
+                "--note",
+                "fast worker completed",
+            ],
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        time.sleep(0.2)
+        self.set_worker_endpoint(instruction_path)
+        stdout, stderr = process.communicate(timeout=5)
+
+        self.assertEqual(process.returncode, 0, stderr)
+        self.assertIn("wrote", stdout)
+        status_path = instruction_path.with_name("api--contract-codex.status.json")
         self.assertEqual(json.loads(status_path.read_text())["status"], "done")
 
     def test_stop_hook_blocks_a_dispatched_agent_without_a_status_report(self) -> None:

@@ -49,15 +49,12 @@ State the chosen shape and the reason in one line before doing anything else.
 
 Bounded investigation may use a confirmed lower-tier work route, such as Haiku
 or a lower-tier Codex model. Frame it around the current behavior, cause,
-mechanism, or impact to explain, and require evidence references; do not dispatch
-a bare yes-or-no existence check.
+mechanism, or impact to explain, and require evidence references.
 
-This call is made by task type never having a fixed answer — an audit or a piece of research is not automatically "stays solo" any more than a code change is automatically "always dispatch." Judge the actual item.
-
-**The material mistake here is reading a managed app inline or sending it to a
-plain subagent after target-app files become necessary.** Dispatch at that
-boundary so exactly one app's agent system loads in the worker. A lower-tier
-investigator is still accountable for an explanatory, evidence-backed result.
+Self-contained and external tasks may stay with a plain subagent. Any item that
+needs managed-app files dispatches at that boundary so exactly one app's agent
+system loads in the worker. Every investigation route remains accountable for
+an explanatory, evidence-backed result.
 
 **Verification:** the shape was decided here and stated out loud, with a reason;
 a single item was never turned into a batch plan; the user was not asked to pick
@@ -91,7 +88,10 @@ Confirm the resolved item list, each one's app, the chosen flow default, and the
 
 ## Task 5: Dispatch under a concurrency cap
 
-Default cap: 4 in-flight at once. The caller may set a different cap explicitly at invocation; if machine load looks like an issue mid-batch, lowering it for the rest of the batch is a judgment call to surface to the user, not something to change silently.
+Resolve the cap from the invocation or a documented project/provider policy.
+When neither supplies one, use 4 as this plugin's scheduling fallback rather
+than as a claim about provider capacity. Surface any runtime-contention-based
+reduction to the user.
 
 1. Compute in-flight count: every task whose plan status is `dispatched` and whose status file is not terminal (`done`/`failed`/`cancelled`) (`read-plan-status.py --in-flight`) — **not** `--not-done`, which also counts every still-`planned` task in the ready queue itself and overcounts in-flight by exactly that amount, silently starving the refill this whole task exists to do. This includes `awaiting-authorization`, `awaiting-user-input`, and `awaiting-main-agent` — their pane/worktree is still open, so they still hold a slot.
 2. Compute the ready set (`read-plan-status.py --ready`).
@@ -127,26 +127,6 @@ Once every task in the plan is terminal, report a summary: how many `done`, how 
 ## Branch: Status query, or closing out one dispatch
 
 Not new triage — "what's currently running", or "close out `<task>`" for a single dispatched instruction, is a passthrough to `dispatching-work`'s own List / Wrap-up branches (not this skill's Task 7, which is about reporting a *batch* this skill itself started). Invoke `dispatching-work` directly for the read or the close-out; don't reimplement the scan or the confirm-then-archive steps here.
-
-## Red Flags
-
-- "The user only gave one task, so this skill doesn't apply — go straight to the specialist skill" — no, one item still comes through here; Task 1 routes it to the matching specialist skill after triage. Triage is what this skill is for.
-- "Nothing matched a specialist, so run it through `shipping-task`/`inspecting-app` anyway" — no, Task 1: check first whether a better-fitting available skill already owns this item's actual domain (a tracker task, for instance) and hand off to it instead — the four specialists are the default for implementation/audit/research/diagnosis, not the only skills this triage can pick.
-- "The token after the trigger phrase doesn't match a skill name character-for-character, treat it as task text" — no, the slug branch resolves by judgment (name, abbreviation, description), not literal equality; only fall through when no available skill is a plausible match at all.
-- "This batch is too big for one turn, tell the user to run `/loop boss-say ...`" — no, Task 6: the main agent starts the loop itself.
-- "Ask the user whether they want a one-shot run or a loop" — no, Task 1: the main agent decides the shape and states it; the user overrides if they disagree.
-- "20 independent items, hand the whole ready wave to `dispatching-work`'s plan branch like normal" — no, that branch dispatches everything at once; the cap exists specifically to slice it.
-- "Ask each item whether it wants light or full flow, to be thorough" — no, Task 3: once for the whole batch, `forbidDirectCommit` items excepted.
-- "This item actually needs its own dependency graph, just add depends_on edges into the batch plan" — no, a batch item is never allowed to depend on another; pull it out and route it through the matching specialist skill instead.
-- "Finished this tick, call `ScheduleWakeup` to check again later" when this was a one-shot batch — no, `ScheduleWakeup` belongs to an actual `/loop` tick; a one-shot batch keeps the status watcher running within the same turn instead.
-- "A tick came back and the batch plan already exists, just start a fresh one to be safe" — no, always resume the existing `plan.json` for that batch slug.
-- "One item finished, wait for a few more before dispatching the next queued one" — no, Task 5: refill immediately, every time a slot frees.
-- "Report the batch done once most items finished" — no, Task 7: every task terminal, not most.
-- "All slots are stuck on authorization and nothing changed, mark this tick `noop: true` and stay quiet" — no, Task 5 step 8: any tick where every in-flight task is idle is always surfaced, `noop: false`, naming what's waiting on the user and what `peeking-work` found — not only once the batch is fully stalled at cap.
-- "Still idle, peek it again to be safe" on every repeated watcher event or `/loop` tick where nothing about the task actually changed — no, Task 5 step 8: peek once per stretch of idleness and repeat the prior finding for an unchanged state; re-peeking on every notification is an unbounded loop, not thoroughness.
-- "A task is `awaiting-main-agent`, report it and leave it alone like the other two checkpoints" — no, Task 5 step 6: this one this skill resolves itself, immediately, via `reply-to-worker.py` — it never sits in the idle set step 8 peeks.
-- "A task pushed its own feature branch, that's `awaiting-authorization`, report it and wait for the user to authorize" — no, Task 5 step 7: a feature-branch push needs no authorization; relay the FYI and move on, don't hold a slot for it or wait on the user.
-- "The token after the trigger phrase looks like a slug but doesn't match anything loaded, just quietly treat it as part of the task" — no, the resolve-failure branch: say so first, then fall through to Task 1.
 
 ## References
 

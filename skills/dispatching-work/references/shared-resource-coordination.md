@@ -6,9 +6,12 @@ Worktree isolation solves *file* collisions between tasks. It solves nothing abo
 
 **Every call below is one command — never hand-write a retry/wait loop in the dispatch instruction.** `wait` and `claim-port` already loop internally (bounded, with progress printed to stderr); the only place a raw bash loop would add anything is if the caller needed external visibility into each poll, which a single dispatched task's own private wait doesn't.
 
-## Ports — try a deterministic candidate first, always lock whatever you land on
+## Ports — coordinate an actually shared concurrent resource
 
-Every port a worktree's dev server actually binds to gets locked, no exceptions — the difference between the two port cases below is only how the candidate port is chosen and what happens on contention, not whether it gets locked. This is also what satisfies "record which port is assigned to which worker": the lock file for `port--<app>--<port-number>` **is** that record (see "Visibility" below), and locking even a freely-chosen port means two tasks that independently land on the same number are caught by the lock instead of racing at bind time.
+Only a resource shared across concurrent tasks is locked. The worker resolves
+the target app's actual resource configuration inside its own app context and
+claims a port when concurrent tasks could collide. The lock file for
+`port--<app>--<port-number>` records the resulting assignment.
 
 **Flexible (the app's dev-server port is configurable).** The dispatch instruction tells the agent to run this once, right before starting the dev server:
 
@@ -20,7 +23,10 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/claim-resource.py" claim-port \
 
 It derives a starting candidate from `--key` (`hashlib.sha256`, not the randomized `hash()` builtin — that's why this lives in the script rather than a one-off shell one-liner) within `--base`/`--range` (default `3000`/`500`), then acquires it, incrementing on contention up to `--max-attempts` (default 5, never unbounded) before giving up.
 
-**Set `--base`/`--range` deliberately, at instruction-assembly time — the defaults are not safe to leave unexamined.** The lock only prevents two *worktrees* from landing on the same port; it does nothing to keep the derived range from overlapping the app's own default dev-server port, its HMR/websocket port, or a sibling service's fixed port. Check what the target app actually uses before picking a range, and choose one that doesn't overlap. Prints the port it landed on in the `port` field of its JSON result — bind the dev server to that, not the app's default. Because the lock is checked *before* binding, this also catches two tasks landing on the identical candidate by hash coincidence, which a bare bind-and-catch-`EADDRINUSE` approach would miss.
+The worker selects `--base`/`--range` from app-local configuration when the
+defaults would overlap an established port band. The result's `port` field is
+the assigned value to bind. The lock catches cooperative contenders that land
+on the same candidate; the actual bind remains the final availability check.
 
 **`claim-port` never waits — exhausting `--max-attempts` is a hard failure, by design, not a queue.** A flexible port's whole point is that another number works just as well, so it always prefers moving on over waiting; if every candidate in the derived band is genuinely held, the band is too narrow for how many worktrees are actually running at once — widen `--range` or raise `--max-attempts`, don't add a wait here. Waiting only ever makes sense for the fixed case below, where there's no alternate number to try.
 
@@ -40,7 +46,11 @@ A shared, stateful database can't be isolated by a formula the way a port can. A
 
 `holder` is the dispatch instruction's filename stem, `<app>--<slug>`. Pass the exact `--requester-instruction-path` on every `acquire`/`wait`/`claim-port`; courtesy communication can then address either main agent through the same instruction-keyed transport without storing a raw endpoint.
 
-**This runs inside the agent's own task, not the main agent.** The main agent doesn't pre-acquire before dispatch or babysit the wait — it only decides which case applies (Task 4 of `dispatching-work`/`shipping-task`, when assembling the instruction) and writes the exact `--resource`/`--app`/`--key` values and the relevant command into the dispatch instruction. The agent claims right before it actually needs the resource (starting the dev server, running the migration) — never earlier, so a long implementation phase before that point never holds the lock uselessly against other main agents' unrelated work.
+The worker discovers the concrete resource identity and invokes this protocol
+inside its task, immediately before use. The coordinator carries forward only a
+shared-resource constraint already supplied by the user, a dependency report,
+or verified coordination state; app-local port and database discovery stays
+with the worker.
 
 **`--ttl-seconds` is a crash-recovery timeout, not a work-duration budget — set it well above the expected duration of the work it guards, deliberately, at instruction-assembly time.** It exists only so a lock survives a main agent/agent that crashes or gets killed without releasing; it is not a queueing fairness mechanism, and there is no renewal. A task still legitimately working when its TTL lapses gets its lock silently reclaimed by the next waiter — the main agent states a realistic number, not the `1800` default by reflex, when it knows this task's migration/verification normally runs longer.
 

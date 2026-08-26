@@ -31,22 +31,14 @@ project's confirmed route with an invented model choice.
 Frame the task around what current behavior, structure, mechanism, cause, or
 impact the worker must explain. Require evidence references such as file and
 line locations, tests, logs, commands, or generated artifacts. The deliverable
-is an evidence-backed explanation, not a yes-or-no answer to whether something
-exists. The worker decides whether to run an app-local research skill or global
+is an explanatory, evidence-backed account of the finding. The worker decides
+whether to run an app-local research skill or global
 `investigating`; the generated contract supplies instruction-keyed status and
 communication commands.
 
-Do not read target-app files or run a parallel investigation in the main-agent
-session. Integrate the worker's conclusion and evidence references when it
-returns.
+Target-app file access stays inside the worker. The main agent integrates the
+worker's conclusion and evidence references when it returns.
 
 **Verification:** the research ran inside the app's dispatched worker; its report
 explains the finding and carries evidence references; the main agent did not load
 the target app's files.
-
-## Red Flags
-
-- "I already know how this works, skip investigating" — no, tracing the actual current behavior is the point, not a recollection of it.
-- "work-on asked a clarifying question, I'll just pick the more likely app" — no, surface the question, don't guess.
-- "Ask whether X exists; yes or no is enough" — no, ask how the relevant current
-  behavior works and require the evidence that establishes the conclusion.
