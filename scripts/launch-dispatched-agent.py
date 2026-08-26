@@ -113,7 +113,14 @@ def launch(
             *provider_args,
         ]
     elif agent_kind == "codex":
-        provider_args = ["-c", f"developer_instructions={contract}", *provider_args]
+        provider_args = [
+            "-c",
+            (
+                "developer_instructions=Before any task action, read and follow "
+                f"the mandatory contract at {contract_path}."
+            ),
+            *provider_args,
+        ]
     else:
         raise ValueError(f"unsupported agent kind {agent_kind!r}")
 

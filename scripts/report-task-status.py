@@ -148,13 +148,23 @@ def notify_main_agent(
     if not pane_id:
         return False
 
-    send_instruction_message(
-        inst_path,
-        "main",
-        "status",
-        f"{status} — {note}",
-        references=references,
-    )
+    targets = ["main"]
+    if status in ("done", "failed") and payload.get("parent_instruction_path"):
+        targets.append("root-main")
+    errors: list[str] = []
+    for target in targets:
+        try:
+            send_instruction_message(
+                inst_path,
+                target,
+                "status",
+                f"{status} — {note}",
+                references=references,
+            )
+        except ValueError as exc:
+            errors.append(f"{target}: {exc}")
+    if errors:
+        raise ValueError("; ".join(errors))
     return True
 
 

@@ -17,8 +17,8 @@
   answered directly by the user in the dispatched agent's session. For a
   headless agent, the main agent relays without deciding for the user.
 - A Herdr-launched dispatched agent is independent after launch. The user and
-  agent own work-detail and implementation decisions; the main agent accepts
-  those decisions without a second approval or competing specification.
+  agent choose the specification, design, implementation, and verification
+  method; the main agent accepts those decisions.
 - Questions to the main agent are limited to integrated instructions, cross-task
   context, or cases where the dispatched agent has no direct user channel.
 - Main-to-worker messages carry explicit user direction, cross-task facts, or a
@@ -26,9 +26,9 @@
   decision, the main agent surfaces the conflict to the user instead of deciding.
 - Every status note is non-empty. Terminal notes state outcome and verification;
   checkpoint notes state the blocker and exact unblock needed.
-- Task-authoring guidance adds a concrete deliverable/proof only when not already
-  clear, and parallel tasks must have distinct deliverables before sharing a
-  ready wave.
+- Task-authoring guidance carries the user requirement, requested outcome, and
+  necessary integrated context. Parallel tasks have non-overlapping requirement
+  scopes before sharing a ready wave.
 - A live message body is one delta with at most two sentences. It omits identity,
   intent, correlation, repeated history, and detailed evidence already carried
   by the transport or a reference.
@@ -48,6 +48,19 @@
 - Herdr dispatch never creates or closes a tab. Receipts and confirmed
   instructions still record the shared tab id for navigation; wrap-up closes
   only the worker pane.
+- `dispatch-coworker.py` resolves and authenticates the current parent worker,
+  writes one child instruction, launches it through the existing adapter, and
+  confirms its receipt. The child instruction derives its parent endpoint,
+  root-coordinator endpoint, tab, and `repo_root`; callers cannot override them.
+- Coworker nesting is limited to one level. With no writable paths, its contract
+  is review-only. Each writable path must be relative, remain within
+  `repo_root`, and be explicitly named in the child contract.
+- Coworker terminal status notifies its authenticated parent endpoint first and
+  its authenticated root-coordinator endpoint second. Durable status remains
+  the recovery source if either notification fails.
+- Codex launcher arguments contain only a short developer instruction pointing
+  at the immutable contract path. The contract body is read from that file and
+  is never embedded in Herdr's target-shell argument payload.
 
 ## Compatibility and non-goals
 
@@ -60,6 +73,8 @@
   add references without changing existing concise calls.
 - Direct user conversation is not cross-session agent messaging and does not use
   the transport script.
+- Existing top-level dispatches remain unchanged. Coworker fields are optional,
+  and old instructions without them retain single-main notification behavior.
 - No character/token limit, mandatory file list, or duplicated lifecycle
   checklist is introduced. Sentence validation is deliberately narrow.
 
@@ -82,7 +97,8 @@ Source-contract tests keep skills concise and ensure the delta-only rule is
 stated once. Terminal integration tests cover successful `done` and `failed`
 Herdr notifications. Launcher integration tests assert main-pane lookup,
 same-tab pane split, receipt identity, and absence of tab creation. Run the
-focused and full unittest suites plus Python compilation.
+focused and full unittest suites plus Python compilation. A real Herdr 0.8.0
+probe must start Codex with the contract pointer and clean up its temporary pane.
 
 ## Human appropriateness
 
@@ -92,4 +108,5 @@ behavior while simplifying skill prompts.
 ## User confirmation
 
 Confirmed on 2026-08-26 in this conversation, including delta-only messages,
-independent Herdr workers, and terminal notification to the main agent.
+independent Herdr workers, terminal notification to the main agent, the
+worker-owned coworker mode, and worker-owned work definition.

@@ -131,3 +131,9 @@ the coordinator. Then call `wrap-up-task.py`; it
 archives the instruction and its contract, receipt, status, progress, and
 delivery artifacts, and synchronizes terminal Plan status. Never archive a
 non-terminal checkpoint or a task with a same-task continuation pending.
+
+## Worker-owned coworker
+
+An interactive dispatched worker that needs a human-facing second opinion uses
+`bringing-coworker`. Its facade derives identity and placement from the parent
+instruction; the top-level dispatch flow does not recreate those mechanics.

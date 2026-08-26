@@ -94,6 +94,9 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    target = args[3]\n"
             "    process_infos = json.loads(os.environ.get('HERDR_PROCESS_INFOS', '{}'))\n"
             "    print(json.dumps({'result': {'process_info': process_infos.get(target, {'pane_id': target, 'foreground_processes': []})}}))\n"
+            "elif args[:2] == ['agent', 'prompt'] and args[2] == os.environ.get('HERDR_FAIL_PROMPT_PANE'):\n"
+            "    print('prompt failed', file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
             "else:\n"
             "    print(json.dumps({'result': {'agent': {'name': 'worker', 'agent_status': 'idle'}}}))\n"
         )
@@ -109,6 +112,46 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         instruction["session_id"] = session
         instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
         return instruction
+
+    def write_coworker(
+        self,
+        parent_path: Path,
+        *,
+        slug: str = "coworker-review",
+        writable_paths: tuple[str, ...] = (),
+    ) -> subprocess.CompletedProcess[str]:
+        fake_bin, capture = self.install_fake_herdr()
+        args = [
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            slug,
+            "--task",
+            "Review the real interface with the user and report findings.",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(ROOT),
+            "--agent-kind",
+            "codex",
+            "--parent-instruction-path",
+            str(parent_path),
+        ]
+        for writable_path in writable_paths:
+            args.extend(["--writable-path", writable_path])
+        return self.run_script(
+            "dispatch-task.py",
+            *args,
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"worker-pane": "worker-session", "main-pane": "main-session"}
+                ),
+            },
+        )
 
     def test_write_generates_a_hashed_system_contract_before_launch(self) -> None:
         instruction_path, output = self.write_dispatch("claude")
@@ -272,17 +315,23 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("unsupported Straw Boss script", rejected.stderr)
 
-    def test_task_authoring_guidance_prioritizes_outcome_and_context(self) -> None:
+    def test_task_authoring_leaves_work_definition_to_worker_and_user(self) -> None:
         shipping = (ROOT / "skills" / "shipping-task" / "SKILL.md").read_text()
         plan_mechanics = (
             ROOT / "skills" / "dispatching-work" / "references" / "plan-mechanics.md"
         ).read_text()
 
         for source in (shipping, plan_mechanics):
-            self.assertIn("clear requested outcome", source)
-            self.assertIn("sufficient verified context", source)
-            self.assertIn("possible implementation", source)
-            self.assertIn("generic lifecycle prose", source)
+            normalized = " ".join(source.split())
+            self.assertIn("user requirement and requested outcome", normalized)
+            self.assertIn("necessary integrated context", normalized)
+            self.assertIn(
+                "specification, design, implementation, and verification method",
+                normalized,
+            )
+            self.assertIn("generic lifecycle prose", source.lower())
+            self.assertNotIn("possible implementation", source)
+            self.assertNotIn("concrete deliverable and proof", source)
 
         self.assertNotIn(
             "selected lifecycle/worktree, mutation gates, tracker boundary, checkpoints",
@@ -293,8 +342,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             plan_mechanics,
         )
 
-        self.assertIn("concrete deliverable", shipping)
-        self.assertIn("distinct deliverables", plan_mechanics)
+        self.assertIn("non-overlapping requirement scopes", plan_mechanics)
 
     def test_communication_skills_keep_user_routing_concise(self) -> None:
         peer = (ROOT / "skills" / "asking-peer-agents" / "SKILL.md").read_text()
@@ -314,13 +362,22 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         roles = (ROOT / "docs" / "roles.md").read_text()
         context = (ROOT / "CONTEXT.md").read_text()
         orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
+        dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
         boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
+        contract_source = (ROOT / "scripts" / "dispatch_state.py").read_text()
 
         for source in (roles, context, orchestrator):
             self.assertIn("own the loop, not the work", source.lower())
             self.assertNotIn("adjust an item's spec", source)
         self.assertIn("accept", roles.lower())
         self.assertIn("user and dispatched agent", roles)
+        for source in (roles, context, orchestrator, dispatching, boss_say, contract_source):
+            normalized = " ".join(source.split())
+            self.assertIn(
+                "specification, design, implementation, and verification method",
+                normalized,
+            )
+        self.assertIn("user requirement and integrated context", contract_source)
         self.assertNotIn('--reply "<the decision>"', boss_say)
 
     def test_herdr_dispatch_requires_main_agent_session_fingerprint(self) -> None:
@@ -398,6 +455,8 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
 
     def test_launcher_injects_codex_developer_instructions(self) -> None:
         instruction_path, _ = self.write_dispatch("codex")
+        instruction = json.loads(instruction_path.read_text())
+        contract = Path(str(instruction["contract_path"])).read_text()
         fake_bin, capture = self.install_fake_herdr()
         env = {
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
@@ -420,8 +479,201 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         start = next(call for call in calls if call[:2] == ["agent", "start"])
         config_index = start.index("-c")
-        self.assertTrue(start[config_index + 1].startswith("developer_instructions="))
-        self.assertIn("report-task-status.py", start[config_index + 1])
+        developer_arg = start[config_index + 1]
+        self.assertTrue(developer_arg.startswith("developer_instructions="))
+        self.assertIn(str(instruction["contract_path"]), developer_arg)
+        self.assertNotIn(contract, developer_arg)
+        self.assertNotIn("\n", developer_arg)
+        self.assertNotIn("`", developer_arg)
+
+    def test_worker_can_launch_one_review_only_coworker_in_its_worktree(self) -> None:
+        parent_path, _ = self.write_dispatch("claude", main_agent_kind="codex")
+        parent = self.set_worker_endpoint(parent_path)
+
+        result = self.write_coworker(parent_path)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        child_path = Path(json.loads(result.stdout)["instruction_path"])
+        child = json.loads(child_path.read_text())
+        contract = Path(str(child["contract_path"])).read_text()
+        self.assertEqual(child["parent_instruction_path"], str(parent_path.resolve()))
+        self.assertEqual(child["repo_root"], parent["repo_root"])
+        self.assertEqual(child["main_agent_herdr_pane_id"], "worker-pane")
+        self.assertEqual(child["main_agent_session_id"], "worker-session")
+        self.assertEqual(child["main_agent_kind"], "claude")
+        self.assertEqual(child["root_main_agent_herdr_pane_id"], "main-pane")
+        self.assertEqual(child["root_main_agent_session_id"], "main-session")
+        self.assertEqual(child["root_main_agent_kind"], "codex")
+        self.assertEqual(child["coworker_writable_paths"], [])
+        self.assertIn("review-only", contract)
+        self.assertIn("one direct coworker", contract)
+
+        second = self.write_coworker(parent_path, slug="coworker-second")
+        self.assertNotEqual(second.returncode, 0)
+        self.assertIn("already has coworker instruction", second.stderr)
+
+    def test_coworker_contract_names_normalized_writable_paths(self) -> None:
+        parent_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent_path)
+
+        result = self.write_coworker(
+            parent_path,
+            slug="coworker-writing",
+            writable_paths=("docs/review.md", "docs/review.md"),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        child_path = Path(json.loads(result.stdout)["instruction_path"])
+        child = json.loads(child_path.read_text())
+        contract = Path(str(child["contract_path"])).read_text()
+        self.assertEqual(child["coworker_writable_paths"], ["docs/review.md"])
+        self.assertIn("`docs/review.md`", contract)
+        self.assertNotIn("review-only", contract)
+
+    def test_coworker_rejects_an_escaping_writable_path_and_nested_parent(self) -> None:
+        parent_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent_path)
+
+        escaping = self.write_coworker(
+            parent_path, slug="coworker-escape", writable_paths=("../outside",)
+        )
+        self.assertNotEqual(escaping.returncode, 0)
+        self.assertIn("writable path", escaping.stderr)
+        self.assertFalse(
+            parent_path.with_name("api--coworker-escape.json").exists()
+        )
+
+        parent = json.loads(parent_path.read_text())
+        parent["parent_instruction_path"] = "/already/a/coworker.json"
+        parent_path.write_text(json.dumps(parent, indent=2) + "\n")
+        nested = self.write_coworker(parent_path, slug="coworker-nested")
+        self.assertNotEqual(nested.returncode, 0)
+        self.assertIn("cannot launch another coworker", nested.stderr)
+
+    def test_coworker_terminal_status_notifies_parent_and_root_coordinator(self) -> None:
+        parent_path, _ = self.write_dispatch("claude", main_agent_kind="codex")
+        self.set_worker_endpoint(parent_path)
+        written = self.write_coworker(parent_path)
+        self.assertEqual(written.returncode, 0, written.stderr)
+        child_path = Path(json.loads(written.stdout)["instruction_path"])
+        self.set_worker_endpoint(child_path, pane="coworker-pane", session="coworker-session")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(child_path),
+            "--status",
+            "done",
+            "--note",
+            "Review complete",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "coworker-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {
+                        "coworker-pane": "coworker-session",
+                        "worker-pane": "worker-session",
+                        "main-pane": "main-session",
+                    }
+                ),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [call for call in calls if call[:2] == ["agent", "prompt"]]
+        self.assertEqual([call[2] for call in prompts], ["worker-pane", "main-pane"])
+        self.assertIn("done — Review complete", prompts[0][3])
+        self.assertIn("done — Review complete", prompts[1][3])
+
+    def test_coworker_terminal_status_still_attempts_root_after_parent_failure(self) -> None:
+        parent_path, _ = self.write_dispatch("claude", main_agent_kind="codex")
+        self.set_worker_endpoint(parent_path)
+        written = self.write_coworker(parent_path)
+        self.assertEqual(written.returncode, 0, written.stderr)
+        child_path = Path(json.loads(written.stdout)["instruction_path"])
+        self.set_worker_endpoint(child_path, pane="coworker-pane", session="coworker-session")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(child_path),
+            "--status",
+            "failed",
+            "--note",
+            "Review failed",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "coworker-pane",
+                "HERDR_FAIL_PROMPT_PANE": "worker-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {
+                        "coworker-pane": "coworker-session",
+                        "worker-pane": "worker-session",
+                        "main-pane": "main-session",
+                    }
+                ),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [call for call in calls if call[:2] == ["agent", "prompt"]]
+        self.assertEqual([call[2] for call in prompts], ["worker-pane", "main-pane"])
+        status = json.loads(child_path.with_suffix(".status.json").read_text())
+        self.assertEqual(status["status"], "failed")
+
+    def test_coworker_facade_runs_write_launch_and_confirm(self) -> None:
+        parent_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent_path)
+        fake_bin, capture = self.install_fake_herdr()
+        result = self.run_script(
+            "dispatch-coworker.py",
+            "--parent-instruction-path",
+            str(parent_path),
+            "--slug",
+            "second-opinion",
+            "--task",
+            "Review the interface with the user.",
+            "--name",
+            "second-opinion",
+            "--agent-kind",
+            "codex",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_WORKER_PANE_ID": "coworker-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {
+                        "worker-pane": "worker-session",
+                        "coworker-pane": "coworker-session",
+                        "main-pane": "main-session",
+                    }
+                ),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["pane_id"], "coworker-pane")
+        self.assertEqual(output["tab_id"], "tab-1")
+        self.assertNotIn("session_id", output)
+        instruction = json.loads(Path(output["instruction_path"]).read_text())
+        self.assertEqual(instruction["status"], "in-progress")
+
+    def test_bringing_coworker_skill_stays_short_and_uses_the_facade(self) -> None:
+        skill = (ROOT / "skills" / "bringing-coworker" / "SKILL.md").read_text()
+
+        self.assertLessEqual(len(skill.splitlines()), 55)
+        self.assertIn("dispatch-coworker.py", skill)
+        self.assertIn("review-only", skill)
+        self.assertIn("user", skill.lower())
+        self.assertNotIn("herdr tab create", skill)
 
     def test_launcher_rejects_and_closes_a_worker_pane_in_another_tab(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")

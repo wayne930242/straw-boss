@@ -4,8 +4,10 @@
 
 Straw Boss must dispatch work with a clear requested outcome and enough verified
 context for the worker to make good decisions. The main agent owns the brief and
-the fixed lifecycle contract. The dispatched worker owns investigation, design,
-and execution within the target project's own instructions.
+the fixed lifecycle contract. The brief carries the user requirement, requested
+outcome, and necessary integrated context. The dispatched worker and user own
+specification, design, implementation, and verification within the target
+project's own instructions.
 
 ## In scope
 
@@ -29,10 +31,10 @@ and execution within the target project's own instructions.
 ## Scenarios
 
 1. A main agent dispatches a feature request. The task describes the outcome,
-   verified acceptance context, and relevant source references; the worker
-   chooses the implementation after inspecting the project.
-2. A main agent knows a possible implementation lead. It labels the lead as
-   context rather than turning it into a prohibition or fixed boundary.
+   necessary integrated context, and relevant source references; the worker and
+   user choose the work definition after inspecting the project.
+2. A main agent knows a verified cross-task fact. It supplies the fact and its
+   reference as integrated context.
 3. A task needs a genuine task-specific constraint. The brief states the
    constraint and why it materially affects the outcome.
 4. A worker needs user judgment, main-agent coordination, or authorization
@@ -45,8 +47,7 @@ and execution within the target project's own instructions.
 
 - Dispatch quality means clear instructions plus sufficient context, not more
   boundaries.
-- Prefer positive outcome language. Omit speculative implementation decisions,
-  prophylactic restrictions, and generic advice.
+- Prefer positive outcome language and concise integrated context.
 - Include a boundary only when it is verified, task-specific, and materially
   changes what the worker may deliver.
 - Existing lifecycle mechanics remain mandatory, but live in the generated

@@ -17,9 +17,10 @@ from pathlib import Path
 from typing import Any
 
 
-RUNTIME_LAUNCHER_PROTOCOL = 1
+RUNTIME_LAUNCHER_PROTOCOL = 2
 PLUGIN_ID = "straw-boss@straw-boss"
 ALLOWED_SCRIPTS = {
+    "dispatch-coworker.py",
     "report-progress.py",
     "report-task-status.py",
     "send-dispatch-message.py",

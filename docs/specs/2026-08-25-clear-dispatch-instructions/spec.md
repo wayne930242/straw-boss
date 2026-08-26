@@ -7,8 +7,8 @@
 - Relevant context includes confirmed acceptance criteria, the reason for the
   work, domain facts the main agent already knows, and exact source or artifact
   references that save rediscovery.
-- A possible implementation, suspected scope, or unresolved interpretation is
-  identified as a lead or question. It is not phrased as a restriction.
+- The worker and user choose specification, design, implementation, and
+  verification method in the dispatched session.
 - Generic workflow, reporting commands, provider routing, checkpoint mechanics,
   tracker policy, and defensive reminders are omitted from task prose when the
   generated contract or target-project instructions already supply them.

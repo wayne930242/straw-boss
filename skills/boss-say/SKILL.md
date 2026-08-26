@@ -7,7 +7,7 @@ description: The single entry point for handing any work to straw-boss — imple
 
 See `docs/roles.md` for the cast of characters and the authority framework the main agent acts under — not redefined here.
 
-**Everything comes through here — not just implementation.** The main agent decides dispatch shape and execution tier; once launched, the dispatched agent decides implementation with the user. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one — including right after the trigger phrase itself (see the branch below) — but they are not the front door.
+**Everything comes through here — not just implementation.** The main agent decides dispatch shape and execution tier; once launched, the dispatched agent and user choose specification, design, implementation, and verification method. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one — including right after the trigger phrase itself (see the branch below) — but they are not the front door.
 
 Three things this skill owns that nothing else does:
 

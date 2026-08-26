@@ -91,7 +91,10 @@ def _uses_managed_plugin_cache(root: Path) -> bool:
     return "/.claude/plugins/cache/" in normalized or "/.codex/plugins/cache/" in normalized
 
 
-def render_dispatch_contract(instruction_path: Path) -> str:
+def render_dispatch_contract(
+    instruction_path: Path,
+    coworker_context: dict[str, Any] | None = None,
+) -> str:
     origin_root = Path(__file__).resolve().parent.parent
     launcher = runtime_launcher_path()
 
@@ -112,14 +115,34 @@ def render_dispatch_contract(instruction_path: Path) -> str:
     progress = command("report-progress.py")
     status = command("report-task-status.py")
     message = command("send-dispatch-message.py")
+    coworker_rules = ""
+    if coworker_context is not None:
+        writable_paths = coworker_context.get("coworker_writable_paths", [])
+        if writable_paths:
+            rendered_paths = ", ".join(f"`{path}`" for path in writable_paths)
+            work_scope = (
+                "- Your writable scope is limited to these repo-relative paths: "
+                f"{rendered_paths}.\n"
+            )
+        else:
+            work_scope = "- This is review-only: inspect and report without modifying files.\n"
+        coworker_rules = f"""
+- You are one direct coworker of another dispatched worker and share its exact
+  worktree.
+{work_scope}- Return your result to the parent through the status command; the parent owns
+  integration and cleanup. Complete this task directly rather than coordinating
+  another coworker.
+"""
     return f"""# Straw Boss dispatched-agent contract
 
 This contract is mandatory for this dispatched session.
 
 - Your canonical instruction path is `{instruction_path}`.
 - In `herdr-pane`, you are an independent agent after launch. You and the user
-  own work-detail and implementation decisions; the main agent coordinates and
-  accepts those decisions without a second approval.
+  choose the specification, design, implementation, and verification method.
+  The main agent supplies the user requirement and integrated context and accepts
+  those decisions.
+{coworker_rules}
 - Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or
   agent names for cross-session communication.
 - Report progress with:

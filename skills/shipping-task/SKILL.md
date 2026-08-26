@@ -49,16 +49,19 @@ For everything **after** the worktree exists (or on the light flow, from the sta
 
 Build an outcome-oriented brief for `dispatching-work`:
 
-- Lead with the **clear requested outcome** and why it matters.
-- Give **sufficient verified context** for a worker entering the app cold: confirmed acceptance criteria, domain facts already established with the user, and exact source or cross-task artifact references that save rediscovery.
-- Name the **concrete deliverable and proof** when the outcome and acceptance criteria do not already make them clear.
-- Present a **possible implementation** or suspected scope as a lead to inspect, not a boundary. Let the worker read the target app and choose or revise the approach.
+- Carry forward the **user requirement and requested outcome** and why it matters.
+- Add only the **necessary integrated context**: verified cross-task facts, exact
+  artifact references, and material task-specific constraints.
+- The worker and user choose the **specification, design, implementation, and
+  verification method** in the dispatched session.
 - Include a constraint only when it is verified, task-specific, and materially changes the acceptable result. Prefer a positive statement with its reason over a preventive list of things not to do.
 - Omit **generic lifecycle prose**, reporting commands, provider routing, checkpoint mechanics, tracker policy, and defensive reminders already supplied by the generated contract, this skill, or the target app's own instructions.
 
 The generated contract supplies exact progress, message, checkpoint, and terminal-status mechanics for every provider. Pass the concise task brief, both provider kinds, and the validated main pane/session pair to `dispatch-task.py write`.
 
-**Verification:** the brief is understandable without the main agent's private context; every paragraph either clarifies the outcome, supplies verified context, or states a material task-specific constraint. Removing a generic warning or lifecycle reminder would not change what the worker is being asked to deliver because those mechanics come from the generated contract and target-project harness.
+**Verification:** the brief is understandable without the main agent's private
+context; every paragraph carries the user requirement, requested outcome,
+necessary integrated context, or a material task-specific constraint.
 
 ## Task 5: Authorize merge, relay push notifications, resume through to completion
 

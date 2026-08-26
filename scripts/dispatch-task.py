@@ -40,6 +40,7 @@ from dispatch_state import (
     sha256_text,
     straw_boss_root,
 )
+from dispatch_transport import resolve_endpoint, validate_current_sender
 
 
 def instruction_path(app: str, slug: str) -> Path:
@@ -75,6 +76,80 @@ def mark_plan_task(plan_slug: str, task_id: str, status: str) -> None:
     dump_json(plan_path(plan_slug), plan)
 
 
+def normalize_coworker_writable_paths(
+    repo_root: Path, writable_paths: list[str]
+) -> list[str]:
+    normalized: list[str] = []
+    for value in writable_paths:
+        candidate = Path(value)
+        if not value.strip() or candidate.is_absolute():
+            raise ValueError(f"coworker writable path must be repo-relative: {value!r}")
+        resolved = (repo_root / candidate).resolve()
+        if not resolved.is_relative_to(repo_root):
+            raise ValueError(f"coworker writable path escapes repo_root: {value!r}")
+        relative = resolved.relative_to(repo_root).as_posix()
+        if relative == ".":
+            raise ValueError("coworker writable path cannot be the entire repo_root")
+        if relative not in normalized:
+            normalized.append(relative)
+    return normalized
+
+
+def resolve_coworker_context(
+    parent_instruction_path: str,
+    repo_root: str,
+    writable_paths: list[str],
+) -> dict[str, Any]:
+    parent_path = Path(parent_instruction_path).resolve()
+    if not parent_path.is_file():
+        raise ValueError(f"no parent worker instruction at {parent_path}")
+    parent = load_json(parent_path)
+    if parent.get("status") != "in-progress":
+        raise ValueError("a coworker requires an in-progress parent worker")
+    if parent.get("mode") != "herdr-pane":
+        raise ValueError("a coworker requires an interactive herdr-pane parent")
+    if parent.get("parent_instruction_path"):
+        raise ValueError("a coworker cannot launch another coworker")
+
+    parent_root = Path(str(parent.get("repo_root", ""))).resolve()
+    requested_root = Path(repo_root).resolve()
+    if not parent_root.is_dir() or requested_root != parent_root:
+        raise ValueError("a coworker must use the parent worker's exact repo_root")
+
+    validate_current_sender(resolve_endpoint(parent, "worker"))
+    for path in (straw_boss_root() / "dispatch").glob("*.json"):
+        if path.resolve() == parent_path:
+            continue
+        try:
+            candidate = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if candidate.get("parent_instruction_path") == str(parent_path):
+            raise ValueError(
+                f"parent worker already has coworker instruction {path}; wrap it up first"
+            )
+
+    required_root_fields = (
+        "main_agent_herdr_pane_id",
+        "main_agent_session_id",
+        "main_agent_kind",
+    )
+    if any(not parent.get(field) for field in required_root_fields):
+        raise ValueError("parent instruction has no complete root-coordinator endpoint")
+    return {
+        "parent_instruction_path": str(parent_path),
+        "main_agent_herdr_pane_id": str(parent["herdr_pane_id"]),
+        "main_agent_session_id": str(parent["session_id"]),
+        "main_agent_kind": str(parent["agent_kind"]),
+        "root_main_agent_herdr_pane_id": str(parent["main_agent_herdr_pane_id"]),
+        "root_main_agent_session_id": str(parent["main_agent_session_id"]),
+        "root_main_agent_kind": str(parent["main_agent_kind"]),
+        "coworker_writable_paths": normalize_coworker_writable_paths(
+            parent_root, writable_paths
+        ),
+    }
+
+
 def write_instruction(
     app: str,
     slug: str,
@@ -90,6 +165,7 @@ def write_instruction(
     agent_effort: str | None,
     main_agent_pane_id: str | None,
     main_agent_session_id: str | None,
+    coworker_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     path = instruction_path(app, slug)
     if path.exists():
@@ -109,7 +185,7 @@ def write_instruction(
     install_runtime_launcher()
     session_id = str(uuid.uuid4())
     generated_contract_path = contract_path(path)
-    contract = render_dispatch_contract(path)
+    contract = render_dispatch_contract(path, coworker_context)
     contract_digest = sha256_text(contract)
     payload: dict[str, Any] = {
         "app": app,
@@ -134,6 +210,8 @@ def write_instruction(
     if plan_slug is not None:
         payload["plan_id"] = f"p-{plan_slug}"
         payload["task_id"] = task_id
+    if coworker_context is not None:
+        payload.update(coworker_context)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     generated_contract_path.write_text(contract)
@@ -175,8 +253,16 @@ def confirm_instruction(
                 "launch-dispatched-agent.py before confirming it"
             )
         receipt = load_json(receipt_path)
+        receipt_instruction_path = receipt.get("instruction_path")
+        if (
+            not isinstance(receipt_instruction_path, str)
+            or Path(receipt_instruction_path).resolve() != path.resolve()
+        ):
+            raise ValueError(
+                f"launch receipt instruction_path={receipt_instruction_path!r} "
+                f"does not match {str(path)!r}"
+            )
         expected_receipt = {
-            "instruction_path": str(path),
             "contract_sha256": payload.get("contract_sha256"),
             "agent_kind": payload.get("agent_kind"),
         }
@@ -244,7 +330,7 @@ def main() -> int:
     )
     write_p.add_argument(
         "--main-agent-kind",
-        required=True,
+        default=None,
         choices=["claude", "codex"],
         help="which agent CLI runs the dispatching main agent; notification routing depends on "
         "the sender/receiver pair and must not be inferred from --agent-kind",
@@ -269,6 +355,17 @@ def main() -> int:
         help="the dispatching main agent's live herdr agent_session.value; required with "
         "--main-agent-pane-id so transport can reject a reused or wrong coordinator pane",
     )
+    write_p.add_argument(
+        "--parent-instruction-path",
+        default=None,
+        help="current dispatched worker instruction; derives same-worktree coworker identity",
+    )
+    write_p.add_argument(
+        "--writable-path",
+        action="append",
+        default=[],
+        help="repo-relative coworker write scope; omit for review-only",
+    )
 
     confirm_p = sub.add_parser("confirm", help="mark the dispatch in-progress after it lands")
     confirm_p.add_argument("--app", required=True)
@@ -285,6 +382,26 @@ def main() -> int:
 
     try:
         if args.action == "write":
+            coworker_context = None
+            if args.parent_instruction_path is not None:
+                if args.mode != "herdr-pane" or args.plan is not None or args.batch is not None:
+                    raise ValueError(
+                        "a coworker is one standalone herdr-pane dispatch, not a Plan or batch"
+                    )
+                coworker_context = resolve_coworker_context(
+                    args.parent_instruction_path,
+                    args.repo_root,
+                    args.writable_path,
+                )
+                args.main_agent_kind = coworker_context["main_agent_kind"]
+                args.main_agent_pane_id = coworker_context[
+                    "main_agent_herdr_pane_id"
+                ]
+                args.main_agent_session_id = coworker_context[
+                    "main_agent_session_id"
+                ]
+            elif args.main_agent_kind is None:
+                raise ValueError("--main-agent-kind is required for a top-level dispatch")
             result = write_instruction(
                 app=args.app,
                 slug=args.slug,
@@ -300,6 +417,7 @@ def main() -> int:
                 agent_effort=args.agent_effort,
                 main_agent_pane_id=args.main_agent_pane_id,
                 main_agent_session_id=args.main_agent_session_id,
+                coworker_context=coworker_context,
             )
         else:
             result = confirm_instruction(

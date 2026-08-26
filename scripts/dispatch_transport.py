@@ -17,7 +17,7 @@ from dispatch_state import load_json
 
 
 SUBPROCESS_TIMEOUT_S = 30
-Target = Literal["main", "worker"]
+Target = Literal["main", "root-main", "worker"]
 WORKER_TO_MAIN_INTENTS = frozenset({"question", "inform", "status"})
 MAIN_TO_WORKER_INTENTS = frozenset({"inform", "redirect", "reply", "reply-retry", "control"})
 PEER_INTENTS = frozenset({"question", "answer"})
@@ -64,6 +64,10 @@ def resolve_endpoint(instruction: dict[str, Any], target: Target) -> Endpoint:
         pane_id = instruction.get("main_agent_herdr_pane_id")
         session_id = instruction.get("main_agent_session_id")
         agent_kind = instruction.get("main_agent_kind")
+    elif target == "root-main":
+        pane_id = instruction.get("root_main_agent_herdr_pane_id")
+        session_id = instruction.get("root_main_agent_session_id")
+        agent_kind = instruction.get("root_main_agent_kind")
     else:
         pane_id = instruction.get("herdr_pane_id")
         session_id = instruction.get("session_id")
@@ -303,7 +307,11 @@ def send_instruction_message(
         if intent == "question" and in_reply_to:
             raise ValueError("peer question cannot set --in-reply-to")
         source = resolve_endpoint(sender_instruction, "worker")
-    elif target == "main":
+    elif target in ("main", "root-main"):
+        if target == "root-main" and (
+            not instruction.get("parent_instruction_path") or intent != "status"
+        ):
+            raise ValueError("root-main accepts coworker status only")
         if intent not in WORKER_TO_MAIN_INTENTS:
             raise ValueError(f"worker-to-main intent {intent!r} is not allowed")
         source = resolve_endpoint(instruction, "worker")
@@ -343,9 +351,10 @@ def send_instruction_message(
                 f"[peer answer id={delivery_id} in-reply-to={in_reply_to} "
                 f"from={sender_label}{reference_suffix}] {message}"
             )
-    elif target == "main":
+    elif target in ("main", "root-main"):
+        sender_role = "coworker" if target == "root-main" else "dispatched-agent"
         envelope = (
-            f"[dispatched-agent {intent} from={_dispatch_label(path, instruction)}"
+            f"[{sender_role} {intent} from={_dispatch_label(path, instruction)}"
             f"{reference_suffix}] {message}"
         )
     else:
