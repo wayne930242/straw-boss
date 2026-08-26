@@ -22,6 +22,9 @@ Date: 2026-08-26
    fail immediately.
 4. Herdr 0.8.2 exposes `done` as a terminal agent state. Completion smoke waits
    use Herdr's default `idle`/`done`/`blocked` set.
+5. Codex does not set `CLAUDE_PLUGIN_ROOT`, so hook commands that required it
+   resolved to `/scripts/...` and exited 127. Both hooks now fall back to the
+   plugin working directory while retaining Claude Code's explicit root path.
 
 ## Live smoke evidence
 
@@ -39,5 +42,7 @@ Date: 2026-08-26
 
 - Launcher recovery, delayed-session, genuine-failure cleanup, and fast-worker
   confirmation tests pass.
-- `python3 -m unittest discover -s tests -p 'test_*.py'` — 79 tests passed.
+- Hook command tests pass with an unset `CLAUDE_PLUGIN_ROOT` from the plugin
+  directory and with an explicit root from another directory.
+- `python3 -m unittest discover -s tests -p 'test_*.py'` — 81 tests passed.
 - Both plugin manifests parse with `jq -e`; `git diff --check` passed.

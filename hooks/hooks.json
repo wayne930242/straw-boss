@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/orchestrator-priming.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT:-.}\"/scripts/orchestrator-priming.py"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/dispatched-agent-stop-guard.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT:-.}\"/scripts/dispatched-agent-stop-guard.py"
           }
         ]
       }

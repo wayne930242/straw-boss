@@ -1804,6 +1804,49 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             any("dispatched-agent-stop-guard.py" in command for command in commands)
         )
 
+    def test_hook_commands_run_from_plugin_root_without_claude_root(self) -> None:
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())
+        env = {**os.environ, "HOME": str(self.home)}
+        env.pop("CLAUDE_PLUGIN_ROOT", None)
+
+        for event_entries in hooks["hooks"].values():
+            for entry in event_entries:
+                for hook in entry["hooks"]:
+                    result = subprocess.run(
+                        hook["command"],
+                        shell=True,
+                        input="{}",
+                        cwd=ROOT,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_hook_commands_honor_claude_root_outside_plugin_directory(self) -> None:
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())
+        env = {
+            **os.environ,
+            "HOME": str(self.home),
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        }
+
+        for event_entries in hooks["hooks"].values():
+            for entry in event_entries:
+                for hook in entry["hooks"]:
+                    result = subprocess.run(
+                        hook["command"],
+                        shell=True,
+                        input="{}",
+                        cwd=self.home,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_session_start_repeats_the_matching_worker_contract_on_resume(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         instruction = json.loads(instruction_path.read_text())
