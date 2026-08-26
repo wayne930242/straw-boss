@@ -130,7 +130,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan
 1. Run `read-plan-status.py --plan <slug> --ready` to get the current ready wave.
 2. For every task in the wave: call `dispatch-task.py write --plan <slug> --task-id <task_id> ...` (per `dispatch-mechanics.md`), then dispatch — **all of them, not one at a time**. The script marks `plan.json`'s task `dispatched` as part of the same call, not a separate manual edit.
 3. Every full-flow task in the wave gets its worktree created first — see the worktree-ownership section below — before the `claude-p`/`herdr-pane` dispatch itself.
-4. The generated dispatch contract supplies the universal progress, communication, checkpoint, and terminal-report workflow. Each brief carries the **user requirement and requested outcome** plus only the **necessary integrated context**. The worker and user choose the **specification, design, implementation, and verification method**. Parallel tasks need non-overlapping requirement scopes; otherwise add a dependency instead of sharing a wave. Generic lifecycle prose stays out.
+4. The generated dispatch contract supplies the universal progress, communication, checkpoint, and terminal-report workflow. Author every brief within `dispatching-work` Task 3's brief boundary: carry the user requirement, requested outcome, necessary hints/constraints, and already-known coordination facts while leaving target-app context discovery to the worker. The worker and user choose the **specification, design, implementation, and verification method**. Parallel tasks need non-overlapping requirement scopes; otherwise add a dependency instead of sharing a wave. Generic lifecycle prose stays out.
 
 ## Monitoring Plan status (provider-neutral scheduling signal)
 

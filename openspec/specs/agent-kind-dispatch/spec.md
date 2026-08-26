@@ -81,3 +81,66 @@ Every dispatch instruction SHALL record which agent kind it actually ran under, 
 #### Scenario: Listing outstanding dispatches
 - **WHEN** the main agent lists outstanding dispatch instructions
 - **THEN** each instruction's recorded agent kind SHALL be available to distinguish it from a dispatch running under a different kind
+
+### Requirement: Work routes carry a complete provider setup
+Project setup SHALL let each work-type route select an agent kind, optional provider-native profile, optional model, optional reasoning effort, and, for Claude Code only, an optional native advisor model. The complete route SHALL be confirmed before it is recorded.
+
+#### Scenario: Claude programming route uses a native advisor
+- **WHEN** the user confirms a programming route with a Claude worker model and a Claude advisor model
+- **THEN** the route SHALL record both models as one Claude Code worker setup and SHALL NOT describe the advisor as a coworker or separate dispatch
+
+#### Scenario: Codex route declines an advisor
+- **WHEN** the user confirms a Codex work route
+- **THEN** setup SHALL make clear that Codex has no native advisor and SHALL NOT configure or emulate one
+
+### Requirement: Dispatch instruction records the resolved provider setup
+Every dispatch instruction SHALL record its resolved optional provider profile, model, effort, and Claude-only advisor model so execution and later reporting use the same confirmed setup.
+
+#### Scenario: Complete Claude route is dispatched
+- **WHEN** a Claude route resolves to a named agent profile, worker model, effort, and advisor model
+- **THEN** the instruction SHALL record all four values together with `agent_kind: claude`
+
+#### Scenario: Older instruction omits new fields
+- **WHEN** an existing instruction has no provider-profile or advisor-model field
+- **THEN** launch and status handling SHALL treat those fields as unset and preserve prior behavior
+
+### Requirement: Provider launch applies instruction-owned setup
+The provider launch adapter SHALL translate the recorded provider profile, model, effort, and supported advisor into the selected CLI's native arguments. Raw provider arguments SHALL be refused when they duplicate an option owned by the instruction.
+
+#### Scenario: Claude setup is launched
+- **WHEN** a Claude instruction records a provider profile, model, effort, and advisor model
+- **THEN** launch SHALL apply them as Claude Code `--agent`, `--model`, `--effort`, and `--advisor` arguments exactly once
+
+#### Scenario: Codex setup is launched
+- **WHEN** a Codex instruction records a provider profile, model, and effort
+- **THEN** launch SHALL apply them as Codex `--profile`, `--model`, and `model_reasoning_effort` configuration arguments exactly once
+
+#### Scenario: Codex advisor is requested
+- **WHEN** instruction creation or launch receives an advisor model for Codex
+- **THEN** the dispatch SHALL be refused visibly before starting a worker and SHALL NOT substitute a coworker, subagent, profile, or second dispatch
+
+### Requirement: Dispatch brief preserves worker-owned context discovery
+The main agent SHALL dispatch the user requirement, requested outcome, necessary hints and constraints, dependencies, exact supplied artifact references, and verified coordination facts it already knows. It SHALL NOT investigate the target app's implementation, precedent, or tests merely to enrich the brief; that context discovery belongs to the dispatched worker in its own harness.
+
+#### Scenario: Main agent has enough information to route a task
+- **WHEN** the target app, requested outcome, constraints, and dependencies are known
+- **THEN** the main agent SHALL dispatch without first researching target-app implementation context
+
+#### Scenario: A verified cross-task fact is already available
+- **WHEN** the main agent already knows a dependency result or shared-resource constraint relevant to the task
+- **THEN** it SHALL include that coordination fact in the brief without expanding it into a target-app investigation
+
+### Requirement: Target-app research is dispatched and evidence-bearing
+When coordination or integration requires problem investigation, audit, diagnosis, or current-state research inside a managed app, the main agent SHALL dispatch that work into the app instead of reading across the app root. A bounded investigation MAY use a user-confirmed lower-tier work route, but its question SHALL require an explanatory conclusion and evidence references rather than a yes-or-no existence answer.
+
+#### Scenario: Integration lacks a current-state fact
+- **WHEN** integration needs to understand a managed app's current behavior or problem
+- **THEN** the main agent SHALL dispatch an investigator rooted in that app and SHALL integrate the returned conclusion and evidence references without loading the app's files itself
+
+#### Scenario: Bounded investigation uses a lower-tier model
+- **WHEN** a confirmed work route assigns bounded research to Haiku or a lower-tier Codex model
+- **THEN** the dispatch SHALL use that route and SHALL still require the worker to explain the behavior, mechanism, cause, or impact with traceable evidence
+
+#### Scenario: Proposed research question is binary
+- **WHEN** a draft investigation asks only whether something exists or is true
+- **THEN** the dispatch brief SHALL instead ask for the relevant current behavior and the evidence that establishes the conclusion

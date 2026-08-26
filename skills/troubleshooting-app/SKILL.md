@@ -1,13 +1,17 @@
 ---
 name: troubleshooting-app
-description: Use when something is broken and the cause is unknown, scoped to one of the project's managed apps, e.g. "X is failing", "500 in production for <app>" — not for a known task with a clear fix already in mind (`boss-say`), a rule/convention audit (inspecting-app), or open-ended research into current behavior with no reported failure (investigating-app).
+description: Use when something is broken and the cause is unknown, scoped to one of the project's managed apps, e.g. "X is failing", "500 in production for app-name" — not for a known task with a clear fix already in mind (`boss-say`), a rule/convention audit (inspecting-app), or open-ended research into current behavior with no reported failure (investigating-app).
 ---
 
 ## Overview
 
 See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
 
-No worktree opened yet, no fix made yet — the cause is unknown, so there's nothing to branch for and nothing to patch. Diagnosis (Task 3) is read-only either way; whether it stays solo in this session or dispatches to a worker rooted in the app is `boss-say`'s execution-tier judgment. Once root cause is known, hand off to `boss-say` for the actual fix, which triages it and makes its own tier call.
+No worktree opened yet, no fix made yet — the cause is unknown, so there's
+nothing to branch for and nothing to patch. Managed-app diagnosis always
+dispatches to a worker rooted in that app so its code, logs, tests, and agent
+system do not load into the main agent's coordination context. Once root cause
+is known, hand off to `boss-say` for the actual fix.
 
 ## Task 1: Resolve the app
 
@@ -17,23 +21,41 @@ Invoke `work-on` now. Even for a live incident, you need the target app before d
 
 ## Task 2: App-code or infrastructure?
 
-Before debugging application code, rule out an infrastructure cause: deployment failure, orchestrator/job state, DB connectivity, config/secret drift. Symptoms like "works locally, fails in an environment", "worked yesterday, no code changed", or "500 with no recent deploy to this app" point at infrastructure, not code.
+Classify only from evidence the user already supplied; do not read app or
+infrastructure files from the main-agent session to enrich this classification.
+Symptoms like "works locally, fails in an environment", "worked yesterday, no
+code changed", or "500 with no recent deploy to this app" can point at
+infrastructure rather than code.
 
-- **Looks infra-level:** hand off to this project's infrastructure/ops skill or team if one exists; otherwise tell the user plainly that this looks infrastructure-level and stop — don't debug application code for a problem that isn't in the code.
-- **Looks app-level, or infra is ruled out:** continue to Task 3.
+- **Clearly infra-level from supplied evidence:** hand off to this project's
+  infrastructure/ops skill or team if one exists; otherwise report the boundary.
+- **App-level or uncertain:** continue to Task 3. The dispatched diagnosis can
+  distinguish an app cause from an external dependency using its actual evidence.
 
-**Verification:** you can state which side the evidence points to, and why, before choosing a diagnosis path.
+**Verification:** classification cites supplied evidence; uncertainty dispatches
+instead of prompting the main agent to inspect another project.
 
 ## Task 3: Diagnose
 
-Apply `boss-say`'s execution-tier judgment (its Task 1): does root-causing this need the app's own harness (its logs, tests, actual code loaded in a session rooted there), or can you reproduce, isolate, and trace it well enough from here?
+Send the diagnosis through `dispatching-work` as a worker rooted in the app's
+directory, diagnosis only. A bounded diagnosis may resolve to a confirmed
+lower-tier work route, but do not invent a model choice outside that route.
 
-- **Solo:** read-only, in this session — reproduce, isolate, trace to a root cause using the app's own code, logs, and tests.
-- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory, diagnosis only — the instruction states the task ends at a root cause, not a patch. The worker reports through `report-task-status.py --instruction-path <path> --status done --note "<root cause>"`, which writes before notifying the recorded main-agent herdr pane; a Claude worker uses `notifying-main-agent` only for routing or valid Claude-to-Claude fallback. It never invokes `boss-say` or dispatches anything itself.
+Frame the task around the failure mechanism and root cause to explain. Require
+reproduction observations and evidence references to logs, tests, commands,
+files, or artifacts. The deliverable is a falsifiable root-cause explanation,
+not a yes-or-no answer about whether one suspected cause exists. The worker
+reports through `report-task-status.py --instruction-path <path> --status done
+--note "<root cause>" --ref "<evidence>"`, which writes before notifying the
+recorded main-agent herdr pane. It never invokes `boss-say` or dispatches anything
+itself.
 
-Do not fix anything here — this task ends at "here's the root cause," not at a patch, on either tier.
+Do not read target-app files or reproduce the failure in the main-agent session.
+Do not fix anything here: this task ends at "here's the root cause," not a patch.
 
-**Verification:** you can state a specific root cause (not just a symptom) or that you've exhausted diagnosis and need to say so explicitly; a dispatched diagnosis never escalated to a fix on its own.
+**Verification:** the dispatched report states a specific root cause or an
+explicitly exhausted hypothesis set, includes evidence references, and never
+escalates to a fix on its own.
 
 ## Task 4: Hand off to the fix
 
@@ -48,3 +70,5 @@ Once root cause is known — from your own diagnosis, or a dispatched worker's c
 - "Small fix, I'll edit directly instead of handing it to `boss-say`" — no, every code change goes back through the main agent for dispatch.
 - "The fix is obviously one task, call `shipping-task` directly and skip `boss-say`" — no, dispatch triage is the main agent's, even when the answer is 'one task'.
 - "The dispatched diagnosis found root cause, have it call `boss-say`/`shipping-task` itself to save a round trip" — no, a worker only runs its shared completion-status command; deciding what happens with a root cause stays with the session that dispatched it.
+- "Ask whether the suspected cause exists" — no, ask the worker to explain the
+  failure mechanism and return evidence that supports or falsifies the hypothesis.

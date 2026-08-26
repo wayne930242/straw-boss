@@ -49,9 +49,11 @@ For everything **after** the worktree exists (or on the light flow, from the sta
 
 Build an outcome-oriented brief for `dispatching-work`:
 
+- Follow `dispatching-work` Task 3's brief boundary; target-app context discovery
+  belongs to the worker.
 - Carry forward the **user requirement and requested outcome** and why it matters.
-- Add only the **necessary integrated context**: verified cross-task facts, exact
-  artifact references, and material task-specific constraints.
+- Add only already-known coordination facts, exact artifact references supplied
+  by the workflow, and material task-specific constraints.
 - The worker and user choose the **specification, design, implementation, and
   verification method** in the dispatched session.
 - Include a constraint only when it is verified, task-specific, and materially changes the acceptable result. Prefer a positive statement with its reason over a preventive list of things not to do.
@@ -61,7 +63,7 @@ The generated contract supplies exact progress, message, checkpoint, and termina
 
 **Verification:** the brief is understandable without the main agent's private
 context; every paragraph carries the user requirement, requested outcome,
-necessary integrated context, or a material task-specific constraint.
+an already-known coordination fact, or a material task-specific constraint.
 
 ## Task 5: Authorize merge, relay push notifications, resume through to completion
 

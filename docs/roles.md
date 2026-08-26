@@ -8,8 +8,8 @@ This is the single execution-time definition of who decides what.
 The user is the actual "boss" in Straw Boss naming.
 
 **Main agent** — owns orchestration: pre-launch routing, dispatch mechanics,
-requirement assignment, integrated context, dependency scheduling, shared
-resources, status observation, and cleanup.
+requirement assignment, already-known coordination context, dependency
+scheduling, shared resources, status observation, and cleanup.
 
 **Dispatched agent** — an independent task owner once launched through Herdr. It
 works in the target app with that app's harness. The user and dispatched agent
@@ -31,10 +31,18 @@ for the coordinating session and "dispatched agent" for a launched task session.
 ## Authority boundary
 
 **Own the loop, not the work.** Before launch, the main agent chooses routing and
-dispatch mechanics and carries the user requirement, requested outcome, and
-necessary integrated context. After launch, the user and dispatched agent own
+dispatch mechanics and carries the user requirement, requested outcome,
+necessary hints, constraints, and verified coordination facts it already has.
+Target-app context discovery belongs to the dispatched agent; the main agent
+does not investigate the implementation to build a fuller brief. After launch,
+the user and dispatched agent own
 the task conversation and work definition; the main agent accepts their decision
 and keeps the orchestration loop moving.
+
+When coordination or integration needs target-app problem investigation or
+current-state research, the main agent dispatches that investigation instead of
+reading across managed app roots. It integrates the worker's evidence-backed
+conclusion and references, not a yes-or-no answer or a second inline inquiry.
 
 Main-to-worker operations serve that boundary:
 
@@ -43,8 +51,9 @@ Main-to-worker operations serve that boundary:
   dispatch/dependency instruction.
 - **Cancel** carries explicit user direction or closes an objectively invalid,
   duplicate, or unreachable dispatch.
-- **Resolve** supplies integrated context or the result of a coordinator-owned
-  action. Work-content decisions stay in the user–worker conversation.
+- **Resolve** supplies an already-known coordination fact or the result of a
+  coordinator-owned action. Work-content decisions stay in the user–worker
+  conversation.
 
 If orchestration facts conflict with a decision made by the user and dispatched
 agent, the main agent surfaces the conflict to the user and preserves the

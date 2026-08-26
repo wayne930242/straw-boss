@@ -3,13 +3,16 @@
 Operational state lives under `Path.home() / ".straw-boss"`; target project
 files are never modified to inject a dispatch workflow.
 
-## Resolve mode and agent kind
+## Resolve mode and work route
 
 - `capability.json` explicitly says `claude-p-only`: use headless mode.
 - Otherwise use `herdr-pane` when `HERDR_ENV=1`; use headless only when no live
   herdr session exists.
-- Resolve `agent_kind` independently: explicit per-dispatch override, then the
-  app's `apps.json.agentKind`, then `claude`.
+- Resolve the worker setup independently: explicit per-dispatch override, then
+  a matching work route in root `CLAUDE.md`, then the app's
+  `apps.json.agentKind`, then Claude with provider defaults. A work route can
+  select agent kind, provider profile, model, effort, and a Claude Code native
+  advisor. Codex has no native advisor; refuse that combination.
 
 Resolve `<app_dir>` from the app configuration; never assume `apps/<app>`.
 
@@ -23,7 +26,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --mode claude-p|herdr-pane --repo-root <repo_root> \
   [--batch <batch>] [--plan <plan> --task-id <task>] \
   --agent-kind claude|codex --main-agent-kind claude|codex \
-  [--agent-model <model>] [--agent-effort <effort>] \
+  [--agent-profile <profile>] [--agent-model <model>] \
+  [--agent-effort <effort>] [--advisor-model <claude-model>] \
   [--main-agent-pane-id <pane> --main-agent-session-id <session>]
 ```
 
@@ -67,7 +71,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/launch-dispatched-agent.py" \
   [--agent-arg <one provider argument>]...
 ```
 
-The launcher:
+The launcher derives provider arguments from the recorded worker setup, then:
 
 1. verifies the instruction is pending and the contract digest matches;
 2. injects Claude with `--append-system-prompt-file`, or Codex with
@@ -77,6 +81,12 @@ The launcher:
 5. submits the recorded task;
 6. reads `agent_session.value`, cross-checking Claude's preassigned id;
 7. writes `<app>--<slug>.launch.json` with the worker pane and shared tab.
+
+Provider profile/model/effort are instruction-owned. Claude receives
+`--agent`/`--model`/`--effort`; Codex receives
+`--profile`/`--model`/`model_reasoning_effort`. Claude additionally receives
+`--advisor <advisor_model>` when recorded. `--agent-arg` carries permission or
+other provider options; duplicating an instruction-owned option is refused.
 
 Confirm only after the launcher returns:
 
@@ -96,7 +106,9 @@ invocation that starts the process:
 
 ```bash
 claude -p --session-id <instruction session_id> \
-  --append-system-prompt-file <contract path> <permission flags> "<task>"
+  --append-system-prompt-file <contract path> <permission flags> \
+  [--agent <agent_profile>] [--model <agent_model>] \
+  [--effort <agent_effort>] [--advisor <advisor_model>] "<task>"
 ```
 
 or:
@@ -104,8 +116,13 @@ or:
 ```bash
 codex exec --json <permission flags> \
   -c developer_instructions="$(<contract path>)" \
-  [-m <model>] [-c model_reasoning_effort=<effort>] "<task>"
+  [--profile <agent_profile>] [-m <agent_model>] \
+  [-c model_reasoning_effort=<agent_effort>] "<task>"
 ```
+
+Codex has no native advisor. `dispatch-task.py write` refuses its
+`--advisor-model` before creating an instruction; never emulate one with a
+coworker or subagent.
 
 The process must write status through `report-task-status.py
 --instruction-path` before exit. With no live main-agent endpoint, durable

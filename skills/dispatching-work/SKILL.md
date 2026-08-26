@@ -15,7 +15,7 @@ specification, design, implementation, and verification method.
 
 **Self-compact.** The main agent can compact its own context anytime, on its own judgment, regardless of dispatch mode or whether a plan is involved — `herdr agent prompt "$HERDR_PANE_ID" "/compact [focus]"` types the command into its own pane, the same mechanism `cross-session-coordination.md`'s `/rename` self-injection already uses, no separate tool or permission needed. It never needs to ask the user first. Reach for it once anything the next turn would need is already persisted somewhere durable (`plan.json`, an instruction file) rather than sitting only in this turn's own reasoning — full mechanics, including why this never interrupts work in flight, in `cross-session-coordination.md`'s "Self-compact".
 
-## Task 1: Choose the dispatch mode and agent kind
+## Task 1: Choose the dispatch mode and work route
 
 Whether to dispatch into the app at all, versus handling something with a plain subagent, is `boss-say`'s call (its Task 1) — by the time this skill runs, that decision is already made. What's left here is transport, and it's an environment check, not a per-task judgment — never pick `claude-p` because a task "looks" self-contained or simple.
 
@@ -26,11 +26,11 @@ Whether to dispatch into the app at all, versus handling something with a plain 
 
 State the mode and why before doing anything else.
 
-**Resolve the agent kind independently of mode** — see `references/dispatch-mechanics.md`'s "Resolving the agent kind": the target app's `apps.json` `agentKind` (defaults to `claude`), overridden for this one dispatch only when the task's nature matches a rule in root `CLAUDE.md`'s agent-routing policy (written by `init`'s Task 3, if the project has one) or an explicit request. State the resolved kind and why, same as mode. The same resolution applies to standalone, batch, and Plan tasks; dependency tracking is provider-neutral.
+**Resolve the complete worker setup independently of mode** — see `references/dispatch-mechanics.md`'s "Resolving the work route." An explicit one-off setup wins, then a matching work route in root `CLAUDE.md`, then the target app's `apps.json.agentKind`, then Claude with provider defaults. Resolve agent kind, provider profile, model, effort, and the Claude Code native advisor together. State the resolved setup and why. Codex has no native advisor; refuse that combination instead of substituting a coworker. The same resolution applies to standalone, batch, and Plan tasks; dependency tracking is provider-neutral.
 
 **Resolve the main agent's own provider and reachability before writing the instruction.** Pass `--main-agent-kind` on every dispatch. For `herdr-pane`, read this session's live herdr record and pass both `$HERDR_PANE_ID` and its exact `agent_session.value` as `--main-agent-pane-id` and `--main-agent-session-id`. The shared transport requires both before sending anything.
 
-**Verification:** mode stated with a reason; `herdr-pane` used whenever `capability.json` doesn't say `claude-p-only` and `HERDR_ENV` is `1` this session; `claude-p` used only because of an explicit opt-out or a genuinely absent live herdr session, never because the task looked simple; agent kind resolved and stated independently of mode; before the first `herdr-pane` dispatch this session, the main agent's own addressability was checked, not assumed.
+**Verification:** mode stated with a reason; `herdr-pane` used whenever `capability.json` doesn't say `claude-p-only` and `HERDR_ENV` is `1` this session; `claude-p` used only because of an explicit opt-out or a genuinely absent live herdr session, never because the task looked simple; the complete worker setup was resolved and stated independently of mode; before the first `herdr-pane` dispatch this session, the main agent's own addressability was checked, not assumed.
 
 ## Task 2: Resolve batch membership
 
@@ -39,9 +39,25 @@ tracking. A standalone dispatch has none.
 
 ## Task 3: Write the instruction, before dispatching
 
+Build a concise brief from the user requirement, requested outcome, necessary
+hints, explicit constraints, dependencies, and verified coordination facts
+already available to the main agent. Do not investigate the target app to enrich
+the brief: the worker owns implementation, precedent, and local-context
+discovery in its own working directory and harness. Resolve only enough project
+structure to route the task and operate the dispatch machinery.
+
+For investigation, audit, or diagnosis, ask for the current behavior, mechanism,
+cause, or impact to be explained with evidence references. Do not reduce the
+brief to a yes-or-no existence question. A bounded fact-gathering task may use a
+confirmed lower-tier work route; route resolution still comes from Task 1, not
+an ad hoc model downgrade.
+
 Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates the session id and immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind, this session's provider, and the validated pane/session pair from Task 1. Never hand-write the JSON, contract, or UUID.
 
-**Verification:** instruction and hashed contract exist with `pending` status before any agent starts.
+**Verification:** every brief statement traces to the user request, a necessary
+hint/constraint, or already-known coordination state; no target-app investigation
+was performed to author it; instruction and hashed contract exist with `pending`
+status before any agent starts.
 
 ## Task 4: Dispatch
 

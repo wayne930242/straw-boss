@@ -7,7 +7,10 @@ description: Use when the user wants to understand how something currently works
 
 See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
 
-Resolve the app, decide the execution tier (`boss-say`'s Task 1 — a plain subagent running your own `investigating` skill, or a dispatched agent rooted in the app), then let the actual research run. This skill doesn't reimplement investigation methodology either way.
+Resolve the app, then dispatch the actual research into it. Managed-app
+current-state research always dispatches so the app's agent system loads only in
+the worker session, not the main agent's coordination context. This skill does
+not reimplement investigation methodology.
 
 ## Task 1: Resolve the app
 
@@ -18,18 +21,32 @@ Invoke `work-on` now. Do not proceed without the target app.
 
 **Verification:** the target app(s) are established before Task 2, or you've surfaced `work-on`'s clarifying question / out-of-scope result instead of proceeding.
 
-## Task 2: Decide the tier, then hand off
+## Task 2: Dispatch an evidence-bearing investigation
 
-Apply `boss-say`'s execution-tier judgment (its Task 1), per app: does this research need the app's own harness, or is your own global `investigating` skill, run right here, enough?
+Send each resolved app through `dispatching-work` as a worker rooted in that
+app's directory. A bounded investigation may resolve to a confirmed lower-tier
+work route, such as Haiku or a lower-tier Codex model; do not override the
+project's confirmed route with an invented model choice.
 
-- **Solo:** invoke your `investigating` skill directly in this session (once per resolved app if `work-on` named more than one), giving it the resolved app's directory as known context.
-- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory. The worker decides whether to run an app-local research skill or global `investigating`; the generated contract supplies instruction-keyed status and communication commands.
+Frame the task around what current behavior, structure, mechanism, cause, or
+impact the worker must explain. Require evidence references such as file and
+line locations, tests, logs, commands, or generated artifacts. The deliverable
+is an evidence-backed explanation, not a yes-or-no answer to whether something
+exists. The worker decides whether to run an app-local research skill or global
+`investigating`; the generated contract supplies instruction-keyed status and
+communication commands.
 
-Either way, do not run a parallel or simplified investigation yourself instead of handing off to the real methodology.
+Do not read target-app files or run a parallel investigation in the main-agent
+session. Integrate the worker's conclusion and evidence references when it
+returns.
 
-**Verification:** the research ran against the app's actual current code, not a summary of it; the tier was judged, not defaulted to "always solo" because this is a read.
+**Verification:** the research ran inside the app's dispatched worker; its report
+explains the finding and carries evidence references; the main agent did not load
+the target app's files.
 
 ## Red Flags
 
 - "I already know how this works, skip investigating" — no, tracing the actual current behavior is the point, not a recollection of it.
 - "work-on asked a clarifying question, I'll just pick the more likely app" — no, surface the question, don't guess.
+- "Ask whether X exists; yes or no is enough" — no, ask how the relevant current
+  behavior works and require the evidence that establishes the conclusion.

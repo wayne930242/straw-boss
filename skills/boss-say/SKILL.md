@@ -1,6 +1,6 @@
 ---
 name: boss-say
-description: The single entry point for handing any work to straw-boss — implementation, audit, research, diagnosis, or anything else this session already has an available skill for. Use whenever the user hands work over or asks for something to be looked into — one item, a handful, or a whole backlog — e.g. "boss say <...>", "work on this", "implement X in <app>", "audit this module", "how does X work here", "X is failing", "work through this backlog". This skill judges the scale and, per item, the execution tier (a plain subagent, or a dispatched agent rooted in the app) and picks the dispatch shape (one item via a specialist skill or a better-fitting available skill, a capped batch in this turn, or a self-paced `/loop` batch).
+description: The single entry point for handing any work to straw-boss — implementation, audit, research, diagnosis, or anything else this session already has an available skill for. Use whenever the user hands work over or asks for something to be looked into — one item, a handful, or a whole backlog — e.g. "boss say do this", "work on this", "implement X in app-name", "audit this module", "how does X work here", "X is failing", "work through this backlog". This skill judges the scale and, per item, the execution tier (a plain subagent, or a dispatched agent rooted in the app) and picks the dispatch shape (one item via a specialist skill or a better-fitting available skill, a capped batch in this turn, or a self-paced `/loop` batch).
 ---
 
 ## Overview
@@ -44,20 +44,32 @@ State the chosen shape and the reason in one line before doing anything else.
 
 **Then, per item, decide the execution tier — also the main agent's call, not the user's, and not a per-skill-type default:**
 
-- **Doesn't need the target app's own real working directory** — a self-contained question, a lookup, something a plain capable agent can just do without being rooted in the app's own directory → a plain subagent (this session's own `Agent` tool). No app-dir rooting, `dispatching-work` never invoked.
-- **Needs the app's real working directory** — real code changes, an audit against the app's real rule source, research into its actual current behavior, diagnosis using its own logs/tests → a dispatched agent via `dispatching-work`, which picks the transport itself (its own Task 1) and, independently, the agent kind (`dispatching-work`'s own agent-kind resolution — `claude` by default, which is also what makes the app's own skills/hooks/rules load; a differently-configured kind works from the task instruction and the app's own conventions instead, without that harness, per `docs/roles.md`).
+- **Doesn't need the target app's own real working directory** — a self-contained question or external lookup that does not read anything under a managed app root → a plain subagent (this session's own `Agent` tool). No app-dir rooting, `dispatching-work` never invoked.
+- **Needs the app's real working directory** — real code changes, an audit against the app's real rule source, research into its actual current behavior, diagnosis using its own logs/tests → a dispatched agent via `dispatching-work`, which picks the transport itself (its own Task 1) and resolves the complete work route. Any item that must read under a managed app root uses a dispatched agent; the main agent does not load that app's files and agent system into its coordination context.
+
+Bounded investigation may use a confirmed lower-tier work route, such as Haiku
+or a lower-tier Codex model. Frame it around the current behavior, cause,
+mechanism, or impact to explain, and require evidence references; do not dispatch
+a bare yes-or-no existence check.
 
 This call is made by task type never having a fixed answer — an audit or a piece of research is not automatically "stays solo" any more than a code change is automatically "always dispatch." Judge the actual item.
 
-**The only real mistake here is underestimating an item's complexity and going solo — in this session, without the app's own working directory — on something that actually needed a dispatched agent.** Second-guessing a call that turned out fine either way is not the point: dispatching something that turns out trivial, or keeping something solo that turns out to need more digging than expected, are not defects. Going solo on something that needed the app's own working directory is the one thing that costs something.
+**The material mistake here is reading a managed app inline or sending it to a
+plain subagent after target-app files become necessary.** Dispatch at that
+boundary so exactly one app's agent system loads in the worker. A lower-tier
+investigator is still accountable for an explanatory, evidence-backed result.
 
-**Verification:** the shape was decided here and stated out loud, with a reason; a single item was never turned into a batch plan; the user was not asked to pick the dispatch shape or the execution tier; the execution tier was judged per item, not defaulted from the item's type.
+**Verification:** the shape was decided here and stated out loud, with a reason;
+a single item was never turned into a batch plan; the user was not asked to pick
+the dispatch shape or execution tier; no main-agent or plain-subagent path reads
+inside a managed app root; every investigation asks for explanation plus
+evidence, not a binary answer.
 
 ## Task 2: Resolve each item's app
 
 Batch path only (a single request left for `shipping-task` in Task 1 — nothing to do here).
 
-For each item, extract a task description and, if the project has more than one app configured, resolve its target app via `work-on`'s Task 1 (its single-app fast path applies the same way here). Ask about a genuinely ambiguous item individually — don't interrogate every item just because a few are unclear.
+For each item, extract a task description and, if the project has more than one app configured, resolve its target app via `work-on`'s Task 1 (its single-app fast path applies the same way here). Follow `dispatching-work` Task 3's brief boundary: resolve the app and coordination shape, but leave implementation/context investigation to the worker. Ask about a genuinely ambiguous item individually — don't interrogate every item just because a few are unclear.
 
 **A batch item is never decomposed.** If resolving one item reveals it actually needs its own dependency graph (multiple phases, multiple apps for that one item), that item doesn't belong in this batch — pull it out per Task 1's mixed-input rule and route it through `shipping-task`.
 

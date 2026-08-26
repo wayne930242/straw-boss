@@ -6,10 +6,16 @@ description: Keep Straw Boss coordination moving while dispatched workers and us
 ## Own the loop, not the work
 
 See `docs/roles.md` for authority. Choose routing and dispatch mechanics, carry
-the user requirement and integrated context, watch status, schedule ready
+the user requirement and already-known coordination context, watch status, schedule ready
 dependencies, coordinate shared resources, and clean up terminal tasks. The
 worker and user choose the specification, design, implementation, and
 verification method.
+
+When integration needs target-app problem investigation or current-state
+research, the main agent dispatches that investigation instead of reading across
+managed app roots. Integrate the worker's explanatory conclusion and evidence
+references; do not answer the question by loading another app's files into this
+session.
 
 ## Communicate only coordination deltas
 
@@ -17,7 +23,7 @@ Send a worker only explicit user direction, a verified cross-task fact, or the
 result of a coordinator-owned action. Surface a conflict to the user and keep the
 worker's current direction intact until the user responds.
 
-Resolve `awaiting-main-agent` with integrated context or an action result. A
+Resolve `awaiting-main-agent` with an already-known coordination fact or an action result. A
 work-content judgment belongs in the worker's direct conversation with the user.
 
 `done` and `failed` are completion events, not approval checkpoints. Receive the

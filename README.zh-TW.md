@@ -63,17 +63,17 @@ $straw-boss:init
 
 | Skill | 說明 |
 |-------|-------------|
-| `init` | 問要管哪些 app、寫設定、同步 root `CLAUDE.md`、詢問是否要設定額外的 agent kind 與其派工政策、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
+| `init` | 問要管哪些 app、寫設定、同步 root `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
 | `boss-say` | **所有事情的入口。**判斷規模、逐項判斷要單獨做還是派工，交給對應的專責 skill 或自己的批次機制 |
 | `work-on` | 把請求對應到某個 app，處理 legacy redirect |
-| `dispatching-work` | 內部派工機制——選派工方式（herdr 可用就用 `herdr-pane`，不可用才退回 `claude-p`）跟 agent kind（預設 `claude`，或設定過的其他 kind）、寫指令、實際派工、列出/收尾既有派工 |
+| `dispatching-work` | 內部派工機制——選派工方式並解析完整 work route（provider/profile/model/effort，加上僅 Claude 支援的原生 advisor）、寫指令、實際派工、列出/收尾既有派工 |
 | `shipping-task` | 決定 git 生命週期（worktree → develop → MR → merge → archive，或直接 commit）、派工、commit 和推送自己的 feature branch 都自由，merge 前（以及推到該分支以外的任何 push 前）才找你授權 |
 | `peeking-work` | 唯讀看一個派工現在在做什麼，不加入、不打斷 |
 | `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
 | `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——一份 `CLAUDE.md`、一個 guard hook，加一份即時抓取官方文件寫成的 skill 撰寫規範 |
-| `inspecting-app` | 對應出 app，跑你自己的規則稽核 skill——單獨做或派工 |
-| `investigating-app` | 對應出 app，跑你自己的研究 skill——單獨做或派工 |
-| `troubleshooting-app` | 診斷故障——app 程式碼還是基礎設施，單獨做或派工——再把修正交回 `boss-say` |
+| `inspecting-app` | 派進 app 做附證據的規則稽核；範圍明確時可用已確認的較低階 route |
+| `investigating-app` | 派進 app 研究現況，帶回附證據的解釋，不只回答是或否 |
+| `troubleshooting-app` | 派進 app 做附證據的診斷，確認根因後再把修正交回 `boss-say` |
 
 ## 怎麼用
 
@@ -85,7 +85,7 @@ boss-say 對照規則稽核 payments 模組
 boss-say 把 docs/backlog.md 做掉
 ```
 
-剩下 `boss-say` 決定：單獨做還是派工、單一任務還是批次、要不要開 `/loop`。它會講它選了什麼，你不同意就喊停。
+剩下 `boss-say` 決定：不需讀 managed app 才能單獨做，否則派工；再判斷單一任務或批次、要不要開 `/loop`。它會講它選了什麼，你不同意可直接覆寫。
 
 想自己點名某個專責 skill 也行：
 
@@ -102,7 +102,7 @@ boss-say 把 docs/backlog.md 做掉
 
 app、路由、legacy redirect、跨 app 協調——全在 `init` 寫的 `.claude/straw-boss/apps.json`。Schema：[skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md)。root `CLAUDE.md` 也會同步一份精簡摘要，因為每個 app session 都會繼承到 monorepo 的 root `CLAUDE.md`。
 
-app 也可以設定預設用非 `claude` 的 agent kind（`agentKind`）。把特定「類型的工作」派給它、順便建議 model/effort，則是另一個獨立的專案層級政策，由 `init` 寫成 root `CLAUDE.md` 的文字說明，而不是塞進 per-app 的設定欄位。
+app 也可以設定預設用非 `claude` 的 agent kind（`agentKind`）。完整 work route（provider profile、model、effort，以及可選的 Claude Code 原生 advisor）則是另一個專案層級政策，由 `init` 寫成 root `CLAUDE.md` 的文字說明，而不是塞進 per-app 設定。Codex route 不支援 advisor。
 
 ## 授權條款
 

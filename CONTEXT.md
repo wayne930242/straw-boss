@@ -5,10 +5,17 @@ Canonical actor names and authority live in `docs/roles.md`.
 ## Working model
 
 **Own the loop, not the work.** The main agent selects dispatch mechanics,
-schedules dependencies, supplies the user requirement and necessary integrated
-context, observes status, and cleans up. A Herdr-launched session is an
+schedules dependencies, supplies the user requirement, necessary hints, and
+already-known coordination facts, observes status, and cleans up. The worker
+discovers target-app implementation context itself. A Herdr-launched session is an
 independent agent: it and the user decide the specification, design,
 implementation, and verification method. The main agent accepts those decisions.
+
+When coordination or integration needs target-app investigation or current-state
+research, the main agent dispatches that investigation instead of reading across
+managed app roots. The worker returns an explanatory conclusion with evidence
+references; a confirmed lower-tier work route is appropriate for bounded fact
+gathering.
 
 Main-to-worker communication carries explicit user direction, verified
 cross-task facts, or coordinator-owned action results. A conflict returns to the
@@ -26,3 +33,22 @@ notify both parent and root coordinator on `done` or `failed`.
 
 In identifiers, "boss" means the user. Prose uses **main agent**, **dispatched
 agent**, and **subagent** for the three agent roles.
+
+## Language
+
+**Work route**:
+A project policy mapping a kind of task to one resolved worker setup.
+_Avoid_: agent-kind rule
+
+**Agent kind**:
+The CLI provider that executes a dispatch, currently Claude or Codex.
+_Avoid_: model, role, agent type
+
+**Provider profile**:
+A provider-native named preset selected at launch, such as Claude `--agent` or
+Codex `--profile`.
+_Avoid_: agent type, worker role
+
+**Advisor**:
+Claude Code's native second-model server tool attached to one worker session.
+_Avoid_: coworker, subagent, Codex advisor

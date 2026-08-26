@@ -140,8 +140,9 @@ This contract is mandatory for this dispatched session.
 - Your canonical instruction path is `{instruction_path}`.
 - In `herdr-pane`, you are an independent agent after launch. You and the user
   choose the specification, design, implementation, and verification method.
-  The main agent supplies the user requirement and integrated context and accepts
-  those decisions.
+  The main agent supplies the user requirement, necessary hints, and known
+  coordination facts and accepts those decisions. Investigate the target app's
+  implementation and precedent yourself in this working directory.
 {coworker_rules}
 - Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or
   agent names for cross-session communication.

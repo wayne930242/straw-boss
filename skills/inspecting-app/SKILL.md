@@ -7,7 +7,10 @@ description: Use when the user wants to check or audit something against existin
 
 See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
 
-Resolve the app, decide the execution tier (`boss-say`'s Task 1 — a plain subagent running your own `inspecting` skill, or a dispatched agent rooted in the app), then let the actual audit run. This skill doesn't reimplement audit methodology either way.
+Resolve the app, then dispatch the actual audit into it. A managed-app audit
+always dispatches so the app's rules and agent system load only in the worker
+session, not the main agent's coordination context. This skill does not
+reimplement audit methodology.
 
 ## Task 1: Resolve the app
 
@@ -18,18 +21,31 @@ Invoke `work-on` now. Do not proceed without the target app.
 
 **Verification:** the target app(s) are established before Task 2, or you've surfaced `work-on`'s clarifying question / out-of-scope result instead of proceeding.
 
-## Task 2: Decide the tier, then hand off
+## Task 2: Dispatch an evidence-bearing audit
 
-Apply `boss-say`'s execution-tier judgment (its Task 1), per app: does this audit need the app's own harness (its real `.claude/rules/`/`CLAUDE.md`, and possibly its own local audit skill), or is your own global `inspecting` skill, run right here, enough?
+Send each resolved app through `dispatching-work` as a worker rooted in that
+app's directory. A bounded audit may resolve to a confirmed lower-tier work
+route, but do not invent a model choice outside the configured route.
 
-- **Solo:** invoke your `inspecting` skill directly in this session (once per resolved app if `work-on` named more than one), giving it the resolved app's directory as known context — it reads that app's actual rules itself to build its check plan; there's no condensed digest to hand it.
-- **Dispatch:** send it through `dispatching-work` as a worker rooted in the app's directory. The worker decides whether to run the app's local audit skill or global `inspecting`; the generated contract supplies instruction-keyed status and communication commands.
+Frame the audit around which rules apply, how the target behaves against them,
+and what consequence follows. Require evidence references to the exact rule
+source and observed implementation, test, log, or artifact. The deliverable is
+an evidence-backed assessment, not a yes-or-no answer about compliance. The
+worker decides whether to run the app's local audit skill or global `inspecting`;
+the generated contract supplies instruction-keyed status and communication
+commands.
 
-Either way, do not run a parallel or simplified audit yourself instead of handing off to the real methodology.
+Do not read target-app rules or files or run a parallel audit in the main-agent
+session. Integrate the worker's assessment and evidence references when it
+returns.
 
-**Verification:** the audit ran against the app's real rule source, not a summary of it; the tier was judged, not defaulted to "always solo" because this is a read.
+**Verification:** the audit ran inside the app's dispatched worker against its
+real rule sources; its report explains the assessment and carries evidence
+references; the main agent did not load the target app's files.
 
 ## Red Flags
 
 - "I'll just review it myself inline instead of invoking inspecting" — no, that's a different, less thorough process than what this skill exists to trigger.
 - "work-on asked a clarifying question, I'll just pick the more likely app" — no, surface the question, don't guess.
+- "Ask whether it complies and return yes or no" — no, require the applicable
+  rule, observed behavior, consequence, and evidence.

@@ -5,7 +5,7 @@ description: One-time (or occasional) setup for straw-boss in a project. Use whe
 
 ## Overview
 
-Three independent one-time decisions, all persisted so no other skill has to ask again: which apps this project manages (project-level, checked into git, shared with the team), whether any dispatched work should route to an agent kind other than `claude` and what its model/effort should be (project-level, written into root `CLAUDE.md`), and whether `herdr-pane` dispatch is available on this machine (per-user, per-machine, lives under the user's home directory). A project can be re-`init`'d to change any one of these without touching the other two.
+Three independent one-time decisions, all persisted so no other skill has to ask again: which apps this project manages (project-level, checked into git, shared with the team), which work routes should select each provider profile/model/effort and optional Claude Code native advisor (project-level, written into root `CLAUDE.md`), and whether `herdr-pane` dispatch is available on this machine (per-user, per-machine, lives under the user's home directory). A project can be re-`init`'d to change any one of these without touching the other two.
 
 ## Task 1: Check for an existing apps config
 
@@ -41,19 +41,23 @@ Write the result to `<repo-root>/.claude/straw-boss/apps.json` (same repo-root r
 
 **Verification:** every app in the written config has a `name`, `dir`, and at least one `match` phrase; every optional field present was either grounded in a concrete signal the investigation found and confirmed by the user, or something the user volunteered beyond what the investigation could see — never a blind guess and never invented without confirmation.
 
-## Task 3: Offer additional agent kinds and their routing policy
+## Task 3: Configure work routes
 
-Ask once, project-wide — not per app — whether to enable one or more agent kinds beyond `claude` for dispatched work (e.g. `codex`). This is independent of Task 2's per-app `agentKind` field: that field is a mechanical fallback for an app whose team always uses a given CLI; this task is about routing specific *kinds of work* to a non-default agent kind, recorded as policy the main agent reads at dispatch time.
+Ask once, project-wide — not per app — whether to configure work routes for dispatched work. A work route maps a description such as "documentation" or "programming" to one complete worker setup. This is independent of Task 2's per-app `agentKind`: that field remains the mechanical provider fallback when no route matches.
 
-- **Declines:** nothing to record, move on to Task 4.
-- **Enables:** for each agent kind the user wants — a second, and a third if they want it, not capped at one:
-  1. Ask what kind of work should route to it (e.g. "deep debugging and adversarial review", "mechanical extraction and formatting").
-  2. Recommend a model and reasoning-effort for that work. Ground the recommendation in whatever local preference already exists before proposing anything — check that agent CLI's own config (e.g. `~/.codex/config.toml`'s `model`/`model_reasoning_effort`), any relevant installed plugin skill's own routing rule (e.g. `codex:codex-cli-runtime`), and the user's personal root `CLAUDE.md` if it already documents a preference for that agent kind. Only fall back to a fresh web search for current provider-recommended defaults when none of those give a clear answer for the work type described. Present the recommendation and get an explicit confirmation or override — never record an unconfirmed guess.
-  3. Ask whether to configure another agent kind the same way, looping until the user is done.
+If root `CLAUDE.md` already has a `<!-- straw-boss:agent-routing:start/end -->` section, show its current routes and ask whether to keep, edit, remove, or add routes. Preserve a kept route without re-asking each field.
 
-Write every confirmed (agent kind, kind of work, model, effort) as a new prose section in root `CLAUDE.md` — not into `apps.json` — since it's read as project-wide policy by every session working in this repo, the same way a personal `CLAUDE.md` might keep its own model-routing table for the same purpose. Use the same marker convention as Task 10's managed-apps section (a dedicated `<!-- straw-boss:agent-routing:start/end -->` pair) so a later `init` run can find and update it without duplicating or clobbering the rest of the file.
+For every new or edited route:
 
-**Verification:** the question was asked once for the whole project, not per app; every enabled agent kind's recommendation was grounded in an existing local preference before falling back to a web search, and was confirmed or overridden by the user before being recorded; more than one additional agent kind was allowed, not capped at a single toggle; the result was written into root `CLAUDE.md` between its own markers, never into `apps.json`.
+1. Get the work description used for matching.
+2. Get the agent kind (`claude` or `codex`) and optional provider profile — Claude's named `--agent` preset or Codex's named `--profile` configuration.
+3. Recommend model and reasoning effort. Check that provider's local config, relevant installed routing guidance, and the user's personal root `CLAUDE.md` before proposing values. Use current official guidance only when local evidence gives no clear preference. For bounded investigation, audit, or diagnosis routes, offer a lower-tier model such as Haiku or a lower-tier Codex model when it remains capable of returning an explanatory result with evidence; never trade away the evidence requirement for a binary answer.
+4. For a Claude route only, ask whether to use a Claude Code native advisor and, if so, recommend its model. Sonnet with Opus is one documented pairing; availability and accepted pairings still depend on the installed Claude Code account/provider. Codex has no native advisor, so a Codex route records `advisor: none` without offering a coworker or subagent as a substitute.
+5. Present the whole route and get explicit confirmation or correction before recording it. Then offer another route.
+
+Write confirmed routes as canonical prose between the routing markers, one line per route: `<work description> → worker: kind=<kind>, profile=<profile|default>, model=<model|default>, effort=<effort|default>; advisor=<model|none>`. Keep this policy in root `CLAUDE.md`, not `apps.json`.
+
+**Verification:** every written route was confirmed as a whole; recommendations used local preferences before current official guidance; only Claude routes can name an advisor; existing routes were presented before replacement; multiple work routes can reuse the same agent kind with different profiles/models; the result lives only between root `CLAUDE.md`'s agent-routing markers.
 
 ## Task 4: Check for an existing capability record
 

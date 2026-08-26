@@ -41,9 +41,16 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         )
 
     def write_dispatch(
-        self, agent_kind: str = "claude", main_agent_kind: str = "codex"
+        self,
+        agent_kind: str = "claude",
+        main_agent_kind: str = "codex",
+        *,
+        agent_profile: str | None = None,
+        agent_model: str | None = None,
+        agent_effort: str | None = None,
+        advisor_model: str | None = None,
     ) -> tuple[Path, dict[str, object]]:
-        result = self.run_script(
+        args = [
             "dispatch-task.py",
             "write",
             "--app",
@@ -64,7 +71,16 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "main-pane",
             "--main-agent-session-id",
             "main-session",
-        )
+        ]
+        for flag, value in (
+            ("--agent-profile", agent_profile),
+            ("--agent-model", agent_model),
+            ("--agent-effort", agent_effort),
+            ("--advisor-model", advisor_model),
+        ):
+            if value is not None:
+                args.extend([flag, value])
+        result = self.run_script(*args)
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(result.stdout)
         return Path(output["instruction_path"]), output
@@ -175,6 +191,54 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("--ref", contract)
         self.assertIn("independent agent", contract)
         self.assertIn("notifies the main agent through Herdr", contract)
+
+    def test_write_records_provider_profile_and_claude_advisor(self) -> None:
+        instruction_path, _ = self.write_dispatch(
+            "claude",
+            agent_profile="worker",
+            agent_model="sonnet",
+            agent_effort="high",
+            advisor_model="opus",
+        )
+
+        instruction = json.loads(instruction_path.read_text())
+        self.assertEqual(instruction["agent_profile"], "worker")
+        self.assertEqual(instruction["agent_model"], "sonnet")
+        self.assertEqual(instruction["agent_effort"], "high")
+        self.assertEqual(instruction["advisor_model"], "opus")
+
+    def test_write_rejects_codex_advisor_before_creating_instruction(self) -> None:
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            "codex-advisor",
+            "--task",
+            "Write the documentation.",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(ROOT),
+            "--agent-kind",
+            "codex",
+            "--advisor-model",
+            "opus",
+            "--main-agent-kind",
+            "claude",
+            "--main-agent-pane-id",
+            "main-pane",
+            "--main-agent-session-id",
+            "main-session",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("advisor", result.stderr.lower())
+        self.assertIn("claude", result.stderr.lower())
+        self.assertFalse(
+            (self.home / ".straw-boss" / "dispatch" / "api--codex-advisor.json").exists()
+        )
 
     def test_contract_uses_version_neutral_launcher_that_follows_plugin_updates(
         self,
@@ -323,8 +387,9 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
 
         for source in (shipping, plan_mechanics):
             normalized = " ".join(source.split())
-            self.assertIn("user requirement and requested outcome", normalized)
-            self.assertIn("necessary integrated context", normalized)
+            self.assertIn("user requirement", normalized)
+            self.assertIn("requested outcome", normalized)
+            self.assertIn("already-known coordination facts", normalized)
             self.assertIn(
                 "specification, design, implementation, and verification method",
                 normalized,
@@ -358,6 +423,102 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("at most two sentences", peer)
         self.assertIn("at most two sentences", notify)
 
+    def test_dispatch_profile_guidance_is_route_centric_and_provider_accurate(
+        self,
+    ) -> None:
+        init = (ROOT / "skills" / "init" / "SKILL.md").read_text()
+        dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
+        mechanics = (
+            ROOT
+            / "skills"
+            / "dispatching-work"
+            / "references"
+            / "dispatch-mechanics.md"
+        ).read_text()
+        coworker = (ROOT / "skills" / "bringing-coworker" / "SKILL.md").read_text()
+
+        for source in (init, dispatching, mechanics):
+            normalized = " ".join(source.lower().split())
+            self.assertIn("work route", normalized)
+            self.assertIn("provider profile", normalized)
+        self.assertIn("Claude Code native advisor", init)
+        self.assertIn("Claude Code native advisor", dispatching)
+        self.assertIn("--agent-profile", mechanics)
+        self.assertIn("--advisor-model", mechanics)
+        self.assertIn("--advisor <advisor_model>", mechanics)
+        self.assertIn("Codex has no native advisor", mechanics)
+        self.assertNotIn("advisor", coworker.lower())
+
+    def test_dispatch_brief_leaves_target_context_discovery_to_worker(self) -> None:
+        roles = (ROOT / "docs" / "roles.md").read_text()
+        dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
+        shipping = (ROOT / "skills" / "shipping-task" / "SKILL.md").read_text()
+        boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
+        plan_mechanics = (
+            ROOT
+            / "skills"
+            / "dispatching-work"
+            / "references"
+            / "plan-mechanics.md"
+        ).read_text()
+        contract_source = (ROOT / "scripts" / "dispatch_state.py").read_text()
+
+        normalize = lambda source: " ".join(source.replace("`", "").split())
+        self.assertIn(
+            "Target-app context discovery belongs to the dispatched agent",
+            normalize(roles),
+        )
+        self.assertIn(
+            "Do not investigate the target app to enrich the brief",
+            normalize(dispatching),
+        )
+        self.assertIn("dispatching-work Task 3's brief boundary", normalize(shipping))
+        self.assertIn("dispatching-work Task 3's brief boundary", normalize(boss_say))
+        self.assertIn(
+            "dispatching-work Task 3's brief boundary",
+            normalize(plan_mechanics),
+        )
+        self.assertIn(
+            "Investigate the target app's implementation and precedent yourself",
+            normalize(contract_source),
+        )
+
+    def test_target_app_research_dispatches_for_evidence_not_a_boolean(self) -> None:
+        roles = (ROOT / "docs" / "roles.md").read_text()
+        context = (ROOT / "CONTEXT.md").read_text()
+        orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
+        boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
+        work_on = (ROOT / "skills" / "work-on" / "SKILL.md").read_text()
+        investigating = (ROOT / "skills" / "investigating-app" / "SKILL.md").read_text()
+        inspecting = (ROOT / "skills" / "inspecting-app" / "SKILL.md").read_text()
+        troubleshooting = (ROOT / "skills" / "troubleshooting-app" / "SKILL.md").read_text()
+
+        normalize = lambda source: " ".join(source.replace("`", "").split())
+        for source in (roles, context, orchestrator):
+            self.assertIn(
+                "dispatches that investigation instead of reading across managed app roots",
+                normalize(source),
+            )
+        self.assertIn(
+            "Any item that must read under a managed app root uses a dispatched agent",
+            normalize(boss_say),
+        )
+        self.assertIn(
+            "Bounded investigation may use a confirmed lower-tier work route",
+            normalize(boss_say),
+        )
+        self.assertIn(
+            "managed-app files makes dispatch mandatory",
+            normalize(work_on),
+        )
+        self.assertNotIn("Reads/explanations that don't change code — answer inline", work_on)
+        for source in (investigating, inspecting, troubleshooting):
+            normalized = normalize(source)
+            self.assertIn("always dispatches", normalized)
+            self.assertIn("evidence references", normalized)
+            self.assertIn("not a yes-or-no answer", normalized)
+            self.assertNotIn("- **Solo:**", source)
+
     def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:
         roles = (ROOT / "docs" / "roles.md").read_text()
         context = (ROOT / "CONTEXT.md").read_text()
@@ -377,7 +538,15 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
                 "specification, design, implementation, and verification method",
                 normalized,
             )
-        self.assertIn("user requirement and integrated context", contract_source)
+        normalized_contract = " ".join(contract_source.split())
+        self.assertIn(
+            "supplies the user requirement, necessary hints, and known coordination facts",
+            normalized_contract,
+        )
+        self.assertIn(
+            "Investigate the target app's implementation and precedent yourself",
+            normalized_contract,
+        )
         self.assertNotIn('--reply "<the decision>"', boss_say)
 
     def test_herdr_dispatch_requires_main_agent_session_fingerprint(self) -> None:
@@ -453,6 +622,42 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertEqual(receipt["pane_id"], "worker-pane")
         self.assertEqual(receipt["tab_id"], "tab-1")
 
+    def test_launcher_applies_claude_profile_model_effort_and_advisor(self) -> None:
+        instruction_path, _ = self.write_dispatch(
+            "claude",
+            agent_profile="worker",
+            agent_model="sonnet",
+            agent_effort="high",
+            advisor_model="opus",
+        )
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "profiled-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        for flag, value in (
+            ("--agent", "worker"),
+            ("--model", "sonnet"),
+            ("--effort", "high"),
+            ("--advisor", "opus"),
+        ):
+            self.assertEqual(start.count(flag), 1)
+            self.assertEqual(start[start.index(flag) + 1], value)
+
     def test_launcher_injects_codex_developer_instructions(self) -> None:
         instruction_path, _ = self.write_dispatch("codex")
         instruction = json.loads(instruction_path.read_text())
@@ -485,6 +690,90 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertNotIn(contract, developer_arg)
         self.assertNotIn("\n", developer_arg)
         self.assertNotIn("`", developer_arg)
+
+    def test_launcher_applies_codex_profile_model_and_effort(self) -> None:
+        instruction_path, _ = self.write_dispatch(
+            "codex",
+            agent_profile="docs",
+            agent_model="gpt-5.6-sol",
+            agent_effort="high",
+        )
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "codex-docs",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": "codex-live-session",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        self.assertEqual(start.count("--profile"), 1)
+        self.assertEqual(start[start.index("--profile") + 1], "docs")
+        self.assertEqual(start.count("--model"), 1)
+        self.assertEqual(start[start.index("--model") + 1], "gpt-5.6-sol")
+        effort = "model_reasoning_effort=high"
+        self.assertEqual(start.count(effort), 1)
+        self.assertNotIn("--advisor", start)
+
+    def test_launcher_accepts_older_instruction_without_profile_or_advisor(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude", agent_model="sonnet")
+        instruction = json.loads(instruction_path.read_text())
+        instruction.pop("agent_profile")
+        instruction.pop("advisor_model")
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "older-instruction",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        self.assertNotIn("--agent", start)
+        self.assertNotIn("--advisor", start)
+
+    def test_launcher_rejects_raw_override_of_instruction_owned_model(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude", agent_model="sonnet")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "duplicate-model",
+            "--agent-arg=--model",
+            "--agent-arg=opus",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--model", result.stderr)
+        if capture.exists():
+            calls = [json.loads(line) for line in capture.read_text().splitlines()]
+            self.assertFalse(any(call[:2] == ["pane", "split"] for call in calls))
 
     def test_worker_can_launch_one_review_only_coworker_in_its_worktree(self) -> None:
         parent_path, _ = self.write_dispatch("claude", main_agent_kind="codex")

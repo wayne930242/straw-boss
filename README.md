@@ -63,17 +63,17 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 
 | Skill | Description |
 |-------|-------------|
-| `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, offer additional agent kinds and their routing policy, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
+| `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, configure work routes with provider profile/model/effort and an optional Claude advisor, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
 | `boss-say` | **The entry point for everything.** Judges scale, judges solo-vs-dispatch per item, hands off to the matching specialist skill or its own batch mechanics |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |
-| `dispatching-work` | Internal dispatch machinery — picks the transport (`herdr-pane` when available, `claude-p` as the fallback) and the agent kind (`claude` by default, or another configured kind), writes the instruction, dispatches, lists/wraps up existing dispatches |
+| `dispatching-work` | Internal dispatch machinery — picks the transport and resolves a work route (provider/profile/model/effort, plus Claude-only native advisor), writes the instruction, dispatches, lists/wraps up existing dispatches |
 | `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit and push its own feature branch freely, get authorization before every merge (and any push outside that branch) |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `create-great-harness` | Bootstrap a minimal agent system for an app that has none — a short `CLAUDE.md`, one guard hook, and one live-fetched skill-authoring rule |
-| `inspecting-app` | Resolve the app, run your own rules-audit skill — solo or dispatched |
-| `investigating-app` | Resolve the app, run your own research skill — solo or dispatched |
-| `troubleshooting-app` | Diagnose a failure — app code or infrastructure, solo or dispatched — then hand the fix back to `boss-say` |
+| `inspecting-app` | Dispatch an evidence-bearing rules audit into the app; bounded audits may use a confirmed lower-tier route |
+| `investigating-app` | Dispatch current-state research into the app and return an explanation with evidence, not a binary answer |
+| `troubleshooting-app` | Dispatch evidence-bearing app diagnosis, then hand the fix back to `boss-say` once root cause is known |
 
 ## Usage
 
@@ -85,7 +85,9 @@ boss-say audit the payments module against our rules
 boss-say work through docs/backlog.md
 ```
 
-`boss-say` decides the rest — solo or dispatched, one task or a batch, `/loop` or not. It states what it picked; you override in one sentence if you disagree.
+`boss-say` decides the rest — solo only when no managed-app files are needed,
+otherwise dispatched; one task or a batch; `/loop` or not. It states what it
+picked, and you can override it in one sentence.
 
 Every specialist skill is also callable by name:
 
@@ -102,7 +104,7 @@ A status question or closing out a dispatch also goes through `boss-say`.
 
 Everything project-specific lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). A terse summary also syncs into your root `CLAUDE.md`, since every nested app session inherits it.
 
-An app can also default to a non-`claude` agent kind (`agentKind`). Routing a specific *kind of work* to it — with a recommended model/effort — is a separate, project-wide policy `init` can write into root `CLAUDE.md` as prose, not a per-app config field.
+An app can also default to a non-`claude` agent kind (`agentKind`). Complete work routes — provider profile, model, effort, and optional Claude Code native advisor — are a separate project-wide policy `init` writes into root `CLAUDE.md` as prose. Codex routes do not support advisor.
 
 ## License
 

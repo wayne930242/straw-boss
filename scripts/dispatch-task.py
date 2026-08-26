@@ -161,8 +161,10 @@ def write_instruction(
     task_id: str | None,
     agent_kind: str,
     main_agent_kind: str,
+    agent_profile: str | None,
     agent_model: str | None,
     agent_effort: str | None,
+    advisor_model: str | None,
     main_agent_pane_id: str | None,
     main_agent_session_id: str | None,
     coworker_context: dict[str, Any] | None = None,
@@ -178,6 +180,11 @@ def write_instruction(
         raise ValueError("--main-agent-pane-id is required for herdr-pane mode")
     if mode == "herdr-pane" and not main_agent_session_id:
         raise ValueError("--main-agent-session-id is required for herdr-pane mode")
+    if advisor_model is not None and agent_kind != "claude":
+        raise ValueError(
+            f"--advisor-model is supported only for Claude Code; agent kind {agent_kind!r} "
+            "has no native advisor"
+        )
     if plan_slug is not None:
         assert task_id is not None
         check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
@@ -195,8 +202,10 @@ def write_instruction(
         "session_id": session_id,
         "agent_kind": agent_kind,
         "main_agent_kind": main_agent_kind,
+        "agent_profile": agent_profile,
         "agent_model": agent_model,
         "agent_effort": agent_effort,
+        "advisor_model": advisor_model,
         "herdr_pane_id": None,
         "herdr_tab_id": None,
         "main_agent_herdr_pane_id": main_agent_pane_id,
@@ -314,7 +323,7 @@ def main() -> int:
     write_p.add_argument(
         "--task",
         required=True,
-        help="outcome-oriented task brief with verified task-specific context",
+        help="user requirement, requested outcome, necessary hints, and known coordination facts",
     )
     write_p.add_argument("--mode", required=True, choices=["claude-p", "herdr-pane"])
     write_p.add_argument("--repo-root", required=True)
@@ -336,12 +345,22 @@ def main() -> int:
         "the sender/receiver pair and must not be inferred from --agent-kind",
     )
     write_p.add_argument(
+        "--agent-profile",
+        default=None,
+        help="provider-native named profile: Claude --agent or Codex --profile",
+    )
+    write_p.add_argument(
         "--agent-model", default=None, help="model override to record, if the caller chose one for this dispatch"
     )
     write_p.add_argument(
         "--agent-effort",
         default=None,
         help="reasoning-effort override to record, if the caller chose one for this dispatch",
+    )
+    write_p.add_argument(
+        "--advisor-model",
+        default=None,
+        help="Claude Code native advisor model for this session; unsupported by Codex",
     )
     write_p.add_argument(
         "--main-agent-pane-id",
@@ -413,8 +432,10 @@ def main() -> int:
                 task_id=args.task_id,
                 agent_kind=args.agent_kind,
                 main_agent_kind=args.main_agent_kind,
+                agent_profile=args.agent_profile,
                 agent_model=args.agent_model,
                 agent_effort=args.agent_effort,
+                advisor_model=args.advisor_model,
                 main_agent_pane_id=args.main_agent_pane_id,
                 main_agent_session_id=args.main_agent_session_id,
                 coworker_context=coworker_context,

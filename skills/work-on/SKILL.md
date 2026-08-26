@@ -51,15 +51,26 @@ Invoke `grilling` (or this project's equivalent decomposition-confirmation skill
 
 ## Task 5: Hand off
 
-This task's job ends at naming the resolved app(s) (and, if Task 4 ran, the plan) — it does not call `dispatching-work` itself and does not decide whether to dispatch. That call — a plain subagent versus a dispatched agent rooted in the app — is `boss-say`'s execution-tier triage (its Task 1), made per item regardless of whether the work is implementation, audit, research, or diagnosis; it is never fixed by this skill or by which caller invoked it. The caller (the specialist skill that invoked this, after applying `boss-say`'s tier call) assembles the actual task description(s) and invokes `dispatching-work` if the tier call landed on dispatch — with the plan when Task 4 produced one, or a single instruction otherwise. The dispatched instruction carries the user's intent and tells the agent to follow the target app's own development route after entering it; Straw Boss does not select or run that route itself.
+This task's job ends at naming the resolved app(s) (and, if Task 4 ran, the
+plan); it does not call `dispatching-work` itself. Needing managed-app files makes
+dispatch mandatory, whether the work is implementation, audit, research, or
+diagnosis. A plain subagent remains valid only for self-contained or external
+work that reads no managed app. The caller assembles the actual task description
+and invokes `dispatching-work` with the plan when Task 4 produced one, or a
+single instruction otherwise. The dispatched instruction carries the user's
+intent and tells the agent to follow the target app's own development route
+after entering it; Straw Boss does not select or run that route itself.
 
-**Verification:** this task ends with the resolved app(s) (and plan, if any) named and control returned to the caller, not with `dispatching-work` already invoked here and not with a dispatch-or-not decision made here.
+**Verification:** this task ends with the resolved app(s) (and plan, if any)
+named and control returned to the caller, not with target-app files read or
+`dispatching-work` already invoked here.
 
 ## Out of scope
 
 - Apps not listed in `.claude/straw-boss/apps.json` — no dispatch target exists; say so. Only reachable with more than one app configured — see Task 1's single-app fast path (a missing `apps.json` in a single-app-looking repo is not this case; see Task 1's no-config handling).
 - Infrastructure work outside any managed app's directory — no per-app agent system there.
-- Reads/explanations that don't change code — answer inline.
+- Self-contained or external reads that need no managed-app files — no app
+  dispatch target is required.
 
 ## Red Flags
 
