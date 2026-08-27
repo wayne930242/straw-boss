@@ -107,6 +107,21 @@ def live_agent(pane_id: str) -> dict[str, object]:
     return agent
 
 
+def live_agent_terminal_id(pane_id: str, agent_kind: str) -> str:
+    agent = live_agent(pane_id)
+    if agent.get("pane_id") != pane_id:
+        raise ValueError(f"launched agent did not report pane {pane_id!r}")
+    if agent.get("agent") != agent_kind:
+        raise ValueError(
+            f"launched agent in pane {pane_id!r} reported kind {agent.get('agent')!r}, "
+            f"expected {agent_kind!r}"
+        )
+    terminal_id = agent.get("terminal_id")
+    if not isinstance(terminal_id, str) or not terminal_id:
+        raise ValueError(f"launched agent in pane {pane_id!r} did not expose terminal_id")
+    return terminal_id
+
+
 def wait_for_agent_session(
     pane_id: str,
     *,
@@ -298,12 +313,15 @@ def launch(
             )
 
         run_herdr(["agent", "prompt", pane_id, str(instruction["task"])])
-        session_id = wait_for_agent_session(pane_id)
-        if agent_kind == "claude" and session_id != instruction.get("session_id"):
-            raise ValueError(
-                f"launched Claude session {session_id!r} does not match preassigned session "
-                f"{instruction.get('session_id')!r}"
-            )
+        terminal_id = live_agent_terminal_id(pane_id, agent_kind)
+        session_id: str | None = None
+        if agent_kind == "claude":
+            session_id = wait_for_agent_session(pane_id)
+            if session_id != instruction.get("session_id"):
+                raise ValueError(
+                    f"launched Claude session {session_id!r} does not match preassigned session "
+                    f"{instruction.get('session_id')!r}"
+                )
     except ValueError as exc:
         try:
             run_herdr(["pane", "close", pane_id])
@@ -318,7 +336,8 @@ def launch(
         "name": name,
         "pane_id": pane_id,
         "tab_id": tab_id,
-        "session_id": str(session_id),
+        "session_id": session_id,
+        "herdr_terminal_id": terminal_id,
         "launched_at": datetime.now(timezone.utc).isoformat(),
     }
     receipt_path = launch_receipt_path(inst_path)

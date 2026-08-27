@@ -2,8 +2,9 @@
 
 All agent-to-agent communication is instruction-keyed. The caller supplies an
 instruction path and semantic intent; repository scripts resolve the endpoint,
-validate its live session fingerprint, deliver the message, and record the
-submission. See `docs/roles.md` for the **own the loop, not the work** boundary.
+validate its provider-specific live fingerprint, deliver the message, and
+record the submission. See `docs/roles.md` for the **own the loop, not the
+work** boundary.
 
 Live bodies carry one delta in at most two sentences. Put longer context,
 instructions, or evidence behind repeatable `--ref`; the transport supplies
@@ -15,12 +16,15 @@ For every `herdr-pane` dispatch, record:
 
 - `--main-agent-kind <claude|codex>`;
 - `--main-agent-pane-id "$HERDR_PANE_ID"`;
-- `--main-agent-session-id <agent_session.value from herdr agent get>`.
+- for Claude, `--main-agent-session-id <agent_session.value from herdr agent get>`;
+- for Codex, `--main-agent-terminal-id <terminal_id from herdr agent get>`.
 
-The pane is an address; the session id proves who currently occupies it. Both
-are required so a reused pane cannot receive a stale task's message. Headless
-dispatches have no live endpoint and rely on durable status plus process/watcher
-observation.
+The pane is an address; the provider fingerprint proves which live agent occupies
+it. Both are required so a reused pane cannot receive a stale task's message.
+Claude's fingerprint is its session id. Herdr 0.8.0 does not expose a Codex
+`agent_session`, so Codex uses Herdr's terminal id plus the reported agent kind;
+that terminal id is not a Codex thread id. Headless dispatches have no live
+endpoint and rely on durable status plus process/watcher observation.
 
 `dispatch-task.py write` generates the instruction path and mandatory contract.
 The task author does not reproduce communication prose in `--task`.
@@ -92,6 +96,6 @@ not replace any worker/main transport rule.
 
 - Every cross-session send names an instruction path, direction, intent, and
   delta; longer material is a reference, never repeated prose.
-- A session mismatch is a hard failure before delivery.
+- A provider fingerprint mismatch is a hard failure before delivery.
 - Every checkpoint and terminal outcome has durable status independent of live
   notification.

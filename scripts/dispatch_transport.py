@@ -28,7 +28,8 @@ SENTENCE_END_RE = re.compile(r"[.!?。！？]+(?=\s|$)")
 class Endpoint:
     target: Target
     pane_id: str
-    expected_session_id: str
+    expected_session_id: str | None
+    expected_terminal_id: str | None
     agent_kind: str
 
 
@@ -86,20 +87,33 @@ def resolve_endpoint(instruction: dict[str, Any], target: Target) -> Endpoint:
     if target == "main":
         pane_id = instruction.get("main_agent_herdr_pane_id")
         session_id = instruction.get("main_agent_session_id")
+        terminal_id = instruction.get("main_agent_herdr_terminal_id")
         agent_kind = instruction.get("main_agent_kind")
     elif target == "root-main":
         pane_id = instruction.get("root_main_agent_herdr_pane_id")
         session_id = instruction.get("root_main_agent_session_id")
+        terminal_id = instruction.get("root_main_agent_herdr_terminal_id")
         agent_kind = instruction.get("root_main_agent_kind")
     else:
         pane_id = instruction.get("herdr_pane_id")
         session_id = instruction.get("session_id")
+        terminal_id = instruction.get("herdr_terminal_id")
         agent_kind = instruction.get("agent_kind")
     if not pane_id:
         raise ValueError(f"dispatch instruction has no {target} herdr pane")
-    if not session_id:
+    if agent_kind == "claude" and not session_id:
         raise ValueError(f"dispatch instruction has no {target} session fingerprint")
-    return Endpoint(target, str(pane_id), str(session_id), str(agent_kind or "unknown"))
+    if agent_kind == "codex" and not terminal_id:
+        raise ValueError(f"dispatch instruction has no {target} terminal fingerprint")
+    if agent_kind not in {"claude", "codex"}:
+        raise ValueError(f"dispatch instruction has unsupported {target} agent kind")
+    return Endpoint(
+        target,
+        str(pane_id),
+        str(session_id) if session_id else None,
+        str(terminal_id) if terminal_id else None,
+        str(agent_kind),
+    )
 
 
 def _is_foreground_claude_process(
@@ -164,9 +178,29 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
 
 def validate_live_session(endpoint: Endpoint) -> None:
     payload = run_herdr(["agent", "get", endpoint.pane_id])
-    live_session_id = (
-        payload.get("result", {}).get("agent", {}).get("agent_session", {}).get("value")
-    )
+    agent = payload.get("result", {}).get("agent")
+    if not isinstance(agent, dict) or agent.get("pane_id") != endpoint.pane_id:
+        raise ValueError(
+            f"{endpoint.target} live agent does not match pane {endpoint.pane_id!r}; "
+            "refusing to send"
+        )
+    if endpoint.agent_kind == "codex":
+        if agent.get("agent") != "codex":
+            raise ValueError(
+                f"{endpoint.target} agent kind mismatch for pane {endpoint.pane_id!r}: "
+                f"expected 'codex', live {agent.get('agent')!r}; refusing to send"
+            )
+        live_terminal_id = agent.get("terminal_id")
+        if live_terminal_id == endpoint.expected_terminal_id:
+            return
+        raise ValueError(
+            f"{endpoint.target} terminal mismatch for pane {endpoint.pane_id!r}: "
+            f"expected {endpoint.expected_terminal_id!r}, live {live_terminal_id!r}; "
+            "refusing to send"
+        )
+
+    live_session = agent.get("agent_session")
+    live_session_id = live_session.get("value") if isinstance(live_session, dict) else None
     if live_session_id == endpoint.expected_session_id:
         return
     if endpoint.agent_kind == "claude" and _claude_registry_corroborates(endpoint):

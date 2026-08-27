@@ -27,6 +27,16 @@ An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a
 
 ## Install
 
+From a source checkout, install or update every supported CLI available on this
+machine and verify the installed version:
+
+```bash
+bash scripts/install.sh
+```
+
+Restart active agent sessions afterward. The equivalent manual commands are
+below.
+
 ### Claude Code
 
 ```

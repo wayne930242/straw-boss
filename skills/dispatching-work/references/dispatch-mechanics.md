@@ -28,11 +28,13 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --agent-kind claude|codex --main-agent-kind claude|codex \
   [--agent-profile <profile>] [--agent-model <model>] \
   [--agent-effort <effort>] [--advisor-model <claude-model>] \
-  [--main-agent-pane-id <pane> --main-agent-session-id <session>]
+  [--main-agent-pane-id <pane>] \
+  [--main-agent-session-id <session> | --main-agent-terminal-id <terminal>]
 ```
 
-For `herdr-pane`, obtain both main-agent values from the current live herdr
-record. The command creates:
+For `herdr-pane`, obtain the main-agent pane and provider fingerprint from the
+current live Herdr record: Claude uses `agent_session.value`; Codex uses
+`terminal_id`. The command creates:
 
 - `<app>--<slug>.json`: pending instruction and receiver fingerprints;
 - `<app>--<slug>.contract.md`: mandatory workflow text;
@@ -79,7 +81,9 @@ The launcher derives provider arguments from the recorded worker setup, then:
 3. resolves the main pane and splits a worker pane in the same tab;
 4. starts the provider through herdr and handles an initial trust prompt;
 5. submits the recorded task;
-6. reads `agent_session.value`, cross-checking Claude's preassigned id;
+6. records the live provider fingerprint: Claude waits for
+   `agent_session.value` and cross-checks its preassigned id; Codex records
+   `terminal_id` without waiting for a session field;
 7. writes `<app>--<slug>.launch.json` with the worker pane and shared tab.
 
 Provider profile/model/effort are instruction-owned. Claude receives
@@ -96,8 +100,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" confirm \
 ```
 
 Confirmation consumes the receipt and refuses any instruction, contract,
-provider, pane, or session mismatch. It records the receipt values and moves
-the instruction to `in-progress`.
+provider, pane, or provider-fingerprint mismatch. It records the receipt values
+and moves the instruction to `in-progress`.
 
 ## Headless launch
 
@@ -127,8 +131,10 @@ coworker or subagent.
 The process must write status through `report-task-status.py
 --instruction-path` before exit. With no live main-agent endpoint, durable
 status plus process/watcher observation is the recovery path. A Codex
-continuation uses its recorded thread id with `codex exec resume` and includes
-the same contract content again.
+continuation uses its separately recorded provider thread id with
+`codex exec resume` and includes the same contract content again. The interactive
+Herdr `terminal_id` is only a live routing fingerprint and never substitutes for
+that thread id.
 
 ## Reporting and communication
 
@@ -138,8 +144,8 @@ the same contract content again.
 - Checkpoint reply: `reply-to-worker.py --worker-instruction-path ... [--ref ...]`
 
 Only these public scripts send cross-session messages. They resolve endpoints
-from the instruction and validate live session fingerprints. The Plan watcher
-observes durable content revisions and remains scheduling authority.
+from the instruction and validate provider-specific live fingerprints. The Plan
+watcher observes durable content revisions and remains scheduling authority.
 
 ## Closing an instruction
 

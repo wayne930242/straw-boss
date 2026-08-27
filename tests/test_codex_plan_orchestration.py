@@ -85,7 +85,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         task_id: str = "t1",
         main_agent_kind: str = "codex",
     ) -> Path:
-        result = self.run_script(
+        args = [
             "dispatch-task.py",
             "write",
             "--app",
@@ -108,15 +108,22 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             main_agent_kind,
             "--main-agent-pane-id",
             "main:pane",
-            "--main-agent-session-id",
-            "main-session",
-        )
+        ]
+        if main_agent_kind == "claude":
+            args.extend(["--main-agent-session-id", "main-session"])
+        else:
+            args.extend(["--main-agent-terminal-id", "terminal-main-pane"])
+        result = self.run_script(*args)
         self.assertEqual(result.returncode, 0, result.stderr)
         instruction_path = Path(json.loads(result.stdout)["instruction_path"])
         instruction = json.loads(instruction_path.read_text())
         instruction["status"] = "in-progress"
         instruction["herdr_pane_id"] = "worker:pane"
-        instruction["session_id"] = "worker-session"
+        if agent_kind == "claude":
+            instruction["session_id"] = "worker-session"
+        else:
+            instruction["session_id"] = None
+            instruction["herdr_terminal_id"] = "terminal-worker-pane"
         instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
         return instruction_path
 
@@ -130,7 +137,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         self.assertEqual(instruction["task_id"], "t1")
         self.assertEqual(plan["tasks"][0]["status"], "dispatched")
 
-    def test_codex_plan_dispatch_records_main_session_fingerprint(self) -> None:
+    def test_codex_plan_dispatch_records_main_terminal_fingerprint(self) -> None:
         result = self.run_script(
             "dispatch-task.py",
             "write",
@@ -154,12 +161,15 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "codex",
             "--main-agent-pane-id",
             "main:pane",
-            "--main-agent-session-id",
-            "main-session",
+            "--main-agent-terminal-id",
+            "terminal-main-pane",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         instruction = json.loads(Path(json.loads(result.stdout)["instruction_path"]).read_text())
-        self.assertEqual(instruction["main_agent_session_id"], "main-session")
+        self.assertIsNone(instruction["main_agent_session_id"])
+        self.assertEqual(
+            instruction["main_agent_herdr_terminal_id"], "terminal-main-pane"
+        )
         self.assertNotIn("main_agent_send_message_peer", instruction)
 
     def test_codex_done_status_unblocks_dependent_task(self) -> None:
@@ -172,8 +182,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
             "if [ \"$2\" = get ]; then\n"
-            "  if [ \"$3\" = 'worker:pane' ]; then session='worker-session'; else session='main-session'; fi\n"
-            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent_session\\\":{\\\"value\\\":\\\"$session\\\"}}}}\"\n"
+            "  if [ \"$3\" = 'worker:pane' ]; then terminal='terminal-worker-pane'; else terminal='terminal-main-pane'; fi\n"
+            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\"}}}\"\n"
             "else\n"
             "  [ -f \"$EXPECTED_STATUS_PATH\" ] || exit 9\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
@@ -222,8 +232,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
             "if [ \"$2\" = get ]; then\n"
-            "  if [ \"$3\" = 'worker:pane' ]; then session='worker-session'; else session='main-session'; fi\n"
-            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent_session\\\":{\\\"value\\\":\\\"$session\\\"}}}}\"\n"
+            "  if [ \"$3\" = 'worker:pane' ]; then terminal='terminal-worker-pane'; else terminal='terminal-main-pane'; fi\n"
+            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\"}}}\"\n"
             "else\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
             "fi\n"
@@ -314,7 +324,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         instruction = json.loads(instruction_path.read_text())
         instruction["status"] = "in-progress"
         instruction["herdr_pane_id"] = "w1:p2"
-        instruction["session_id"] = "worker-session"
+        instruction["session_id"] = None
+        instruction["herdr_terminal_id"] = "terminal-worker-pane"
         instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
         status_path = self.plan_dir / "status" / "t1.json"
         status_path.write_text(
@@ -331,7 +342,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "case \"$2\" in\n"
-            "  get) if [ \"$3\" = 'main:pane' ]; then session='main-session'; else session='worker-session'; fi; printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"name\\\":\\\"codex-task\\\",\\\"agent_session\\\":{\\\"value\\\":\\\"$session\\\"}}}}\" ;;\n"
+            "  get) if [ \"$3\" = 'main:pane' ]; then terminal='terminal-main-pane'; else terminal='terminal-worker-pane'; fi; printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"name\\\":\\\"codex-task\\\",\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\"}}}\" ;;\n"
             "  prompt) printf '%s\\n' '{\"result\":{}}' ;;\n"
             "  read) printf '%s\\n' 'continue with the dependency' ;;\n"
             "  *) exit 2 ;;\n"
@@ -364,7 +375,10 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         self.assertEqual(instruction["agent_kind"], "claude")
         self.assertEqual(instruction["main_agent_kind"], "codex")
         self.assertNotIn("main_agent_send_message_peer", instruction)
-        self.assertEqual(instruction["main_agent_session_id"], "main-session")
+        self.assertIsNone(instruction["main_agent_session_id"])
+        self.assertEqual(
+            instruction["main_agent_herdr_terminal_id"], "terminal-main-pane"
+        )
 
         fake_bin = self.home / "bin"
         fake_bin.mkdir()
@@ -374,8 +388,11 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
             "if [ \"$2\" = get ]; then\n"
-            "  if [ \"$3\" = 'worker:pane' ]; then session='worker-session'; else session='main-session'; fi\n"
-            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent_session\\\":{\\\"value\\\":\\\"$session\\\"}}}}\"\n"
+            "  if [ \"$3\" = 'worker:pane' ]; then\n"
+            "    printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"claude\",\"pane_id\":\"worker:pane\",\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
+            "  else\n"
+            "    printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"main:pane\",\"terminal_id\":\"terminal-main-pane\"}}}'\n"
+            "  fi\n"
             "else\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
             "fi\n"
@@ -408,7 +425,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "if [ \"$2\" = get ] && [ \"$3\" = 'worker:pane' ]; then\n"
-            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
+            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"worker:pane\",\"terminal_id\":\"terminal-worker-pane\"}}}'\n"
             "  exit 0\n"
             "fi\n"
             "exit 7\n"
@@ -442,7 +459,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "if [ \"$2\" = get ] && [ \"$3\" = 'main:pane' ]; then\n"
-            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"main-session\"}}}}'\n"
+            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"main:pane\",\"terminal_id\":\"terminal-main-pane\"}}}'\n"
             "  exit 0\n"
             "fi\n"
             "exit 7\n"

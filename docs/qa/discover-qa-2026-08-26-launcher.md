@@ -14,12 +14,15 @@ Date: 2026-08-26
 1. `herdr agent start` can return non-zero while leaving a recoverable blocked
    agent. The launcher now verifies that exact live state before sending Enter;
    unrelated start failures retain their error and close the worker pane.
-2. Codex session metadata may appear after prompt submission. The launcher now
-   polls `agent_session.value` for up to 15 seconds before cleanup.
+2. Superseded on 2026-08-27: the earlier delayed-session diagnosis was
+   incorrect. Herdr 0.8.0 does not expose `agent_session` for Codex. The launcher
+   now waits for and validates that field only for Claude; Codex records Herdr's
+   `terminal_id` and reported agent kind. See
+   `docs/specs/2026-08-27-codex-herdr-identity/`.
 3. A fast worker can report terminal status while its instruction is still
    pending confirmation. The status reporter now waits only for the bounded
-   pending-without-worker-pane condition; sender pane/session mismatches still
-   fail immediately.
+   pending-without-worker-pane condition; sender pane/provider-fingerprint
+   mismatches still fail immediately.
 4. Herdr 0.8.2 exposes `done` as a terminal agent state. Completion smoke waits
    use Herdr's default `idle`/`done`/`blocked` set.
 5. Codex does not set `CLAUDE_PLUGIN_ROOT`, so hook commands that required it
@@ -40,9 +43,10 @@ Date: 2026-08-26
 
 ## Automated evidence
 
-- Launcher recovery, delayed-session, genuine-failure cleanup, and fast-worker
-  confirmation tests pass.
+- Launcher recovery, Claude delayed-session, sessionless Codex identity,
+  genuine-failure cleanup, and fast-worker confirmation tests pass.
 - Hook command tests pass with an unset `CLAUDE_PLUGIN_ROOT` from the plugin
   directory and with an explicit root from another directory.
-- `python3 -m unittest discover -s tests -p 'test_*.py'` — 81 tests passed.
+- `python3 -m unittest discover -s tests -p 'test_*.py'` — 89 tests passed on
+  2026-08-27 after the identity correction.
 - Both plugin manifests parse with `jq -e`; `git diff --check` passed.

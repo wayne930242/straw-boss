@@ -59,7 +59,7 @@ Build an outcome-oriented brief for `dispatching-work`:
 - Include a constraint only when it is verified, task-specific, and materially changes the acceptable result. Prefer a positive statement with its reason over a preventive list of things not to do.
 - Omit **generic lifecycle prose**, reporting commands, provider routing, checkpoint mechanics, tracker policy, and defensive reminders already supplied by the generated contract, this skill, or the target app's own instructions.
 
-The generated contract supplies exact progress, message, checkpoint, and terminal-status mechanics for every provider. Pass the concise task brief, both provider kinds, and the validated main pane/session pair to `dispatch-task.py write`.
+The generated contract supplies exact progress, message, checkpoint, and terminal-status mechanics for every provider. Pass the concise task brief, both provider kinds, and the validated main pane/provider-fingerprint pair to `dispatch-task.py write`.
 
 **Verification:** the brief is understandable without the main agent's private
 context; every paragraph carries the user requirement, requested outcome,

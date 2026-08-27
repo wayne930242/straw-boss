@@ -28,6 +28,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         script_name: str,
         *args: str,
         extra_env: dict[str, str] | None = None,
+        timeout_seconds: float = 10,
     ) -> subprocess.CompletedProcess[str]:
         env = {**os.environ, "HOME": str(self.home)}
         if extra_env:
@@ -38,13 +39,13 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             env=env,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=timeout_seconds,
         )
 
     def write_dispatch(
         self,
         agent_kind: str = "claude",
-        main_agent_kind: str = "codex",
+        main_agent_kind: str = "claude",
         *,
         agent_profile: str | None = None,
         agent_model: str | None = None,
@@ -70,9 +71,11 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             main_agent_kind,
             "--main-agent-pane-id",
             "main-pane",
-            "--main-agent-session-id",
-            "main-session",
         ]
+        if main_agent_kind == "claude":
+            args.extend(["--main-agent-session-id", "main-session"])
+        else:
+            args.extend(["--main-agent-terminal-id", "terminal-main-pane"])
         for flag, value in (
             ("--agent-profile", agent_profile),
             ("--agent-model", agent_model),
@@ -127,8 +130,12 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    if prompt_positions:\n"
             "        get_after_prompt = sum(call[:2] == ['agent', 'get'] for call in captured[prompt_positions[-1] + 1:])\n"
             "    delay = int(os.environ.get('HERDR_SESSION_DELAY_GETS', '0'))\n"
-            "    agent = {'name': 'worker', 'agent_status': 'blocked' if blocked else 'idle'}\n"
-            "    if not blocked and (not prompt_positions or get_after_prompt > delay):\n"
+            "    starts = [call for call in captured if call[:2] == ['agent', 'start'] and call[call.index('--pane') + 1] == target]\n"
+            "    started_kind = starts[-1][starts[-1].index('--kind') + 1] if starts else 'claude'\n"
+            "    agent_kinds = json.loads(os.environ.get('HERDR_AGENT_KINDS', '{}'))\n"
+            "    terminal_ids = json.loads(os.environ.get('HERDR_TERMINAL_IDS', '{}'))\n"
+            "    agent = {'name': 'worker', 'agent': agent_kinds.get(target, os.environ.get('HERDR_AGENT_KIND', started_kind)), 'agent_status': 'blocked' if blocked else 'idle', 'pane_id': target, 'terminal_id': terminal_ids.get(target, os.environ.get('HERDR_TERMINAL_ID', f'terminal-{target}'))}\n"
+            "    if os.environ.get('HERDR_OMIT_AGENT_SESSION') != '1' and not blocked and (not prompt_positions or get_after_prompt > delay):\n"
             "        agent['agent_session'] = {'value': session}\n"
             "    print(json.dumps({'result': {'agent': agent}}))\n"
             "elif args[:3] == ['pane', 'process-info', '--pane']:\n"
@@ -145,12 +152,20 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         return fake_bin, capture
 
     def set_worker_endpoint(
-        self, instruction_path: Path, pane: str = "worker-pane", session: str = "worker-session"
+        self,
+        instruction_path: Path,
+        pane: str = "worker-pane",
+        session: str = "worker-session",
+        terminal_id: str | None = None,
     ) -> dict[str, object]:
         instruction = json.loads(instruction_path.read_text())
         instruction["status"] = "in-progress"
         instruction["herdr_pane_id"] = pane
-        instruction["session_id"] = session
+        if instruction["agent_kind"] == "claude":
+            instruction["session_id"] = session
+        else:
+            instruction["session_id"] = None
+            instruction["herdr_terminal_id"] = terminal_id or f"terminal-{pane}"
         instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
         return instruction
 
@@ -591,12 +606,38 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "--agent-kind",
             "claude",
             "--main-agent-kind",
-            "codex",
+            "claude",
             "--main-agent-pane-id",
             "main-pane",
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--main-agent-session-id is required", result.stderr)
+
+    def test_herdr_dispatch_requires_main_agent_terminal_fingerprint_for_codex(
+        self,
+    ) -> None:
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            "missing-main-terminal",
+            "--task",
+            "Run the task.",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(ROOT),
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "codex",
+            "--main-agent-pane-id",
+            "main-pane",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--main-agent-terminal-id is required", result.stderr)
 
     def test_launcher_injects_claude_contract_and_records_receipt(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
@@ -790,8 +831,9 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn(["pane", "close", "worker-pane"], calls)
         self.assertFalse(any(call[:2] == ["agent", "prompt"] for call in calls))
 
-    def test_launcher_waits_for_codex_session_after_prompt(self) -> None:
-        instruction_path, _ = self.write_dispatch("codex")
+    def test_launcher_waits_for_claude_session_after_prompt(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
         fake_bin, capture = self.install_fake_herdr()
 
         result = self.run_script(
@@ -799,12 +841,12 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "--instruction-path",
             str(instruction_path),
             "--name",
-            "delayed-session-worker",
+            "delayed-claude-session-worker",
             extra_env={
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "HERDR_CAPTURE": str(capture),
                 "HERDR_SESSION_DELAY_GETS": "1",
-                "HERDR_LIVE_SESSION": "delayed-codex-session",
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
             },
         )
 
@@ -817,6 +859,49 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             call for call in calls[prompt_index + 1 :] if call[:2] == ["agent", "get"]
         ]
         self.assertGreaterEqual(len(gets_after_prompt), 2)
+
+    def test_launcher_records_codex_terminal_without_waiting_for_a_session(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "sessionless-codex-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_AGENT_KIND": "codex",
+                "HERDR_TERMINAL_ID": "codex-terminal",
+                "HERDR_OMIT_AGENT_SESSION": "1",
+            },
+            timeout_seconds=20,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(
+            instruction_path.with_name("api--contract-codex.launch.json").read_text()
+        )
+        self.assertIsNone(receipt["session_id"])
+        self.assertEqual(receipt["herdr_terminal_id"], "codex-terminal")
+
+        confirmed = self.run_script(
+            "dispatch-task.py",
+            "confirm",
+            "--app",
+            "api",
+            "--slug",
+            "contract-codex",
+        )
+        self.assertEqual(confirmed.returncode, 0, confirmed.stderr)
+        instruction = json.loads(instruction_path.read_text())
+        self.assertEqual(instruction["status"], "in-progress")
+        self.assertIsNone(instruction["session_id"])
+        self.assertEqual(instruction["herdr_terminal_id"], "codex-terminal")
 
     def test_launcher_applies_codex_profile_model_and_effort(self) -> None:
         instruction_path, _ = self.write_dispatch(
@@ -918,7 +1003,10 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertEqual(child["main_agent_session_id"], "worker-session")
         self.assertEqual(child["main_agent_kind"], "claude")
         self.assertEqual(child["root_main_agent_herdr_pane_id"], "main-pane")
-        self.assertEqual(child["root_main_agent_session_id"], "main-session")
+        self.assertIsNone(child["root_main_agent_session_id"])
+        self.assertEqual(
+            child["root_main_agent_herdr_terminal_id"], "terminal-main-pane"
+        )
         self.assertEqual(child["root_main_agent_kind"], "codex")
         self.assertEqual(child["coworker_writable_paths"], [])
         self.assertIn("review-only", contract)
@@ -991,7 +1079,20 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
                     {
                         "coworker-pane": "coworker-session",
                         "worker-pane": "worker-session",
-                        "main-pane": "main-session",
+                    }
+                ),
+                "HERDR_AGENT_KINDS": json.dumps(
+                    {
+                        "coworker-pane": "codex",
+                        "worker-pane": "claude",
+                        "main-pane": "codex",
+                    }
+                ),
+                "HERDR_TERMINAL_IDS": json.dumps(
+                    {
+                        "coworker-pane": "terminal-coworker-pane",
+                        "worker-pane": "terminal-worker-pane",
+                        "main-pane": "terminal-main-pane",
                     }
                 ),
             },
@@ -1030,7 +1131,20 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
                     {
                         "coworker-pane": "coworker-session",
                         "worker-pane": "worker-session",
-                        "main-pane": "main-session",
+                    }
+                ),
+                "HERDR_AGENT_KINDS": json.dumps(
+                    {
+                        "coworker-pane": "codex",
+                        "worker-pane": "claude",
+                        "main-pane": "codex",
+                    }
+                ),
+                "HERDR_TERMINAL_IDS": json.dumps(
+                    {
+                        "coworker-pane": "terminal-coworker-pane",
+                        "worker-pane": "terminal-worker-pane",
+                        "main-pane": "terminal-main-pane",
                     }
                 ),
             },
@@ -1267,14 +1381,27 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             instruction = json.loads(path.read_text())
             instruction["status"] = "in-progress"
             instruction["herdr_pane_id"] = pane
-            instruction["session_id"] = session
+            if instruction["agent_kind"] == "claude":
+                instruction["session_id"] = session
+            else:
+                instruction["session_id"] = None
+                instruction["herdr_terminal_id"] = f"terminal-{pane}"
             path.write_text(json.dumps(instruction, indent=2) + "\n")
         fake_bin, capture = self.install_fake_herdr()
         shared_env = {
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERDR_CAPTURE": str(capture),
             "HERDR_SESSIONS": json.dumps(
-                {"sender-pane": "sender-session", "target-pane": "target-session"}
+                {"sender-pane": "sender-session"}
+            ),
+            "HERDR_AGENT_KINDS": json.dumps(
+                {"sender-pane": "claude", "target-pane": "codex"}
+            ),
+            "HERDR_TERMINAL_IDS": json.dumps(
+                {
+                    "sender-pane": "terminal-sender-pane",
+                    "target-pane": "terminal-target-pane",
+                }
             ),
         }
 
@@ -1337,7 +1464,11 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             instruction = json.loads(path.read_text())
             instruction["status"] = "in-progress"
             instruction["herdr_pane_id"] = pane
-            instruction["session_id"] = session
+            if instruction["agent_kind"] == "claude":
+                instruction["session_id"] = session
+            else:
+                instruction["session_id"] = None
+                instruction["herdr_terminal_id"] = f"terminal-{pane}"
             path.write_text(json.dumps(instruction, indent=2) + "\n")
         fake_bin, capture = self.install_fake_herdr()
 
@@ -1360,7 +1491,16 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
                 "HERDR_CAPTURE": str(capture),
                 "HERDR_PANE_ID": "target-pane",
                 "HERDR_SESSIONS": json.dumps(
-                    {"sender-pane": "sender-session", "target-pane": "target-session"}
+                    {"sender-pane": "sender-session"}
+                ),
+                "HERDR_AGENT_KINDS": json.dumps(
+                    {"sender-pane": "claude", "target-pane": "codex"}
+                ),
+                "HERDR_TERMINAL_IDS": json.dumps(
+                    {
+                        "sender-pane": "terminal-sender-pane",
+                        "target-pane": "terminal-target-pane",
+                    }
                 ),
             },
         )
@@ -1445,7 +1585,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("Which boundary should I preserve?", calls[2][3])
 
     def test_transport_refuses_reused_coordinator_pane_before_prompting(self) -> None:
-        instruction_path, _ = self.write_dispatch("claude")
+        instruction_path, _ = self.write_dispatch("claude", main_agent_kind="claude")
         self.set_worker_endpoint(instruction_path)
         fake_bin, capture = self.install_fake_herdr()
         env = {
@@ -1474,7 +1614,11 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         self.assertEqual(
             calls,
-            [["agent", "get", "worker-pane"], ["agent", "get", "main-pane"]],
+            [
+                ["agent", "get", "worker-pane"],
+                ["agent", "get", "main-pane"],
+                ["pane", "process-info", "--pane", "main-pane"],
+            ],
         )
 
     def test_transport_accepts_expected_claude_session_when_herdr_metadata_was_polluted_by_sdk_child(
@@ -1672,15 +1816,22 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         )
 
     def test_script_routes_to_worker_without_caller_supplied_endpoint(self) -> None:
-        instruction_path, _ = self.write_dispatch("codex")
+        instruction_path, _ = self.write_dispatch("codex", main_agent_kind="claude")
         self.set_worker_endpoint(instruction_path)
         fake_bin, capture = self.install_fake_herdr()
         env = {
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERDR_CAPTURE": str(capture),
             "HERDR_PANE_ID": "main-pane",
-            "HERDR_SESSIONS": json.dumps(
-                {"main-pane": "main-session", "worker-pane": "worker-session"}
+            "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+            "HERDR_AGENT_KINDS": json.dumps(
+                {"main-pane": "claude", "worker-pane": "codex"}
+            ),
+            "HERDR_TERMINAL_IDS": json.dumps(
+                {
+                    "main-pane": "terminal-main-pane",
+                    "worker-pane": "terminal-worker-pane",
+                }
             ),
         }
 
@@ -1702,6 +1853,84 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertEqual(calls[1], ["agent", "get", "worker-pane"])
         self.assertEqual(calls[2][:3], ["agent", "prompt", "worker-pane"])
 
+    def test_transport_refuses_a_replaced_codex_terminal_before_prompting(self) -> None:
+        instruction_path, _ = self.write_dispatch("codex", main_agent_kind="claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "worker",
+            "--intent",
+            "inform",
+            "--message",
+            "The dependency is now available.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+                "HERDR_AGENT_KINDS": json.dumps(
+                    {"main-pane": "claude", "worker-pane": "codex"}
+                ),
+                "HERDR_TERMINAL_IDS": json.dumps(
+                    {
+                        "main-pane": "terminal-main-pane",
+                        "worker-pane": "replacement-terminal",
+                    }
+                ),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("terminal mismatch", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse(any(call[:2] == ["agent", "prompt"] for call in calls))
+
+    def test_transport_refuses_a_different_provider_in_codex_pane_before_prompting(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("codex", main_agent_kind="claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "worker",
+            "--intent",
+            "inform",
+            "--message",
+            "The dependency is now available.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"main-pane": "main-session", "worker-pane": "other-session"}
+                ),
+                "HERDR_AGENT_KINDS": json.dumps(
+                    {"main-pane": "claude", "worker-pane": "claude"}
+                ),
+                "HERDR_TERMINAL_IDS": json.dumps(
+                    {
+                        "main-pane": "terminal-main-pane",
+                        "worker-pane": "terminal-worker-pane",
+                    }
+                ),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("agent kind mismatch", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse(any(call[:2] == ["agent", "prompt"] for call in calls))
+
     def test_status_is_written_before_session_validated_notification(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         self.set_worker_endpoint(instruction_path)
@@ -1713,10 +1942,10 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "#!/bin/sh\n"
             "if [ \"$2\" = get ]; then\n"
             "  if [ \"$3\" = worker-pane ]; then\n"
-            "    printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
+            "    printf '%s\\n' '{\"result\":{\"agent\":{\"pane_id\":\"worker-pane\",\"agent\":\"claude\",\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
             "  else\n"
             "    [ -f \"$EXPECTED_STATUS_PATH\" ] || exit 9\n"
-            "    printf '%s\\n' '{\"result\":{\"agent\":{\"agent_session\":{\"value\":\"main-session\"}}}}'\n"
+            "    printf '%s\\n' '{\"result\":{\"agent\":{\"pane_id\":\"main-pane\",\"agent\":\"claude\",\"agent_session\":{\"value\":\"main-session\"}}}}'\n"
             "  fi\n"
             "else\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
@@ -1750,8 +1979,15 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERDR_CAPTURE": str(capture),
             "HERDR_PANE_ID": "worker-pane",
-            "HERDR_SESSIONS": json.dumps(
-                {"worker-pane": "worker-session", "main-pane": "main-session"}
+            "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+            "HERDR_AGENT_KINDS": json.dumps(
+                {"worker-pane": "codex", "main-pane": "claude"}
+            ),
+            "HERDR_TERMINAL_IDS": json.dumps(
+                {
+                    "worker-pane": "terminal-worker-pane",
+                    "main-pane": "terminal-main-pane",
+                }
             ),
         }
         process = subprocess.Popen(

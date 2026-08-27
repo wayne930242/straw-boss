@@ -27,6 +27,14 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 
 ## 安裝
 
+從 source checkout 安裝或更新這台機器上可用的所有支援 CLI，並核對實際安裝版本：
+
+```bash
+bash scripts/install.sh
+```
+
+完成後請重開既有 agent session。對應的手動指令如下。
+
 ### Claude Code
 
 ```

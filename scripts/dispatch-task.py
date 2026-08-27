@@ -9,11 +9,11 @@ Two phases, both operating on the same instruction file
 (<home>/.straw-boss/dispatch/<app>--<slug>.json -- see
 skills/dispatching-work/references/dispatch-mechanics.md):
 
-  write   -- before launch. Generates a session id plus immutable workflow
-             contract, writes the pending instruction, and (for a plan task)
-             marks plan.json's matching task dispatched.
+  write   -- before launch. Generates a Claude session id plus immutable
+             workflow contract, writes the pending instruction, and (for a plan
+             task) marks plan.json's matching task dispatched.
   confirm -- after launch-dispatched-agent.py writes a matching receipt.
-             Validates its contract/provider/pane/session binding, flips the
+             Validates its contract/provider/pane/identity binding, flips the
              instruction to in-progress, and records receipt identities.
 
 This script never launches an agent itself; the launch adapter owns provider
@@ -129,20 +129,18 @@ def resolve_coworker_context(
                 f"parent worker already has coworker instruction {path}; wrap it up first"
             )
 
-    required_root_fields = (
-        "main_agent_herdr_pane_id",
-        "main_agent_session_id",
-        "main_agent_kind",
-    )
-    if any(not parent.get(field) for field in required_root_fields):
-        raise ValueError("parent instruction has no complete root-coordinator endpoint")
+    resolve_endpoint(parent, "main")
     return {
         "parent_instruction_path": str(parent_path),
         "main_agent_herdr_pane_id": str(parent["herdr_pane_id"]),
-        "main_agent_session_id": str(parent["session_id"]),
+        "main_agent_session_id": parent.get("session_id"),
+        "main_agent_herdr_terminal_id": parent.get("herdr_terminal_id"),
         "main_agent_kind": str(parent["agent_kind"]),
         "root_main_agent_herdr_pane_id": str(parent["main_agent_herdr_pane_id"]),
-        "root_main_agent_session_id": str(parent["main_agent_session_id"]),
+        "root_main_agent_session_id": parent.get("main_agent_session_id"),
+        "root_main_agent_herdr_terminal_id": parent.get(
+            "main_agent_herdr_terminal_id"
+        ),
         "root_main_agent_kind": str(parent["main_agent_kind"]),
         "coworker_writable_paths": normalize_coworker_writable_paths(
             parent_root, writable_paths
@@ -167,6 +165,7 @@ def write_instruction(
     advisor_model: str | None,
     main_agent_pane_id: str | None,
     main_agent_session_id: str | None,
+    main_agent_terminal_id: str | None,
     coworker_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     path = instruction_path(app, slug)
@@ -178,8 +177,18 @@ def write_instruction(
         raise ValueError("--plan and --task-id must be given together, or not at all")
     if mode == "herdr-pane" and not main_agent_pane_id:
         raise ValueError("--main-agent-pane-id is required for herdr-pane mode")
-    if mode == "herdr-pane" and not main_agent_session_id:
-        raise ValueError("--main-agent-session-id is required for herdr-pane mode")
+    if (
+        mode == "herdr-pane"
+        and main_agent_kind == "claude"
+        and not main_agent_session_id
+    ):
+        raise ValueError("--main-agent-session-id is required for a Claude main agent")
+    if (
+        mode == "herdr-pane"
+        and main_agent_kind == "codex"
+        and not main_agent_terminal_id
+    ):
+        raise ValueError("--main-agent-terminal-id is required for a Codex main agent")
     if advisor_model is not None and agent_kind != "claude":
         raise ValueError(
             f"--advisor-model is supported only for Claude Code; agent kind {agent_kind!r} "
@@ -190,7 +199,7 @@ def write_instruction(
         check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
 
     install_runtime_launcher()
-    session_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4()) if agent_kind == "claude" else None
     generated_contract_path = contract_path(path)
     contract = render_dispatch_contract(path, coworker_context)
     contract_digest = sha256_text(contract)
@@ -208,8 +217,10 @@ def write_instruction(
         "advisor_model": advisor_model,
         "herdr_pane_id": None,
         "herdr_tab_id": None,
+        "herdr_terminal_id": None,
         "main_agent_herdr_pane_id": main_agent_pane_id,
         "main_agent_session_id": main_agent_session_id,
+        "main_agent_herdr_terminal_id": main_agent_terminal_id,
         "contract_path": str(generated_contract_path),
         "contract_sha256": contract_digest,
         "status": "pending",
@@ -284,11 +295,21 @@ def confirm_instruction(
             raise ValueError("launch receipt pane id does not match --pane-id")
         if tab_id is not None and receipt.get("tab_id") != tab_id:
             raise ValueError("launch receipt tab id does not match --tab-id")
-        if observed_session_id is not None and receipt.get("session_id") != observed_session_id:
+        receipt_session_id = receipt.get("session_id")
+        receipt_terminal_id = receipt.get("herdr_terminal_id")
+        if payload.get("agent_kind") == "codex" and (
+            not isinstance(receipt_terminal_id, str) or not receipt_terminal_id
+        ):
+            raise ValueError("launch receipt has no herdr terminal id")
+        if observed_session_id is not None and receipt_session_id != observed_session_id:
             raise ValueError("launch receipt session id does not match --observed-session-id")
         pane_id = str(receipt["pane_id"])
         tab_id = receipt.get("tab_id")
-        observed_session_id = str(receipt["session_id"])
+        observed_session_id = (
+            receipt_session_id if isinstance(receipt_session_id, str) else None
+        )
+        if isinstance(receipt_terminal_id, str) and receipt_terminal_id:
+            payload["herdr_terminal_id"] = receipt_terminal_id
 
     payload["status"] = "in-progress"
     if pane_id is not None:
@@ -309,6 +330,10 @@ def confirm_instruction(
                 f"not be the one this dispatch launched"
             )
         payload["session_id"] = observed_session_id
+    elif payload["agent_kind"] == "claude":
+        raise ValueError("Claude launch receipt has no session id")
+    else:
+        payload["session_id"] = None
     dump_json(path, payload)
     return {"instruction_path": str(path)}
 
@@ -371,8 +396,12 @@ def main() -> int:
     write_p.add_argument(
         "--main-agent-session-id",
         default=None,
-        help="the dispatching main agent's live herdr agent_session.value; required with "
-        "--main-agent-pane-id so transport can reject a reused or wrong coordinator pane",
+        help="the dispatching Claude main agent's live herdr agent_session.value",
+    )
+    write_p.add_argument(
+        "--main-agent-terminal-id",
+        default=None,
+        help="the dispatching Codex main agent's live herdr terminal_id",
     )
     write_p.add_argument(
         "--parent-instruction-path",
@@ -419,6 +448,9 @@ def main() -> int:
                 args.main_agent_session_id = coworker_context[
                     "main_agent_session_id"
                 ]
+                args.main_agent_terminal_id = coworker_context[
+                    "main_agent_herdr_terminal_id"
+                ]
             elif args.main_agent_kind is None:
                 raise ValueError("--main-agent-kind is required for a top-level dispatch")
             result = write_instruction(
@@ -438,6 +470,7 @@ def main() -> int:
                 advisor_model=args.advisor_model,
                 main_agent_pane_id=args.main_agent_pane_id,
                 main_agent_session_id=args.main_agent_session_id,
+                main_agent_terminal_id=args.main_agent_terminal_id,
                 coworker_context=coworker_context,
             )
         else:
