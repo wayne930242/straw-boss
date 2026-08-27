@@ -17,10 +17,12 @@
 - `bash scripts/install.sh` verifies matching Claude/Codex manifest versions,
   installs or updates each available CLI adapter, and verifies the reported
   installed version. It fails when neither supported CLI is available.
-- The launcher appends `[straw-boss-task-sha256:<full digest>]` at the end of the
-  initial task and polls the provider-appropriate transcript view for that
-  marker. A full poll window with no match triggers exactly one resend of the
-  same marked task and a second poll window.
+- The immutable dispatch contract remains the only copy of the full task. The
+  launcher sends a bounded start prompt containing `Begin contract task.` and
+  `[sb256:<base64url SHA-256 digest>]`, then polls the provider-appropriate
+  transcript view for that marker. The 43-character digest retains all 256
+  bits. A full poll window with no match triggers exactly one resend of the same
+  bounded prompt and a second poll window.
 - Transcript presence checks remove all Unicode whitespace from both operands,
   tolerating terminal hard wraps and whitespace inserted inside CJK text.
 - A transcript read or prompt command failure propagates immediately. Two
@@ -34,7 +36,7 @@
   fails before a prompt is sent.
 - A Claude receipt without a session remains invalid.
 - A task already visible during the first poll is never resent.
-- A bounded transcript tail may omit the task body as long as it contains the
+- A bounded or narrow transcript view may omit the task body as long as it
   complete delivery marker after whitespace removal.
 - Codex transcript reads use Herdr's visible source. Claude first uses recent
   transcript lines and falls back to visible when Herdr reports that scrolling
@@ -79,7 +81,8 @@ coverage asserts both languages expose the same command.
 The launcher regression seam simulates a Codex TUI whose first prompt is
 accepted by Herdr but absent from `agent read`; the second prompt appears in the
 visible transcript. A negative case keeps both submissions absent and verifies
-that no receipt survives.
+that no receipt survives. Another case renders a Claude transcript at 11 columns
+with only six visible lines, proving the bounded marker remains confirmable.
 
 There is no separate human appropriateness question.
 

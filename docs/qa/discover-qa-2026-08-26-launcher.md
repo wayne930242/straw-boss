@@ -36,6 +36,15 @@ Date: 2026-08-26
    startup is still active without the text reaching the TUI transcript. The
    launcher now polls transcript evidence, retries once after a full miss, and
    refuses a receipt after two misses.
+7. A dispatch task was already present in the immutable mandatory contract, so
+   pasting the full task into Claude duplicated context and could be folded by
+   the TUI. The launcher now sends a bounded start instruction plus a digest
+   marker while retaining the full task only in the contract.
+8. With the main, completed database worker, and API worker visible together,
+   the API pane was 11 columns wide. The earlier hexadecimal marker could be
+   cropped out of the visible transcript. The marker is now the same SHA-256
+   encoded as a 43-character base64url value, which was confirmed live in that
+   narrow pane before the launch receipt was written.
 
 ## Live smoke evidence
 
@@ -58,3 +67,8 @@ Date: 2026-08-26
 - `python3 -m unittest discover -s tests -p 'test_*.py'` — 91 tests passed on
   2026-08-27 after transcript-confirmed prompt delivery.
 - Both plugin manifests parse with `jq -e`; `git diff --check` passed.
+- A fake Claude viewport regression renders 11 columns and six visible lines;
+  the bounded marker is confirmed without retry and a launch receipt is written.
+- The article demo retained one coordinator plus database, API, and web workers
+  in a maximized four-pane Herdr layout. Each pane exposed 64 viewport rows; all
+  15 monorepo contract tests passed after the final worker commit.

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import sys
 from datetime import datetime, timezone
@@ -25,7 +26,7 @@ from dispatch_transport import (
 
 AGENT_START_PANE_READY_TIMEOUT_SECONDS = 5.0
 AGENT_START_PANE_READY_POLL_INTERVAL_SECONDS = 0.25
-TASK_DELIVERY_MARKER_PREFIX = "straw-boss-task-sha256"
+TASK_DELIVERY_MARKER_PREFIX = "sb256"
 
 
 def _option_present(args: list[str], flags: tuple[str, ...]) -> bool:
@@ -229,12 +230,17 @@ def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str]:
 
 
 def task_delivery_marker(task: str) -> str:
-    return f"[{TASK_DELIVERY_MARKER_PREFIX}:{sha256_text(task)}]"
+    digest = base64.urlsafe_b64encode(bytes.fromhex(sha256_text(task))).decode("ascii")
+    return f"[{TASK_DELIVERY_MARKER_PREFIX}:{digest.rstrip('=')}]"
+
+
+def task_start_prompt(task: str) -> str:
+    return f"Begin contract task.\n{task_delivery_marker(task)}"
 
 
 def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> None:
     marker = task_delivery_marker(task)
-    prompt = f"{task}\n\n{marker}"
+    prompt = task_start_prompt(task)
     run_herdr(["agent", "prompt", pane_id, prompt])
     if confirm_transcript_contains(pane_id, marker, agent_kind):
         return

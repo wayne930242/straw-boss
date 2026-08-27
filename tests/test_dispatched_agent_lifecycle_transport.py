@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -152,6 +153,15 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "        tail_chars = int(os.environ.get('HERDR_TRANSCRIPT_TAIL_CHARS', '0'))\n"
             "        if tail_chars > 0:\n"
             "            transcript = transcript[-tail_chars:]\n"
+            "        columns = int(os.environ.get('HERDR_TRANSCRIPT_RENDER_COLUMNS', '0'))\n"
+            "        if columns > 0:\n"
+            "            rendered = []\n"
+            "            for line in transcript.splitlines():\n"
+            "                rendered.extend(line[i:i + columns] for i in range(0, len(line), columns))\n"
+            "            visible_lines = int(os.environ.get('HERDR_TRANSCRIPT_VISIBLE_LINES', '0'))\n"
+            "            if visible_lines > 0:\n"
+            "                rendered = rendered[-visible_lines:]\n"
+            "            transcript = '\\n'.join(rendered)\n"
             "        print(transcript)\n"
             "    else:\n"
             "        print(os.environ.get('HERDR_TRANSCRIPT_NOISE', 'Ask Codex to do anything'))\n"
@@ -960,7 +970,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("--source", reads[0])
         self.assertEqual(reads[0][reads[0].index("--source") + 1], "visible")
 
-    def test_launcher_confirms_a_long_task_from_a_bounded_transcript_tail(self) -> None:
+    def test_launcher_uses_a_bounded_start_prompt_for_a_long_task(self) -> None:
         instruction_path, _ = self.write_dispatch("codex")
         instruction = json.loads(instruction_path.read_text())
         task = "外層邊界可拖曳調寬，完成後驗證真實介面。" * 180
@@ -992,10 +1002,50 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             if call[:3] == ["agent", "prompt", "worker-pane"]
         ]
         self.assertEqual(len(prompts), 1)
-        self.assertTrue(prompts[0][3].startswith(task))
-        digest = hashlib.sha256(task.encode()).hexdigest()
-        self.assertTrue(prompts[0][3].endswith(f"[straw-boss-task-sha256:{digest}]"))
+        digest = base64.urlsafe_b64encode(hashlib.sha256(task.encode()).digest()).decode().rstrip("=")
+        self.assertEqual(
+            prompts[0][3],
+            "Begin contract task.\n"
+            f"[sb256:{digest}]",
+        )
+        self.assertNotIn(task, prompts[0][3])
+        self.assertLess(len(prompts[0][3]), 256)
         self.assertGreater(len(task), 256)
+
+    def test_launcher_confirms_delivery_in_an_extremely_narrow_claude_viewport(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        instruction["task"] = "Implement the API contract from the database facts." * 40
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "narrow-claude-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_AGENT_KIND": "claude",
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_TRANSCRIPT_RENDER_COLUMNS": "11",
+                "HERDR_TRANSCRIPT_VISIBLE_LINES": "6",
+            },
+            timeout_seconds=30,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [
+            call
+            for call in calls
+            if call[:3] == ["agent", "prompt", "worker-pane"]
+        ]
+        self.assertEqual(len(prompts), 1)
 
     def test_transcript_matching_ignores_whitespace_inserted_inside_cjk_text(
         self,
