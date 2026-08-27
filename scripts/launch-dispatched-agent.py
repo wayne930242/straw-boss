@@ -16,7 +16,11 @@ from time import monotonic, sleep
 from typing import Any
 
 from dispatch_state import dump_json, launch_receipt_path, load_json, sha256_text
-from dispatch_transport import HerdrCommandError, run_herdr
+from dispatch_transport import (
+    HerdrCommandError,
+    confirm_transcript_contains,
+    run_herdr,
+)
 
 
 AGENT_START_PANE_READY_TIMEOUT_SECONDS = 5.0
@@ -223,6 +227,19 @@ def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str]:
     return pane_id, main_tab_id
 
 
+def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> None:
+    run_herdr(["agent", "prompt", pane_id, task])
+    if confirm_transcript_contains(pane_id, task, agent_kind):
+        return
+    run_herdr(["agent", "prompt", pane_id, task])
+    if confirm_transcript_contains(pane_id, task, agent_kind):
+        return
+    raise ValueError(
+        f"sent the initial task to pane {pane_id!r} via herdr twice but could not "
+        "confirm it landed in the transcript; refusing to write a launch receipt"
+    )
+
+
 def launch(
     instruction_path: str,
     name: str,
@@ -312,7 +329,9 @@ def launch(
                 ]
             )
 
-        run_herdr(["agent", "prompt", pane_id, str(instruction["task"])])
+        prompt_task_with_confirmation(
+            pane_id, str(instruction["task"]), agent_kind
+        )
         terminal_id = live_agent_terminal_id(pane_id, agent_kind)
         session_id: str | None = None
         if agent_kind == "claude":

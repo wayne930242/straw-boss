@@ -48,6 +48,32 @@ alternative of documenting only two manual command sequences leaves update
 semantics duplicated at every caller; a provider-selecting flag interface adds
 burden without value because auto-detection already supports one-CLI systems.
 
+## Initial task delivery confirmation
+
+The transcript reader, whitespace-normalized presence check, and bounded poll
+move from `reply-to-worker.py` into the existing `dispatch_transport.py` seam.
+Both reply delivery and initial launch reuse those primitives while retaining
+their own send and state-transition rules.
+
+The launcher sends the exact task, polls six times at two-second intervals, and
+resends once only after the first complete window finds no task text. It writes
+the receipt only after a poll succeeds. This preserves the existing one-retry
+precedent and prevents `dispatch-task.py confirm` from accepting a false launch.
+
+Alternatives rejected:
+
+- Waiting for `agent_status == idle` is insufficient because the reported case
+  was idle while the Codex input line was still empty, and provider startup
+  screens do not share one stable state sequence.
+- A fixed startup sleep cannot prove delivery and either remains racy or adds
+  unconditional latency.
+- Duplicating the reply helper in the launcher would distribute provider-specific
+  transcript rules and retry constants across two callers.
+
+The executable seam is the public launcher CLI with fake Herdr: the first prompt
+is deliberately absent from visible transcript output and the second is present.
+Existing reply-to-worker tests protect the extracted helper's prior behavior.
+
 ## Alternatives considered
 
 ### Store null and trust only the pane

@@ -11,6 +11,8 @@ Date: 2026-08-27
 | Bind Codex live transport | Message-routing test accepts the exact pane, `agent: codex`, and terminal id. |
 | Fail closed on replacement | Negative tests reject a different terminal id and a different provider before any prompt call. |
 | Preserve coordinator and coworker routing | Main-agent provider-fingerprint requirements, Codex Plan routing, and same-worktree coworker tests pass. |
+| Confirm initial task delivery | Public launcher test swallows the first Codex prompt, observes the retry in visible transcript, and only then receives a launch receipt. |
+| Refuse false launch success | A two-miss launcher test proves the pane is closed and no receipt exists for `confirm` to consume. |
 
 ## TDD evidence
 
@@ -34,6 +36,12 @@ The installer slice first failed at its public command boundary because
 documented command. After implementation, fresh-install, stale-version update,
 and bilingual documentation cases passed against stateful fake provider CLIs.
 
+The prompt-delivery regression initially failed because the launcher returned
+success after exactly one prompt without issuing any transcript read. The red
+assertion observed one prompt where two were required. After implementation,
+the first-miss case retries once and succeeds; the two-miss case fails after the
+second bounded poll window and removes the pane.
+
 ## Automated results
 
 - `python3 -m unittest tests.test_dispatched_agent_lifecycle_transport` — 60
@@ -41,8 +49,8 @@ and bilingual documentation cases passed against stateful fake provider CLIs.
 - `python3 -m unittest tests.test_codex_plan_orchestration` — 15 tests passed
   during focused development.
 - `python3 -m unittest tests.test_install_script` — 3 tests passed.
-- `python3 -m unittest discover -s tests -p 'test_*.py'` — 89 tests passed in
-  19.212 seconds after the final installer lint fix.
+- `python3 -m unittest discover -s tests -p 'test_*.py'` — 91 tests passed in
+  54.876 seconds after the `0.18.13` delivery bump.
 - `bash -n scripts/install.sh` — passed.
 - `shellcheck scripts/install.sh` — passed without findings.
 - `python3 -m py_compile` for the three changed scripts and two changed test
@@ -58,12 +66,13 @@ contain `agent_session`, while the observed Codex records contain `pane_id`,
 `terminal_id`, and `agent: "codex"` without `agent_session`.
 
 No new live Codex worker was launched for this verification. The automated public
-CLI seam covers launch, receipt, confirmation, and transport without modifying an
-operator's active Herdr layout. `terminal_id` remains a live routing fingerprint,
-not a Codex thread id; interactive `codex exec resume` is deliberately outside
-this change.
+CLI seam covers delayed startup, retry, refusal, receipt, confirmation, and
+transport without modifying an operator's active Herdr layout. `terminal_id`
+remains a live routing fingerprint, not a Codex thread id; interactive
+`codex exec resume` is deliberately outside this change.
 
-The subsequent delivery request bumps both plugin manifests to `0.18.12` and
-adds the repo-owned installer. Commit, push, and local-install evidence is
-reported separately at handoff so repository verification does not claim
-external state before it exists.
+The earlier identity delivery bumped both plugin manifests to `0.18.12` and
+added the repo-owned installer. This transcript-confirmed delivery bumps both
+manifests to `0.18.13`. Commit, push, and local-install evidence is reported
+separately at handoff so repository verification does not claim external state
+before it exists.

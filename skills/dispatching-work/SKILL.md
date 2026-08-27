@@ -60,11 +60,11 @@ status before any agent starts.
 
 ## Task 4: Dispatch
 
-Follow `references/dispatch-mechanics.md`. For `herdr-pane`, start and submit the task only through `launch-dispatched-agent.py`; it injects the generated contract before the first model turn and writes the launch receipt consumed by `dispatch-task.py confirm`.
+Follow `references/dispatch-mechanics.md`. For `herdr-pane`, start and submit the task only through `launch-dispatched-agent.py`; it injects the generated contract before the first model turn, verifies the task reached the transcript with at most one retry, and only then writes the launch receipt consumed by `dispatch-task.py confirm`.
 
 **Mirror the main agent's own permission mode onto the agent.** Detect it from the main agent's own process args (`ps -p "$CLAUDE_PID" -ww -o args=`, exact detection in the reference) and map it through the agent kind's own permission surface (`references/dispatch-mechanics.md`'s "Mapping permission mode across agent kinds" — a per-kind flag combo, not the identical flag string, for anything other than `claude`). An agent must never end up more tightly gated than the main agent dispatching it — never hardcode a specific mode here, and never omit this "to be safe."
 
-Once the launcher succeeds, call `dispatch-task.py confirm`. It refuses unless the launch receipt matches the instruction, contract digest, provider, pane, and live session; then it flips to `in-progress` and records the receipt's pane/tab/session.
+Once the launcher succeeds, call `dispatch-task.py confirm`. It refuses unless the launch receipt matches the instruction, contract digest, provider, pane, and provider-specific live fingerprint; then it flips to `in-progress` and records the receipt's pane, tab, and identity fields.
 
 **Verification:** status is `in-progress`; permission mode was detected and mapped through the resolved agent kind's own permission surface, not hardcoded or skipped; pane/tab ids recorded for `herdr-pane`; session_id cross-checked against what herdr/the agent reports (or recorded from what it reported, for a kind that can't pre-assign one).
 

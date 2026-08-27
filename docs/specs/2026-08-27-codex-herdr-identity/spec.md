@@ -17,6 +17,12 @@
 - `bash scripts/install.sh` verifies matching Claude/Codex manifest versions,
   installs or updates each available CLI adapter, and verifies the reported
   installed version. It fails when neither supported CLI is available.
+- After the initial task prompt, the launcher polls the provider-appropriate
+  transcript view for whitespace-normalized task text. A full poll window with
+  no match triggers exactly one resend and a second poll window.
+- A transcript read or prompt command failure propagates immediately. Two
+  successful prompt calls without transcript evidence fail launch, close the
+  created pane, and write no receipt.
 
 ## Edge cases
 
@@ -24,6 +30,10 @@
 - A Codex endpoint that resolves to Claude, another terminal id, or no live agent
   fails before a prompt is sent.
 - A Claude receipt without a session remains invalid.
+- A task already visible during the first poll is never resent.
+- Codex transcript reads use Herdr's visible source. Claude first uses recent
+  transcript lines and falls back to visible when Herdr reports that scrolling
+  requires an idle agent.
 - Older Claude instruction and receipt schemas remain valid.
 - Older Codex instructions without the new terminal field remain readable for
   durable state but cannot send or receive live messages.
@@ -61,8 +71,16 @@ The installer is exercised as a public shell command against stateful fake
 Claude and Codex CLIs for fresh-install and stale-version update paths. README
 coverage asserts both languages expose the same command.
 
+The launcher regression seam simulates a Codex TUI whose first prompt is
+accepted by Herdr but absent from `agent read`; the second prompt appears in the
+visible transcript. A negative case keeps both submissions absent and verifies
+that no receipt survives.
+
 There is no separate human appropriateness question.
 
 ## Confirmation
 
 Confirmed on 2026-08-27 by the user's explicit delegation: "修法方向(你決定)".
+The transcript-confirmation extension was confirmed the same day by the user's
+explicit direction to reuse the existing reply-to-worker poll and one-retry
+mechanism.

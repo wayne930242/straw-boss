@@ -11,12 +11,18 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from time import sleep
 from typing import Any, Literal
 
 from dispatch_state import load_json
 
 
 SUBPROCESS_TIMEOUT_S = 30
+# A generous tail prevents fast worker output from scrolling a delivered message
+# away before the next poll and causing a duplicate resend.
+TRANSCRIPT_CONFIRM_READ_LINES = 500
+TRANSCRIPT_CONFIRM_POLL_ATTEMPTS = 6
+TRANSCRIPT_CONFIRM_POLL_INTERVAL_S = 2.0
 Target = Literal["main", "root-main", "worker"]
 WORKER_TO_MAIN_INTENTS = frozenset({"question", "inform", "status"})
 MAIN_TO_WORKER_INTENTS = frozenset({"inform", "redirect", "reply", "reply-retry", "control"})
@@ -81,6 +87,58 @@ def run_herdr(args: list[str]) -> dict[str, Any]:
         return json.loads(stdout)
     except json.JSONDecodeError as exc:
         raise ValueError(f"herdr {' '.join(args)!r} returned non-JSON output") from exc
+
+
+def read_agent_transcript(target: str, agent_kind: str) -> str:
+    if agent_kind not in {"claude", "codex"}:
+        raise ValueError(f"unsupported agent kind {agent_kind!r}")
+    args = [
+        "agent",
+        "read",
+        target,
+        "--lines",
+        str(TRANSCRIPT_CONFIRM_READ_LINES),
+    ]
+    if agent_kind == "codex":
+        # Herdr's default recent source can be empty for a live Codex TUI even
+        # while the visible screen contains the submitted prompt.
+        return run_herdr_raw([*args, "--source", "visible"])
+    try:
+        return run_herdr_raw(args)
+    except ValueError as exc:
+        # A working Claude alternate screen can refuse scrollback capture while
+        # its visible screen remains readable. Follow Herdr's own fallback hint.
+        if "--source visible" not in str(exc):
+            raise
+        return run_herdr_raw([*args, "--source", "visible"])
+
+
+def normalize_transcript_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text)
+
+
+def transcript_contains(transcript: str, message: str) -> bool:
+    # Terminal hard-wrapping changes spaces into newlines. Presence proves the
+    # text reached the pane; worker action or completion is a separate concern.
+    return normalize_transcript_text(message) in normalize_transcript_text(transcript)
+
+
+def confirm_transcript_contains(
+    target: str,
+    message: str,
+    agent_kind: str,
+    *,
+    attempts: int = TRANSCRIPT_CONFIRM_POLL_ATTEMPTS,
+    poll_interval_seconds: float = TRANSCRIPT_CONFIRM_POLL_INTERVAL_S,
+) -> bool:
+    if attempts < 1:
+        raise ValueError("transcript confirmation attempts must be positive")
+    for attempt in range(attempts):
+        if transcript_contains(read_agent_transcript(target, agent_kind), message):
+            return True
+        if attempt < attempts - 1:
+            sleep(poll_interval_seconds)
+    return False
 
 
 def resolve_endpoint(instruction: dict[str, Any], target: Target) -> Endpoint:

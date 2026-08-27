@@ -28,6 +28,10 @@ Date: 2026-08-26
 5. Codex does not set `CLAUDE_PLUGIN_ROOT`, so hook commands that required it
    resolved to `/scripts/...` and exited 127. Both hooks now fall back to the
    plugin working directory while retaining Claude Code's explicit root path.
+6. Added on 2026-08-27: Herdr can accept an initial Codex task prompt while MCP
+   startup is still active without the text reaching the TUI transcript. The
+   launcher now polls transcript evidence, retries once after a full miss, and
+   refuses a receipt after two misses.
 
 ## Live smoke evidence
 
@@ -47,6 +51,6 @@ Date: 2026-08-26
   genuine-failure cleanup, and fast-worker confirmation tests pass.
 - Hook command tests pass with an unset `CLAUDE_PLUGIN_ROOT` from the plugin
   directory and with an explicit root from another directory.
-- `python3 -m unittest discover -s tests -p 'test_*.py'` — 89 tests passed on
-  2026-08-27 after the identity correction.
+- `python3 -m unittest discover -s tests -p 'test_*.py'` — 91 tests passed on
+  2026-08-27 after transcript-confirmed prompt delivery.
 - Both plugin manifests parse with `jq -e`; `git diff --check` passed.

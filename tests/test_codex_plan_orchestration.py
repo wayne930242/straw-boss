@@ -344,7 +344,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "case \"$2\" in\n"
             "  get) if [ \"$3\" = 'main:pane' ]; then terminal='terminal-main-pane'; else terminal='terminal-worker-pane'; fi; printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"name\\\":\\\"codex-task\\\",\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\"}}}\" ;;\n"
             "  prompt) printf '%s\\n' '{\"result\":{}}' ;;\n"
-            "  read) printf '%s\\n' 'continue with the dependency' ;;\n"
+            "  read) printf '%s\\n' 'continue with' 'the dependency' ;;\n"
             "  *) exit 2 ;;\n"
             "esac\n"
         )
