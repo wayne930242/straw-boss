@@ -23,8 +23,9 @@ The pane is an address; the provider fingerprint proves which live agent occupie
 it. Both are required so a reused pane cannot receive a stale task's message.
 Claude's fingerprint is its session id. Herdr 0.8.0 does not expose a Codex
 `agent_session`, so Codex uses Herdr's terminal id plus the reported agent kind;
-that terminal id is not a Codex thread id. Headless dispatches have no live
-endpoint and rely on durable status plus process/watcher observation.
+that terminal id is not a Codex thread id. A headless dispatch has no live
+endpoint; the status it persists before exiting carries the same events, and its
+process exit marks completion.
 
 `dispatch-task.py write` generates the instruction path and mandatory contract.
 The task author does not reproduce communication prose in `--task`.

@@ -71,7 +71,7 @@ Applies to the full flow only — the light flow's commit needs no authorization
 
 For an interactive task, authorization happens directly in the dispatched agent's session: point the user to its pane and leave the conversation there. For a headless task, relay the user's answer through its recorded continuation. The main agent never decides for the user.
 
-`awaiting-authorization` remains non-terminal until the user answers. Plan tasks expose it through `watch-plan-status.py`; standalone tasks use their durable status plus pane/process observation.
+`awaiting-authorization` remains non-terminal until the user answers. Plan tasks expose it through `watch-plan-status.py`; a standalone task persists the checkpoint to its own `.status.json` sibling and notifies this session from the same call, and the answer arrives as its next status event.
 
 **A feature-branch push notification is not this checkpoint.** The agent pushes its own feature branch and opens or updates an MR/PR on its own — no authorization to obtain and no session to resume. Relay the herdr FYI when it arrives; if no live route exists, read the progress trail. Never convert it into `awaiting-authorization`.
 

@@ -9,7 +9,7 @@ The user is the actual "boss" in Straw Boss naming.
 
 **Main agent** — owns orchestration: pre-launch routing, dispatch mechanics,
 requirement assignment, already-known coordination context, dependency
-scheduling, shared resources, status observation, and cleanup.
+scheduling, shared resources, status-event handling, and cleanup.
 
 **Dispatched agent** — an independent task owner once launched through Herdr. It
 works in the target app with that app's harness. The user and dispatched agent
@@ -67,7 +67,13 @@ Every dispatched agent reports terminal `done` or `failed` through
 `report-task-status.py`. The command persists status before notifying the
 validated main-agent Herdr endpoint; the watcher remains recovery evidence.
 
+That persisted status and its notification are what drive the coordination
+lifecycle. The main agent acts on each event — a checkpoint to resolve, a
+terminal state to record, a ready dependency to schedule, a terminal dispatch to
+clean up — and reads a task's live progress when observed evidence and its
+recorded state actually disagree, or when the user asks what it is doing.
+
 The main agent may autonomously schedule ready work, coordinate shared resources,
-observe status, and clean up terminal dispatches. User-gated mutations remain
+act on status events, and clean up terminal dispatches. User-gated mutations remain
 user decisions. Tracker mutations remain coordinator-owned and happen only after
 the relevant work is complete.

@@ -68,9 +68,11 @@ Once the launcher succeeds, call `dispatch-task.py confirm`. It refuses unless t
 
 **Verification:** status is `in-progress`; permission mode was detected and mapped through the resolved agent kind's own permission surface, not hardcoded or skipped; pane/tab ids recorded for `herdr-pane`; session_id cross-checked against what herdr/the agent reports (or recorded from what it reported, for a kind that can't pre-assign one).
 
-## Task 5: Report
+## Task 5: Report, then run the lifecycle on the dispatch's own events
 
 Tell the user what was dispatched, in which mode, and how to find it (instruction path; pane/tab for `herdr-pane`).
+
+From here the dispatch reports itself. Its `report-task-status.py` calls persist each checkpoint and terminal status to the instruction's own `.status.json` sibling and then notify this session's recorded pane, so those events are what the main agent acts on — resolve `awaiting-main-agent` with `reply-to-worker.py`, point the user at the pane for the other checkpoints, and wrap up on a terminal status. Between events the task is running and the main agent is free for other coordination or the user's conversation. `peeking-work` answers what a task is currently doing when the user asks, or when observed evidence and its recorded status actually disagree.
 
 ## Branch: Dispatch a plan
 

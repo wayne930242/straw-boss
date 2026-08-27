@@ -6,7 +6,7 @@ Canonical actor names and authority live in `docs/roles.md`.
 
 **Own the loop, not the work.** The main agent selects dispatch mechanics,
 schedules dependencies, supplies the user requirement, necessary hints, and
-already-known coordination facts, observes status, and cleans up. The worker
+already-known coordination facts, acts on status events, and cleans up. The worker
 discovers target-app implementation context itself. A Herdr-launched session is an
 independent agent: it and the user decide the specification, design,
 implementation, and verification method. The main agent accepts those decisions.

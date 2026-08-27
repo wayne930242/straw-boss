@@ -124,6 +124,49 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("rather than routing data", source)
         self.assertNotIn("dispatch/<session_id>.json", source)
 
+    def test_coordination_lifecycle_is_event_driven(self) -> None:
+        orchestrator = normalized(ROOT / "skills" / "i-am-orchestrator" / "SKILL.md")
+        self.assertIn("Keep the lifecycle event-driven", orchestrator)
+        self.assertIn("A dispatch reports itself", orchestrator)
+        self.assertIn(
+            "spend the time between events on other coordination or on the user's conversation",
+            orchestrator,
+        )
+        self.assertIn(
+            "when observed evidence and its recorded state actually disagree, or when the user asks",
+            orchestrator,
+        )
+        self.assertNotIn("watch status", orchestrator)
+        self.assertNotIn("every dispatch is observed or terminal", orchestrator)
+
+        roles = normalized(ROOT / "docs" / "roles.md")
+        self.assertIn("status-event handling", roles)
+        self.assertIn(
+            "That persisted status and its notification are what drive the coordination lifecycle",
+            roles,
+        )
+        self.assertNotIn("status observation", roles)
+        self.assertNotIn("observe status", roles)
+
+        dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
+        self.assertIn(
+            "Report, then run the lifecycle on the dispatch's own events", dispatching
+        )
+        self.assertIn(
+            "Between events the task is running and the main agent is free for other coordination",
+            dispatching,
+        )
+
+        shipping = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
+        self.assertIn("the answer arrives as its next status event", shipping)
+        self.assertNotIn("pane/process observation", shipping)
+
+        for reference in ("cross-session-coordination.md", "dispatch-mechanics.md"):
+            source = normalized(
+                ROOT / "skills" / "dispatching-work" / "references" / reference
+            )
+            self.assertNotIn("process/watcher observation", source)
+
     def test_shipping_sync_is_conditional_and_scope_is_local(self) -> None:
         source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
         self.assertIn("If the primary checkout tracks the merged base", source)

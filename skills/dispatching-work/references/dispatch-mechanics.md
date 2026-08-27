@@ -135,8 +135,8 @@ Codex has no native advisor. `dispatch-task.py write` refuses its
 coworker or subagent.
 
 The process must write status through `report-task-status.py
---instruction-path` before exit. With no live main-agent endpoint, durable
-status plus process/watcher observation is the recovery path. A Codex
+--instruction-path` before exit. With no live main-agent endpoint, that
+persisted status plus the process's own exit is what the main agent reads. A Codex
 continuation uses its separately recorded provider thread id with
 `codex exec resume` and includes the same contract content again. The interactive
 Herdr `terminal_id` is only a live routing fingerprint and never substitutes for
