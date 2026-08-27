@@ -114,12 +114,12 @@ def read_agent_transcript(target: str, agent_kind: str) -> str:
 
 
 def normalize_transcript_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text)
+    return re.sub(r"\s+", "", text)
 
 
 def transcript_contains(transcript: str, message: str) -> bool:
-    # Terminal hard-wrapping changes spaces into newlines. Presence proves the
-    # text reached the pane; worker action or completion is a separate concern.
+    # Terminal rendering can replace spaces with newlines or insert whitespace
+    # inside CJK text. Presence proves delivery; action is a separate concern.
     return normalize_transcript_text(message) in normalize_transcript_text(transcript)
 
 

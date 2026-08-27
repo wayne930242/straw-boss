@@ -25,6 +25,7 @@ from dispatch_transport import (
 
 AGENT_START_PANE_READY_TIMEOUT_SECONDS = 5.0
 AGENT_START_PANE_READY_POLL_INTERVAL_SECONDS = 0.25
+TASK_DELIVERY_MARKER_PREFIX = "straw-boss-task-sha256"
 
 
 def _option_present(args: list[str], flags: tuple[str, ...]) -> bool:
@@ -227,16 +228,23 @@ def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str]:
     return pane_id, main_tab_id
 
 
+def task_delivery_marker(task: str) -> str:
+    return f"[{TASK_DELIVERY_MARKER_PREFIX}:{sha256_text(task)}]"
+
+
 def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> None:
-    run_herdr(["agent", "prompt", pane_id, task])
-    if confirm_transcript_contains(pane_id, task, agent_kind):
+    marker = task_delivery_marker(task)
+    prompt = f"{task}\n\n{marker}"
+    run_herdr(["agent", "prompt", pane_id, prompt])
+    if confirm_transcript_contains(pane_id, marker, agent_kind):
         return
-    run_herdr(["agent", "prompt", pane_id, task])
-    if confirm_transcript_contains(pane_id, task, agent_kind):
+    run_herdr(["agent", "prompt", pane_id, prompt])
+    if confirm_transcript_contains(pane_id, marker, agent_kind):
         return
     raise ValueError(
         f"sent the initial task to pane {pane_id!r} via herdr twice but could not "
-        "confirm it landed in the transcript; refusing to write a launch receipt"
+        "confirm it landed in the transcript via its delivery marker; refusing "
+        "to write a launch receipt"
     )
 
 

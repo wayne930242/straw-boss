@@ -50,29 +50,37 @@ burden without value because auto-detection already supports one-CLI systems.
 
 ## Initial task delivery confirmation
 
-The transcript reader, whitespace-normalized presence check, and bounded poll
+The transcript reader, whitespace-insensitive presence check, and bounded poll
 move from `reply-to-worker.py` into the existing `dispatch_transport.py` seam.
 Both reply delivery and initial launch reuse those primitives while retaining
 their own send and state-transition rules.
 
-The launcher sends the exact task, polls six times at two-second intervals, and
-resends once only after the first complete window finds no task text. It writes
-the receipt only after a poll succeeds. This preserves the existing one-retry
-precedent and prevents `dispatch-task.py confirm` from accepting a false launch.
+The launcher appends a deterministic ASCII marker containing the task's full
+SHA-256 digest, polls six times at two-second intervals for that marker, and
+resends the same marked task once only after the first complete window finds no
+marker. Keeping the proof at the prompt tail makes it observable in Herdr's
+bounded transcript view even after a long task body scrolls away. Removing all
+Unicode whitespace during comparison also tolerates CJK hard wraps. The receipt
+is written only after a poll succeeds.
 
 Alternatives rejected:
 
 - Waiting for `agent_status == idle` is insufficient because the reported case
   was idle while the Codex input line was still empty, and provider startup
   screens do not share one stable state sequence.
+- Comparing the complete rendered task cannot succeed when the task is longer
+  than Herdr's bounded transcript view, and terminal rendering can insert spaces
+  inside CJK text.
 - A fixed startup sleep cannot prove delivery and either remains racy or adds
   unconditional latency.
 - Duplicating the reply helper in the launcher would distribute provider-specific
   transcript rules and retry constants across two callers.
 
-The executable seam is the public launcher CLI with fake Herdr: the first prompt
-is deliberately absent from visible transcript output and the second is present.
-Existing reply-to-worker tests protect the extracted helper's prior behavior.
+The executable seam is the public launcher CLI with fake Herdr: one case exposes
+only a short transcript tail for a long task, while another keeps the first
+prompt absent and exposes the retry. A focused CJK case protects the shared
+whitespace-insensitive matcher. Existing reply-to-worker tests protect the
+extracted helper's prior behavior.
 
 ## Alternatives considered
 

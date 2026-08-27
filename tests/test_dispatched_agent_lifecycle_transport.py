@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -147,7 +148,11 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    prompts = [call for call in captured if call[:3] == ['agent', 'prompt', target]]\n"
             "    deliver_after = int(os.environ.get('HERDR_TRANSCRIPT_DELIVER_AFTER_PROMPTS', '1'))\n"
             "    if prompts and len(prompts) >= deliver_after:\n"
-            "        print(prompts[-1][3])\n"
+            "        transcript = prompts[-1][3]\n"
+            "        tail_chars = int(os.environ.get('HERDR_TRANSCRIPT_TAIL_CHARS', '0'))\n"
+            "        if tail_chars > 0:\n"
+            "            transcript = transcript[-tail_chars:]\n"
+            "        print(transcript)\n"
             "    else:\n"
             "        print(os.environ.get('HERDR_TRANSCRIPT_NOISE', 'Ask Codex to do anything'))\n"
             "elif args[:2] == ['agent', 'prompt'] and args[2] == os.environ.get('HERDR_FAIL_PROMPT_PANE'):\n"
@@ -936,12 +941,74 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
-        prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
+        prompts = [
+            call
+            for call in calls
+            if call[:3] == ["agent", "prompt", "worker-pane"]
+        ]
         self.assertEqual(len(prompts), 2)
         reads = [call for call in calls if call[:3] == ["agent", "read", "worker-pane"]]
         self.assertTrue(reads)
         self.assertIn("--source", reads[0])
         self.assertEqual(reads[0][reads[0].index("--source") + 1], "visible")
+
+    def test_launcher_confirms_a_long_task_from_a_bounded_transcript_tail(self) -> None:
+        instruction_path, _ = self.write_dispatch("codex")
+        instruction = json.loads(instruction_path.read_text())
+        task = "外層邊界可拖曳調寬，完成後驗證真實介面。" * 180
+        instruction["task"] = task
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "long-task-codex-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_AGENT_KIND": "codex",
+                "HERDR_OMIT_AGENT_SESSION": "1",
+                "HERDR_TRANSCRIPT_TAIL_CHARS": "256",
+            },
+            timeout_seconds=30,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [
+            call
+            for call in calls
+            if call[:3] == ["agent", "prompt", "worker-pane"]
+        ]
+        self.assertEqual(len(prompts), 1)
+        self.assertTrue(prompts[0][3].startswith(task))
+        digest = hashlib.sha256(task.encode()).hexdigest()
+        self.assertTrue(prompts[0][3].endswith(f"[straw-boss-task-sha256:{digest}]"))
+        self.assertGreater(len(task), 256)
+
+    def test_transcript_matching_ignores_whitespace_inserted_inside_cjk_text(
+        self,
+    ) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "from dispatch_transport import transcript_contains; "
+                    "raise SystemExit(0 if transcript_contains("
+                    "'外 層邊界可拖曳調寬', '外層邊界可拖曳調寬') else 1)"
+                ),
+            ],
+            cwd=ROOT,
+            env={**os.environ, "PYTHONPATH": str(SCRIPTS)},
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_launcher_refuses_receipt_when_both_task_prompts_miss_transcript(
         self,

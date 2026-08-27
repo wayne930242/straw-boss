@@ -46,11 +46,14 @@ provider CLIs.
    coordinator identity remains provider-specific.
 7. From a source checkout, `scripts/install.sh` installs or updates Straw Boss
    for every locally available supported CLI and verifies the installed version.
-8. If Codex startup consumes the first task prompt while MCP or another opening
-   flow is still active, the launcher polls the visible transcript, retries the
-   exact task once, and succeeds only after the task text is observable.
-9. If neither task submission becomes observable, launch fails, removes the
-   worker pane, and does not create a launch receipt that confirmation could
+8. The launcher appends a deterministic ASCII marker containing the task's full
+   SHA-256 digest. It polls the provider-appropriate transcript for that tail
+   marker, retries the same marked task once, and succeeds only after the marker
+   is observable even when the task body has scrolled out of a bounded view.
+9. Transcript matching ignores all rendered whitespace so terminal wrapping
+   inside CJK text cannot hide an otherwise observable marker or short message.
+10. If neither marked task submission becomes observable, launch fails, removes
+   the worker pane, and does not create a launch receipt that confirmation could
    advance to `in-progress`.
 
 ## Confirmed decisions
@@ -64,6 +67,9 @@ provider CLIs.
 - The user delegated the repair choice on 2026-08-27.
 - Herdr prompt command success is transport acceptance, not delivery proof; the
   launch receipt requires transcript evidence after at most one retry.
+- The proof is a task-digest marker at the prompt tail, not full-task presence or
+  an agent-status transition. Transcript views are bounded and status changes
+  can race with startup state.
 
 ## Open questions
 

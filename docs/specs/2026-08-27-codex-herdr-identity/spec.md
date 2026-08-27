@@ -17,9 +17,12 @@
 - `bash scripts/install.sh` verifies matching Claude/Codex manifest versions,
   installs or updates each available CLI adapter, and verifies the reported
   installed version. It fails when neither supported CLI is available.
-- After the initial task prompt, the launcher polls the provider-appropriate
-  transcript view for whitespace-normalized task text. A full poll window with
-  no match triggers exactly one resend and a second poll window.
+- The launcher appends `[straw-boss-task-sha256:<full digest>]` at the end of the
+  initial task and polls the provider-appropriate transcript view for that
+  marker. A full poll window with no match triggers exactly one resend of the
+  same marked task and a second poll window.
+- Transcript presence checks remove all Unicode whitespace from both operands,
+  tolerating terminal hard wraps and whitespace inserted inside CJK text.
 - A transcript read or prompt command failure propagates immediately. Two
   successful prompt calls without transcript evidence fail launch, close the
   created pane, and write no receipt.
@@ -31,6 +34,8 @@
   fails before a prompt is sent.
 - A Claude receipt without a session remains invalid.
 - A task already visible during the first poll is never resent.
+- A bounded transcript tail may omit the task body as long as it contains the
+  complete delivery marker after whitespace removal.
 - Codex transcript reads use Herdr's visible source. Claude first uses recent
   transcript lines and falls back to visible when Herdr reports that scrolling
   requires an idle agent.
