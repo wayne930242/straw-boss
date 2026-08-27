@@ -104,6 +104,9 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    print(json.dumps({'result': {'pane': {'pane_id': target, 'tab_id': os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1')}}}))\n"
             "elif args[:2] == ['pane', 'split']:\n"
             "    print(json.dumps({'result': {'pane': {'pane_id': os.environ.get('HERDR_WORKER_PANE_ID', 'worker-pane'), 'tab_id': os.environ.get('HERDR_WORKER_TAB_ID', os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1'))}}}))\n"
+            "elif args[:2] == ['agent', 'start'] and sum(call[:2] == ['agent', 'start'] for call in captured) <= int(os.environ.get('HERDR_PANE_BUSY_ATTEMPTS', '0')):\n"
+            "    print(json.dumps({'error': {'code': 'agent_pane_busy', 'message': f'agent target pane {args[args.index(\"--pane\") + 1]} is not an available shell'}}, separators=(',', ':')), file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
             "elif args[:2] == ['agent', 'start'] and os.environ.get('HERDR_FAIL_START_BLOCKED') == '1':\n"
             "    print(json.dumps({'error': {'code': 'agent_not_ready', 'message': 'agent is blocked during startup'}}), file=sys.stderr)\n"
             "    raise SystemExit(1)\n"
@@ -735,6 +738,33 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         self.assertTrue(any(call[:2] == ["agent", "send-keys"] for call in calls))
         self.assertTrue(any(call[:2] == ["agent", "wait"] for call in calls))
+        self.assertTrue(any(call[:2] == ["agent", "prompt"] for call in calls))
+
+    def test_launcher_retries_until_a_new_worker_pane_becomes_an_available_shell(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "pane-readiness-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_BUSY_ATTEMPTS": "2",
+                "HERDR_LIVE_SESSION": "pane-readiness-session",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        starts = [call for call in calls if call[:2] == ["agent", "start"]]
+        self.assertEqual(len(starts), 3)
+        self.assertNotIn(["pane", "close", "worker-pane"], calls)
         self.assertTrue(any(call[:2] == ["agent", "prompt"] for call in calls))
 
     def test_launcher_preserves_a_genuine_start_failure_and_closes_pane(self) -> None:

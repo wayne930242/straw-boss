@@ -16,7 +16,11 @@ from time import monotonic, sleep
 from typing import Any
 
 from dispatch_state import dump_json, launch_receipt_path, load_json, sha256_text
-from dispatch_transport import run_herdr
+from dispatch_transport import HerdrCommandError, run_herdr
+
+
+AGENT_START_PANE_READY_TIMEOUT_SECONDS = 5.0
+AGENT_START_PANE_READY_POLL_INTERVAL_SECONDS = 0.25
 
 
 def _option_present(args: list[str], flags: tuple[str, ...]) -> bool:
@@ -139,6 +143,28 @@ def herdr_pane(pane_id: str) -> dict[str, object]:
     return pane
 
 
+def start_agent_when_pane_ready(
+    start_args: list[str],
+    *,
+    timeout_seconds: float = AGENT_START_PANE_READY_TIMEOUT_SECONDS,
+    poll_interval_seconds: float = AGENT_START_PANE_READY_POLL_INTERVAL_SECONDS,
+) -> None:
+    deadline = monotonic() + timeout_seconds
+    while True:
+        try:
+            run_herdr(start_args)
+            return
+        except ValueError as exc:
+            remaining = deadline - monotonic()
+            if (
+                not isinstance(exc, HerdrCommandError)
+                or exc.error_code != "agent_pane_busy"
+                or remaining <= 0
+            ):
+                raise
+            sleep(min(poll_interval_seconds, remaining))
+
+
 def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str]:
     main_pane_id = instruction.get("main_agent_herdr_pane_id")
     if not isinstance(main_pane_id, str) or not main_pane_id:
@@ -231,7 +257,7 @@ def launch(
     try:
         start_error: ValueError | None = None
         try:
-            run_herdr(
+            start_agent_when_pane_ready(
                 [
                     "agent",
                     "start",

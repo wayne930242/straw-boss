@@ -32,6 +32,31 @@ class Endpoint:
     agent_kind: str
 
 
+class HerdrCommandError(ValueError):
+    def __init__(self, command_args: list[str], returncode: int, stderr: str) -> None:
+        self.command_args = tuple(command_args)
+        self.returncode = returncode
+        self.stderr = stderr.strip()
+        self.error_code = self._error_code(self.stderr)
+        super().__init__(
+            f"herdr {' '.join(command_args)!r} failed (exit {returncode}): {self.stderr}"
+        )
+
+    @staticmethod
+    def _error_code(stderr: str) -> str | None:
+        try:
+            payload = json.loads(stderr)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        error = payload.get("error")
+        if not isinstance(error, dict):
+            return None
+        code = error.get("code")
+        return code if isinstance(code, str) else None
+
+
 def run_herdr_raw(args: list[str]) -> str:
     try:
         result = subprocess.run(
@@ -45,9 +70,7 @@ def run_herdr_raw(args: list[str]) -> str:
     except FileNotFoundError as exc:
         raise ValueError("herdr CLI not found on PATH") from exc
     if result.returncode != 0:
-        raise ValueError(
-            f"herdr {' '.join(args)!r} failed (exit {result.returncode}): {result.stderr.strip()}"
-        )
+        raise HerdrCommandError(args, result.returncode, result.stderr)
     return result.stdout
 
 
