@@ -2217,10 +2217,26 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             any("dispatched-agent-stop-guard.py" in command for command in commands)
         )
 
-    def test_hook_commands_run_from_plugin_root_without_claude_root(self) -> None:
+    def test_hook_commands_never_resolve_scripts_from_the_session_directory(self) -> None:
+        # A hook runs in the session's own working directory, not in the plugin
+        # directory. Resolving the script relative to that cwd either exits 127 or
+        # runs an unrelated file that happens to sit at scripts/<same-name>.
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())
         env = {**os.environ, "HOME": str(self.home)}
         env.pop("CLAUDE_PLUGIN_ROOT", None)
+
+        session_dir = self.home / "session"
+        decoy_dir = session_dir / "scripts"
+        decoy_dir.mkdir(parents=True)
+        marker = session_dir / "decoy-ran"
+        for script in ("orchestrator-priming.py", "dispatched-agent-stop-guard.py"):
+            decoy = decoy_dir / script
+            decoy.write_text(
+                "#!/usr/bin/env python3\n"
+                "from pathlib import Path\n"
+                "Path(%r).write_text('ran')\n" % str(marker)
+            )
+            decoy.chmod(0o755)
 
         for event_entries in hooks["hooks"].values():
             for entry in event_entries:
@@ -2229,13 +2245,18 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
                         hook["command"],
                         shell=True,
                         input="{}",
-                        cwd=ROOT,
+                        cwd=session_dir,
                         env=env,
                         capture_output=True,
                         text=True,
                         timeout=10,
                     )
                     self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertFalse(
+                        marker.exists(),
+                        "hook executed a script from the session directory",
+                    )
+                    self.assertIn("CLAUDE_PLUGIN_ROOT", result.stdout)
 
     def test_hook_commands_honor_claude_root_outside_plugin_directory(self) -> None:
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())

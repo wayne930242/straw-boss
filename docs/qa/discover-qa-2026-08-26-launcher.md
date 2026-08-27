@@ -28,6 +28,10 @@ Date: 2026-08-26
 5. Codex does not set `CLAUDE_PLUGIN_ROOT`, so hook commands that required it
    resolved to `/scripts/...` and exited 127. Both hooks now fall back to the
    plugin working directory while retaining Claude Code's explicit root path.
+   Superseded on 2026-08-27: that fallback resolved against the *session's* cwd,
+   not the plugin directory, so it exited 127 in a real Codex session and could
+   execute an unrelated `scripts/<same-name>` from the user's repo. Both hooks
+   now require an explicit `CLAUDE_PLUGIN_ROOT` and report a skip instead.
 6. Added on 2026-08-27: Herdr can accept an initial Codex task prompt while MCP
    startup is still active without the text reaching the TUI transcript. The
    launcher now polls transcript evidence, retries once after a full miss, and

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT:-.}\"/scripts/orchestrator-priming.py"
+            "command": "if [ -n \"${CLAUDE_PLUGIN_ROOT:-}\" ] && [ -x \"$CLAUDE_PLUGIN_ROOT\"/scripts/orchestrator-priming.py ]; then exec \"$CLAUDE_PLUGIN_ROOT\"/scripts/orchestrator-priming.py; fi; cat >/dev/null; printf '%s\\n' '{\"systemMessage\":\"straw-boss: CLAUDE_PLUGIN_ROOT is unset or does not contain scripts/orchestrator-priming.py, so the orchestrator priming hook was skipped. Restart this session to reload plugin roots.\"}'"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT:-.}\"/scripts/dispatched-agent-stop-guard.py"
+            "command": "if [ -n \"${CLAUDE_PLUGIN_ROOT:-}\" ] && [ -x \"$CLAUDE_PLUGIN_ROOT\"/scripts/dispatched-agent-stop-guard.py ]; then exec \"$CLAUDE_PLUGIN_ROOT\"/scripts/dispatched-agent-stop-guard.py; fi; cat >/dev/null; printf '%s\\n' '{\"systemMessage\":\"straw-boss: CLAUDE_PLUGIN_ROOT is unset or does not contain scripts/dispatched-agent-stop-guard.py, so the dispatched-agent stop guard was skipped. Restart this session to reload plugin roots.\"}'"
           }
         ]
       }
