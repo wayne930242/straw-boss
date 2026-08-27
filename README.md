@@ -83,7 +83,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `create-great-harness` | Bootstrap a minimal agent system for an app that has none — an evidence-grounded `CLAUDE.md`, plus optional hook or rule artifacts when confirmed scope or project evidence requires them |
 | `inspecting-app` | Dispatch an evidence-bearing rules audit into the app; bounded audits may use a confirmed lower-tier route |
 | `investigating-app` | Dispatch current-state research into the app and return an explanation with evidence, not a binary answer |
-| `troubleshooting-app` | Dispatch evidence-bearing app diagnosis, then hand the fix back to `boss-say` once root cause is known |
+| `troubleshooting-app` | Keep ordinary diagnosis and repair in one `shipping-task` worker; split out only an integration preflight whose evidence is needed to route or schedule later dispatches |
 
 ## Usage
 

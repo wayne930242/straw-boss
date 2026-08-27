@@ -89,6 +89,15 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertNotIn("Do not investigate the target app to enrich the brief", lifecycle_tests)
         self.assertNotIn('self.assertIn("not a yes-or-no answer"', lifecycle_tests)
 
+    def test_troubleshooting_splits_only_integration_preflight(self) -> None:
+        source = normalized(ROOT / "skills" / "troubleshooting-app" / "SKILL.md")
+        self.assertIn("only when both conditions hold", source)
+        self.assertIn("failure crosses an integration boundary", source)
+        self.assertIn("needed to shape or schedule later dispatches", source)
+        self.assertIn("stays in the same worker", source)
+        self.assertIn("every other app-level or uncertain failure", source)
+        self.assertIn("One worker reproduces the failure", source)
+
     def test_shared_resource_discovery_stays_with_worker(self) -> None:
         source = normalized(
             ROOT

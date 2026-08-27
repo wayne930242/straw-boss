@@ -81,7 +81,7 @@ $straw-boss:init
 | `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——一份 `CLAUDE.md`、一個 guard hook，加一份即時抓取官方文件寫成的 skill 撰寫規範 |
 | `inspecting-app` | 派進 app 做附證據的規則稽核；範圍明確時可用已確認的較低階 route |
 | `investigating-app` | 派進 app 研究現況，帶回附證據的解釋，不只回答是或否 |
-| `troubleshooting-app` | 派進 app 做附證據的診斷，確認根因後再把修正交回 `boss-say` |
+| `troubleshooting-app` | 一般故障由同一個 `shipping-task` worker 連續診斷並修復；只有整合診斷必須先提供證據以安排後續派工時，才拆成獨立的前置調查 |
 
 ## 怎麼用
 

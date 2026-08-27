@@ -565,12 +565,20 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             normalize(work_on),
         )
         self.assertNotIn("Reads/explanations that don't change code — answer inline", work_on)
-        for source in (investigating, inspecting, troubleshooting):
+        for source in (investigating, inspecting):
             normalized = normalize(source)
             self.assertIn("always dispatches", normalized)
             self.assertIn("evidence references", normalized)
             self.assertIn("explanatory", normalized)
             self.assertNotIn("- **Solo:**", source)
+
+        normalized_troubleshooting = normalize(troubleshooting)
+        self.assertIn("integration preflight", normalized_troubleshooting)
+        self.assertIn("only when both conditions hold", normalized_troubleshooting)
+        self.assertIn("stays in the same worker", normalized_troubleshooting)
+        self.assertIn("evidence references", normalized_troubleshooting)
+        self.assertIn("explanatory", normalized_troubleshooting)
+        self.assertNotIn("- **Solo:**", troubleshooting)
 
     def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:
         roles = (ROOT / "docs" / "roles.md").read_text()
