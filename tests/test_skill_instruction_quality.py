@@ -167,6 +167,34 @@ class SkillInstructionQualityTests(unittest.TestCase):
             )
             self.assertNotIn("process/watcher observation", source)
 
+    def test_session_start_stance_states_each_coordination_rule_once(self) -> None:
+        # The SessionStart hook injects the body only, so judge the body only.
+        source = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
+        _, _, body_source = source.partition("---\n")
+        _, _, body_source = body_source.partition("---\n")
+        stance = " ".join(body_source.replace("`", "").split())
+
+        # Each rule is stated where it is operable, and nowhere else. The
+        # injected stance previously restated work-content ownership, conflict
+        # handling, and cleanup authority across four sections.
+        for phrase in (
+            "specification, design, implementation, and verification method",
+            "awaiting-main-agent",
+            "conflict",
+            "authorization",
+            "peeking-work",
+        ):
+            self.assertEqual(stance.count(phrase), 1, phrase)
+
+        # Worker-side mechanism a main agent never executes.
+        self.assertNotIn("persists the state first and then notifies", stance)
+
+        # Positive, direct phrasing outside the one negation the section title
+        # carries by name.
+        body = stance.replace("Own the loop, not the work", "")
+        for defensive in (" do not ", " never ", " without asking ", ", not "):
+            self.assertNotIn(defensive, body)
+
     def test_shipping_sync_is_conditional_and_scope_is_local(self) -> None:
         source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
         self.assertIn("If the primary checkout tracks the merged base", source)

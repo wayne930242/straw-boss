@@ -2298,6 +2298,44 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("report-task-status.py", result.stdout)
         self.assertNotIn("orchestrator", result.stdout.lower())
 
+    def test_session_start_primes_a_main_agent_with_a_compact_stance(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "orchestrator-priming.py")],
+            input=json.dumps({"session_id": "main-session-with-no-dispatch"}),
+            cwd=ROOT,
+            env={**os.environ, "HOME": str(self.home)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        injected = result.stdout.strip()
+
+        # The hook injects the stance body, never the skill's YAML frontmatter.
+        self.assertNotIn("name: i-am-orchestrator", injected)
+        self.assertNotIn("---", injected)
+        # A main agent never runs the worker's reporting command; that contract
+        # belongs to the dispatched branch of this same hook.
+        self.assertNotIn("report-task-status.py", injected)
+
+        normalized = " ".join(injected.replace("`", "").split())
+        for boundary in (
+            "Own the loop, not the work",
+            "specification, design, implementation, and verification method",
+            "dispatches that investigation instead of reading across managed app roots",
+            "Keep the lifecycle event-driven",
+            "A dispatch reports itself",
+            "spend the time between events on other coordination or on the user's conversation",
+            "when observed evidence and its recorded state actually disagree, or when the user asks",
+        ):
+            self.assertIn(boundary, normalized)
+
+        # The complaint this budget guards: the stance injected at every
+        # main-agent session start had grown to 2,373 characters of restated
+        # rules. Keep the trim, or restate a rule somewhere it is not already
+        # stated and this fails.
+        self.assertLessEqual(len(injected), 1800, injected)
+
     def test_control_message_preserves_the_exact_slash_command(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         instruction = self.set_worker_endpoint(
