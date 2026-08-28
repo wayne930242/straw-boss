@@ -161,6 +161,19 @@ archives the instruction and its contract, receipt, status, progress, and
 delivery artifacts, and synchronizes terminal Plan status. Never archive a
 non-terminal checkpoint or a task with a same-task continuation pending.
 
+If the worker pane already closed before it wrote its own terminal status,
+`report-task-status.py`'s sender validation makes it impossible for the
+coordinator to write `done`/`failed` on its behalf while posing as the
+worker — by design, so a live worker is never overridden.
+`recover-task-status.py --instruction-path ... --status done|failed --note
+...` is the one explicit exception: it confirms the caller is the genuine
+live main agent, then confirms the worker pane is actually unreachable (a
+herdr probe, not an assumption), then writes the status file itself with a
+`recovered_by_main_agent` marker. It refuses if the worker pane still
+answers, or if a terminal status is already on file. This is recovery for a
+pane that already closed, not a substitute for the normal reply-then-
+self-report order — see `SKILL.md`'s Wrap-up branch Step 4.
+
 ## Worker-owned coworker
 
 An interactive dispatched worker that needs a human-facing second opinion uses

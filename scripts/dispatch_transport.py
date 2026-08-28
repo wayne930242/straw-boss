@@ -269,6 +269,43 @@ def validate_live_session(endpoint: Endpoint) -> None:
     )
 
 
+def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
+    """True only when the recorded worker session is confirmed unreachable:
+    herdr itself reports no live agent at this pane, or a live agent answers
+    but its identity does not match what the dispatch recorded (pane closed
+    and the index reused since -- the original worker is unreachable either
+    way). False when the recorded worker still answers there.
+
+    A separate bool predicate rather than a reuse of `validate_live_session`:
+    that function raises on every mismatch, including a herdr transport
+    failure (timeout, herdr missing, non-JSON output) that establishes
+    nothing about whether the pane is actually closed. A caller deciding
+    whether closed-pane recovery applies needs those told apart -- herdr
+    saying "no agent here" decides yes, herdr being unreachable right now
+    decides nothing and must propagate -- which a single raise/no-raise
+    signal can't express.
+    """
+    try:
+        payload = run_herdr(["agent", "get", endpoint.pane_id])
+    except HerdrCommandError:
+        return True
+    agent = payload.get("result", {}).get("agent")
+    if not isinstance(agent, dict) or agent.get("pane_id") != endpoint.pane_id:
+        return True
+    if endpoint.agent_kind == "codex":
+        return not (
+            agent.get("agent") == "codex"
+            and agent.get("terminal_id") == endpoint.expected_terminal_id
+        )
+    live_session = agent.get("agent_session")
+    live_session_id = live_session.get("value") if isinstance(live_session, dict) else None
+    if live_session_id == endpoint.expected_session_id:
+        return False
+    if endpoint.agent_kind == "claude" and _claude_registry_corroborates(endpoint):
+        return False
+    return True
+
+
 def validate_current_sender(endpoint: Endpoint) -> None:
     current_pane = os.environ.get("HERDR_PANE_ID")
     if current_pane != endpoint.pane_id:

@@ -121,6 +121,9 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "elif args[:2] == ['agent', 'get'] and os.environ.get('HERDR_FAIL_START') == '1':\n"
             "    print(json.dumps({'error': {'code': 'agent_not_found', 'message': 'no live agent'}}), file=sys.stderr)\n"
             "    raise SystemExit(1)\n"
+            "elif args[:2] == ['agent', 'get'] and args[2] in json.loads(os.environ.get('HERDR_MISSING_PANES', '[]')):\n"
+            "    print(json.dumps({'error': {'code': 'agent_not_found', 'message': 'no live agent'}}), file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
             "elif args[:2] == ['agent', 'get']:\n"
             "    target = args[2]\n"
             "    sessions = json.loads(os.environ.get('HERDR_SESSIONS', '{}'))\n"
@@ -2443,6 +2446,186 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         archive = self.home / ".straw-boss" / "dispatch" / "archive"
         for suffix in (".json", ".contract.md", ".launch.json", ".status.json", ".messages.jsonl"):
             self.assertTrue((archive / f"{stem}{suffix}").is_file(), suffix)
+
+    def test_report_task_status_still_refuses_when_worker_pane_is_closed(self) -> None:
+        """Characterization: `report-task-status.py`'s sender validation stays
+        untouched. Even with the worker pane confirmed gone, the coordinator
+        still cannot use the worker-only path -- it has to use
+        `recover-task-status.py` instead."""
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Coordinator attempting the worker-only path.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+                "HERDR_MISSING_PANES": json.dumps(["worker-pane"]),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("sender pane mismatch", result.stderr)
+        self.assertFalse(status_path.exists())
+
+    def test_recover_task_status_writes_terminal_status_after_worker_pane_closes(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        status_path.write_text(
+            json.dumps({"status": "awaiting-user-input", "note": "need a decision"}) + "\n"
+        )
+
+        # Characterization: wrap-up-task.py's own non-terminal refusal is
+        # unchanged -- the recovery script is the only new thing here.
+        refuse = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "contract-claude")
+        self.assertNotEqual(refuse.returncode, 0)
+        self.assertIn("not terminal", refuse.stderr)
+
+        fake_bin, capture = self.install_fake_herdr()
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "交付已在 MR !492 完成。派工 pane 在寫回狀態前已關閉。",
+            "--ref",
+            "https://gitlab.example/mr/492",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+                "HERDR_MISSING_PANES": json.dumps(["worker-pane"]),
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        status = json.loads(status_path.read_text())
+        self.assertEqual(status["status"], "done")
+        self.assertIs(status["recovered_by_main_agent"], True)
+        self.assertIn("MR !492", status["note"])
+        self.assertEqual(status["refs"], ["https://gitlab.example/mr/492"])
+
+        wrap = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "contract-claude")
+        self.assertEqual(wrap.returncode, 0, wrap.stderr)
+        archive = self.home / ".straw-boss" / "dispatch" / "archive"
+        self.assertTrue((archive / f"{stem}.status.json").is_file())
+
+    def test_recover_task_status_refuses_when_worker_pane_still_live(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Recovering while the pane still answers.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"main-pane": "main-session", "worker-pane": "worker-session"}
+                ),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("still live", result.stderr)
+        self.assertFalse(status_path.exists())
+
+    def test_recover_task_status_refuses_to_overwrite_an_existing_terminal_status(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        status_path.write_text(json.dumps({"status": "done", "note": "self-reported"}) + "\n")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "failed",
+            "--note",
+            "Overwriting a real self-report by mistake.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+                "HERDR_MISSING_PANES": json.dumps(["worker-pane"]),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no recovery needed", result.stderr)
+        status = json.loads(status_path.read_text())
+        self.assertEqual(status["status"], "done")
+
+    def test_recover_task_status_requires_the_genuine_main_agent_pane(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Attempting recovery from the wrong pane.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "impostor-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+                "HERDR_MISSING_PANES": json.dumps(["worker-pane"]),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("sender pane mismatch", result.stderr)
+        self.assertFalse(status_path.exists())
+
+    def test_recover_task_status_rejects_more_than_two_sentences_before_persistence(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Shipped it. Verified the commit. See the reference for detail.",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("at most two sentences", result.stderr)
+        self.assertFalse(status_path.exists())
 
     def test_delivery_ledger_records_proof_without_duplicating_message_content(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")

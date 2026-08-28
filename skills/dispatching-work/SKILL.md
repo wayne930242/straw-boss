@@ -132,20 +132,37 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 ## Branch: Wrap up an instruction
 
 1. Confirm which instruction (ask if ambiguous).
-2. If `herdr-pane` and its worker pane is still open and no longer needed, close
-   that pane. The coordinator's shared tab remains open. `claude-p` has nothing
-   to close.
+2. If `herdr-pane` and its worker pane is still open, close it once its own
+   status record already reports a terminal status — that is what "no longer
+   needed" means. A non-terminal task's pane stays open: closing it early is
+   exactly what would manufacture the closed-pane case Step 4 below exists to
+   recover from, so reply to the agent and let it report first instead.
+   `claude-p` has nothing to close. The coordinator's shared tab remains open.
 3. Release any shared-resource lock still held on this instruction — the one the
    main agent claimed at dispatch, and any the worker reported claiming without
    confirming release. `references/shared-resource-coordination.md`'s "Releasing
    every lock on a wrapped-up instruction" covers both; every terminal status
    reaches here.
-4. If this instruction landed an ordinary programming change and neither `shipping-task` Task 6 nor `boss-say` Task 7 already dispositioned its review, confirm the instruction's own completion reference from its terminal report, confirm the adversarial review beside its anchor was discharged against that reference, and disposition what it reports — closed here, or carried into a named follow-up — before archiving it. A read-only dispatch carries no change and skips this step.
-5. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
+4. If the instruction's own status record is missing or stuck on a non-terminal
+   checkpoint (`awaiting-user-input`, `awaiting-main-agent`,
+   `awaiting-authorization`) and its `herdr-pane` worker is confirmed already
+   closed — not merely believed closed — run `recover-task-status.py` to write
+   an explicit terminal status (`done`/`failed`) and a traceable note yourself.
+   This is allowed recovery for exactly this situation, not a shortcut: always
+   prefer replying to the agent and letting it call `report-task-status.py` on
+   itself while the pane is still reachable, and never pick the status value
+   from the pane being closed alone — state `done` or `failed` and why, from
+   evidence you can point to. A read-only dispatch, or one whose status record
+   is already terminal, skips this step.
+5. If this instruction landed an ordinary programming change and neither `shipping-task` Task 6 nor `boss-say` Task 7 already dispositioned its review, confirm the instruction's own completion reference from its terminal report, confirm the adversarial review beside its anchor was discharged against that reference, and disposition what it reports — closed here, or carried into a named follow-up — before archiving it. A read-only dispatch carries no change and skips this step.
+6. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
 
-**Verification:** the worker pane is confirmed closed before the file is archived;
-every shared-resource lock on this instruction is released before
-`wrap-up-task.py` runs; a landed change not already dispositioned by
-`shipping-task` Task 6 or `boss-say` Task 7 has its completion reference
-confirmed and its adversarial review discharged and dispositioned before the
-instruction is archived; the coordinator pane and shared tab remain open.
+**Verification:** the worker pane is closed only once its own status record already
+reports a terminal status, before the file is archived; every shared-resource lock
+on this instruction is released before `wrap-up-task.py` runs; a recovered terminal
+status (Step 4) names an explicit status value and a traceable note, never inferred
+from the pane being closed, and only follows a confirmed-unreachable worker pane; a
+landed change not already dispositioned by `shipping-task` Task 6 or `boss-say`
+Task 7 has its completion reference confirmed and its adversarial review discharged
+and dispositioned before the instruction is archived; the coordinator pane and
+shared tab remain open.
