@@ -51,9 +51,11 @@ current behavior, mechanism, cause, or impact with evidence references. A
 bounded fact-gathering task may use a confirmed lower-tier work route; route
 resolution still comes from Task 1.
 
-The brief names the reality anchor `choosing-graph` settled on, and the port
-number when a frontend human or pseudo-human anchor made the main agent claim
-one.
+Invoke `choosing-graph` when the graph and anchor are not fixed yet — every
+dispatch arrives here, whether a specialist skill routed it or the user named
+one directly. The brief then names the reality anchor it settled on, and the
+port number when a frontend human or pseudo-human anchor made the main agent
+claim one.
 
 Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates Claude's session id and every provider's immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind, this session's provider, and the validated pane/provider-fingerprint pair from Task 1. Never hand-write the JSON, contract, or UUID.
 

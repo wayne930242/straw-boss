@@ -90,7 +90,8 @@ If the target app is itself a submodule of a monorepo root and a pointer-bump pu
 Once the agent reports the lifecycle is complete (merged in team-mode,
 committed in solo-mode), confirm the merge or commit reference. If the
 worker reports claiming a shared-resource lock without confirming release,
-check and release that claim. Then invoke `dispatching-work`'s wrap-up branch to
+check and release that claim. Release a port claimed at dispatch for a frontend
+anchor here too — the worker never claimed it, so it has nothing to report. Then invoke `dispatching-work`'s wrap-up branch to
 close the worker pane and instruction; in team-mode, remove the worktree
 with plain git. The coordinator's shared tab remains open.
 

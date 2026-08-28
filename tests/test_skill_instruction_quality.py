@@ -207,6 +207,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("sub-agent fan-out/fan-in", source)
         self.assertIn("orchestrator-worker", source)
         self.assertIn("the coordinator's shape alone", source)
+        self.assertIn("dispatched under a concurrency cap", source)
         self.assertIn(
             "the graph that writes ~/.straw-boss/plans/<slug>/plan.json", source
         )
@@ -229,8 +230,10 @@ class SkillInstructionQualityTests(unittest.TestCase):
 
     def test_frontend_anchor_port_is_claimed_at_dispatch(self) -> None:
         source = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
-        self.assertIn("claims the port as part of the dispatch", source)
-        self.assertIn("binds that number without claiming again", source)
+        self.assertIn("the main agent claims the port at dispatch", source)
+        self.assertIn("the worker binds it", source)
+        # The mechanism itself lives in one place; this skill only points at it.
+        self.assertNotIn("claim-port call keyed on", source)
 
     def test_lifecycle_mode_is_the_users_reading_of_the_work(self) -> None:
         source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
@@ -241,11 +244,19 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertNotIn("diff size", source)
         self.assertNotIn("low-risk changes", source)
 
-    def test_dispatch_carries_the_graph_and_anchor_choice(self) -> None:
+    def test_every_dispatch_path_reaches_choosing_graph(self) -> None:
         boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
         self.assertIn("choosing-graph", boss_say)
         dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
+        self.assertIn(
+            "Invoke choosing-graph when the graph and anchor are not fixed yet",
+            dispatching,
+        )
         self.assertIn("names the reality anchor", dispatching)
+
+    def test_a_dispatch_time_port_is_released_at_wrap_up(self) -> None:
+        source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
+        self.assertIn("a port claimed at dispatch for a frontend anchor", source)
 
     def test_shared_resource_reference_covers_the_dispatch_time_port(self) -> None:
         source = normalized(
@@ -258,6 +269,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("A frontend check anchored on human or pseudo-human", source)
         self.assertIn("the main agent runs claim-port once at dispatch", source)
         self.assertIn("worker resolves the target app's actual resource configuration", source)
+        self.assertIn("apart from the frontend-anchor port above", source)
 
     def test_lifecycle_mode_names_are_consistent_across_every_live_surface(self) -> None:
         stale = re.compile(r"full[ -]flow|light[ -]flow", re.IGNORECASE)

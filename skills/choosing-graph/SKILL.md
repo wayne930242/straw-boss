@@ -30,7 +30,8 @@ below.
   coordination loop itself. This is the coordinator's shape alone; a dispatched
   worker picks one of the other two. Reach for it when the workflow is still
   unstable — when what the next task should be depends on what the last one
-  found. It is also the graph that writes
+  found, or when several already-known items are dispatched under a concurrency
+  cap that needs a persisted refill loop. It is also the graph that writes
   `~/.straw-boss/plans/<slug>/plan.json`. The other two carry no dispatch plan.
 
 ## Reality anchors
@@ -54,13 +55,9 @@ below.
 ## The port a frontend anchor needs
 
 A human or pseudo-human check on a frontend needs something running at a known
-address before anyone can look at it. The main agent claims the port as part of
-the dispatch — one `claim-port` call keyed on the dispatch instruction stem or
-the app's checkout path — and states the assigned number in the instruction. The
-worker binds that number without claiming again, since its own listener reads as
-an external occupant on a second probe. The claim is released at wrap-up.
-
-Mechanics: `${CLAUDE_PLUGIN_ROOT}/skills/dispatching-work/references/shared-resource-coordination.md`.
+address before there is anything to look at, so the main agent claims the port at
+dispatch and the worker binds it. Mechanics and the release step:
+`${CLAUDE_PLUGIN_ROOT}/skills/dispatching-work/references/shared-resource-coordination.md`.
 
 **Verification:** the graph and the anchor are both named before work starts;
 `plan.json` exists only under orchestrator-worker; a frontend human or

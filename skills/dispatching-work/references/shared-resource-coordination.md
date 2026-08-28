@@ -51,8 +51,8 @@ A shared, stateful database can't be isolated by a formula the way a port can. A
 The worker discovers the concrete resource identity and invokes this protocol
 inside its task, immediately before use. The coordinator carries forward only a
 shared-resource constraint already supplied by the user, a dependency report,
-or verified coordination state; app-local port and database discovery stays
-with the worker.
+or verified coordination state; apart from the frontend-anchor port above,
+app-local port and database discovery stays with the worker.
 
 **`--ttl-seconds` is a crash-recovery timeout, not a work-duration budget — set it well above the expected duration of the work it guards, deliberately, at instruction-assembly time.** It exists only so a lock survives a main agent/agent that crashes or gets killed without releasing; it is not a queueing fairness mechanism, and there is no renewal. A task still legitimately working when its TTL lapses gets its lock silently reclaimed by the next waiter — the main agent states a realistic number, not the `1800` default by reflex, when it knows this task's migration/verification normally runs longer.
 
