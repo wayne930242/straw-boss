@@ -131,7 +131,7 @@ def main() -> int:
 
     try:
         result = recover_task_status(args.instruction_path, args.status, args.note, args.ref)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

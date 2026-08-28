@@ -221,10 +221,14 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
         else Path.home() / ".claude"
     )
     registry_path = config_dir / "sessions" / f"{foreground_process_group_id}.json"
-    try:
-        registry = load_json(registry_path)
-    except (OSError, json.JSONDecodeError):
-        return False
+    # Deliberately not caught here: a read/parse failure is uncertain, not a
+    # verified "does not corroborate" -- it must propagate to the caller
+    # rather than resolve to False, since a caller may (like
+    # worker_endpoint_confirmed_closed) treat False as license to authorize
+    # closed-pane recovery. validate_live_session, the one caller for which
+    # "not corroborated" and "could not check" already mean the same thing
+    # (both refuse to send), catches it locally to preserve that.
+    registry = load_json(registry_path)
     return (
         isinstance(registry, dict)
         and registry.get("pid") == foreground_process_group_id
@@ -261,8 +265,12 @@ def validate_live_session(endpoint: Endpoint) -> None:
     live_session_id = live_session.get("value") if isinstance(live_session, dict) else None
     if live_session_id == endpoint.expected_session_id:
         return
-    if endpoint.agent_kind == "claude" and _claude_registry_corroborates(endpoint):
-        return
+    if endpoint.agent_kind == "claude":
+        try:
+            if _claude_registry_corroborates(endpoint):
+                return
+        except (OSError, json.JSONDecodeError):
+            pass  # registry read/parse failed -- treat as not corroborated, same as before
     raise ValueError(
         f"{endpoint.target} session mismatch for pane {endpoint.pane_id!r}: "
         f"expected {endpoint.expected_session_id!r}, live {live_session_id!r}; refusing to send"
@@ -310,14 +318,11 @@ def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
     live_session_id = live_session.get("value") if isinstance(live_session, dict) else None
     if live_session_id == endpoint.expected_session_id:
         return False
-    # _claude_registry_corroborates returns False both when it positively
-    # rules out a match and when its own registry read fails (OSError,
-    # JSONDecodeError) -- the latter is fail-closed (refuse) in
-    # validate_live_session's raise, but fail-open (confirmed closed) here.
-    # Accepted narrow risk: only reachable after herdr already reported a
-    # session-id mismatch at this pane, and disambiguating the two cases
-    # would mean duplicating that function's internals rather than reusing
-    # it.
+    # _claude_registry_corroborates itself propagates OSError/JSONDecodeError
+    # from a registry read/parse failure rather than resolving to False, so
+    # that failure surfaces here too instead of being read as "confirmed
+    # closed" -- only a positive corroboration result (True/False) reaches
+    # this line.
     if endpoint.agent_kind == "claude" and _claude_registry_corroborates(endpoint):
         return False
     return True

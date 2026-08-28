@@ -2648,6 +2648,56 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertIn("internal_error", result.stderr)
         self.assertFalse(status_path.exists())
 
+    def test_recover_task_status_refuses_when_claude_registry_corroboration_read_fails(
+        self,
+    ) -> None:
+        """A second review finding: when the worker's live session doesn't
+        match, `_claude_registry_corroborates` is a fallback check for
+        herdr-metadata pollution -- but if the registry file itself can't be
+        read/parsed, that failure was silently swallowed to "not
+        corroborated", which `worker_endpoint_confirmed_closed` then read as
+        "confirmed closed". A registry read/parse failure is uncertain, not
+        a verified absence, and must refuse recovery -- only a herdr-verified
+        "no such agent" may authorize it."""
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        fake_bin, capture = self.install_fake_herdr()
+        # Deliberately no ~/.claude/sessions/<pid>.json file, so the registry
+        # read inside _claude_registry_corroborates fails.
+
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Recovering while the registry corroboration check itself fails.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"main-pane": "main-session", "worker-pane": "replacement-session"}
+                ),
+                "HERDR_PROCESS_INFOS": json.dumps(
+                    {
+                        "worker-pane": {
+                            "pane_id": "worker-pane",
+                            "foreground_process_group_id": 4242,
+                            "foreground_processes": [
+                                {"pid": 4242, "argv0": "claude", "argv": ["claude"]}
+                            ],
+                        }
+                    }
+                ),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(status_path.exists())
+
     def test_recover_task_status_rejects_more_than_two_sentences_before_persistence(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         self.set_worker_endpoint(instruction_path)
