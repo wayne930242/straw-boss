@@ -147,6 +147,10 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    if os.environ.get('HERDR_OMIT_AGENT_SESSION') != '1' and not blocked and (not prompt_positions or get_after_prompt > delay):\n"
             "        agent['agent_session'] = {'value': session}\n"
             "    print(json.dumps({'result': {'agent': agent}}))\n"
+            "elif args[:3] == ['pane', 'process-info', '--pane'] and args[3] in json.loads(os.environ.get('HERDR_PROCESS_INFO_ERROR_CODES', '{}')):\n"
+            "    code = json.loads(os.environ['HERDR_PROCESS_INFO_ERROR_CODES'])[args[3]]\n"
+            "    print(json.dumps({'error': {'code': code, 'message': 'simulated herdr failure'}}), file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
             "elif args[:3] == ['pane', 'process-info', '--pane']:\n"
             "    target = args[3]\n"
             "    process_infos = json.loads(os.environ.get('HERDR_PROCESS_INFOS', '{}'))\n"
@@ -2693,6 +2697,75 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
                         }
                     }
                 ),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(status_path.exists())
+
+    def test_recover_task_status_refuses_when_the_process_info_probe_fails(self) -> None:
+        """A second, independent re-review found the same fail-open class one
+        probe earlier in `_claude_registry_corroborates`: `pane process-info`
+        failing for any reason (not just the registry-file read) was still
+        swallowed to "not corroborated", which `worker_endpoint_confirmed_closed`
+        then read as "confirmed closed". Only a completed, well-formed
+        corroboration check may decide either way -- a failed probe must
+        propagate and refuse, the same as the registry-file read fix."""
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Recovering while the process-info probe itself is failing.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"main-pane": "main-session", "worker-pane": "replacement-session"}
+                ),
+                "HERDR_PROCESS_INFO_ERROR_CODES": json.dumps({"worker-pane": "rate_limited"}),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(status_path.exists())
+
+    def test_recover_task_status_refuses_when_the_process_info_response_is_malformed(
+        self,
+    ) -> None:
+        """A successful `pane process-info` response missing/mistyping the
+        foreground-process fields (version drift, restricted introspection)
+        tells us nothing about corroboration -- it must not resolve to
+        "not corroborated" -> "confirmed closed" either."""
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Recovering while the process-info response is malformed.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"main-pane": "main-session", "worker-pane": "replacement-session"}
+                ),
+                "HERDR_PROCESS_INFOS": json.dumps({"worker-pane": {"pane_id": "worker-pane"}}),
             },
         )
         self.assertNotEqual(result.returncode, 0)

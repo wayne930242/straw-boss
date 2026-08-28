@@ -190,10 +190,12 @@ def _is_foreground_claude_process(
 
 
 def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
-    try:
-        payload = run_herdr(["pane", "process-info", "--pane", endpoint.pane_id])
-    except ValueError:
-        return False
+    # Deliberately not caught here: a probe failure (timeout, herdr missing,
+    # non-JSON output, or any HerdrCommandError -- including one unrelated to
+    # this pane's actual state) is uncertain, not a verified "does not
+    # corroborate". It must propagate to the caller rather than resolve to
+    # False, for the same reason the registry-file read below does.
+    payload = run_herdr(["pane", "process-info", "--pane", endpoint.pane_id])
 
     process_info = payload.get("result", {}).get("process_info")
     if not isinstance(process_info, dict) or process_info.get("pane_id") != endpoint.pane_id:
@@ -205,7 +207,14 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
         or isinstance(foreground_process_group_id, bool)
         or not isinstance(foreground_processes, list)
     ):
-        return False
+        # A successful response with missing/wrong-typed fields (version
+        # drift, restricted introspection) tells us nothing about whether the
+        # worker's session corroborates -- the probe itself is unusable, not
+        # a verdict on the worker. Propagate rather than resolve to False.
+        raise ValueError(
+            f"herdr process-info response for pane {endpoint.pane_id!r} is missing or "
+            "malformed foreground-process fields -- cannot determine corroboration"
+        )
     candidates = [
         process
         for process in foreground_processes
@@ -221,13 +230,10 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
         else Path.home() / ".claude"
     )
     registry_path = config_dir / "sessions" / f"{foreground_process_group_id}.json"
-    # Deliberately not caught here: a read/parse failure is uncertain, not a
-    # verified "does not corroborate" -- it must propagate to the caller
-    # rather than resolve to False, since a caller may (like
-    # worker_endpoint_confirmed_closed) treat False as license to authorize
-    # closed-pane recovery. validate_live_session, the one caller for which
-    # "not corroborated" and "could not check" already mean the same thing
-    # (both refuse to send), catches it locally to preserve that.
+    # Same reasoning as the process-info probe above: a read/parse failure
+    # here propagates too, rather than resolving to False. validate_live_session,
+    # the one caller for which "not corroborated" and "could not check" already
+    # mean the same thing (both refuse to send), catches both locally.
     registry = load_json(registry_path)
     return (
         isinstance(registry, dict)
@@ -269,8 +275,8 @@ def validate_live_session(endpoint: Endpoint) -> None:
         try:
             if _claude_registry_corroborates(endpoint):
                 return
-        except (OSError, json.JSONDecodeError):
-            pass  # registry read/parse failed -- treat as not corroborated, same as before
+        except (ValueError, OSError):
+            pass  # probe or registry read/parse failed -- treat as not corroborated, same as before
     raise ValueError(
         f"{endpoint.target} session mismatch for pane {endpoint.pane_id!r}: "
         f"expected {endpoint.expected_session_id!r}, live {live_session_id!r}; refusing to send"
@@ -318,10 +324,10 @@ def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
     live_session_id = live_session.get("value") if isinstance(live_session, dict) else None
     if live_session_id == endpoint.expected_session_id:
         return False
-    # _claude_registry_corroborates itself propagates OSError/JSONDecodeError
-    # from a registry read/parse failure rather than resolving to False, so
-    # that failure surfaces here too instead of being read as "confirmed
-    # closed" -- only a positive corroboration result (True/False) reaches
+    # _claude_registry_corroborates itself propagates a probe or registry
+    # read/parse failure rather than resolving to False, so that failure
+    # surfaces here too instead of being read as "confirmed closed" -- only
+    # a completed, well-formed corroboration result (True/False) reaches
     # this line.
     if endpoint.agent_kind == "claude" and _claude_registry_corroborates(endpoint):
         return False
