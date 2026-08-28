@@ -1050,6 +1050,48 @@ class SkillInstructionQualityTests(unittest.TestCase):
             boss_say,
         )
 
+    def test_shipping_task_dispositions_the_review_before_invoking_wrap_up(
+        self,
+    ) -> None:
+        """An independent adversarial review of this spec family's own
+        commit found the exact gap `dispatching-work`'s new Wrap-up-branch
+        guard exists to prevent: Task 6's confirm-and-disposition paragraph
+        sat two paragraphs after "Then invoke `dispatching-work`'s wrap-up
+        branch", so a literal reading invokes the branch first -- at which
+        point the branch's own guard ("neither shipping-task Task 6 ...
+        already dispositioned") is still true, runs its own disposition, and
+        Task 6's later paragraph then runs it again.
+        """
+        source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
+        invoke_index = source.index("invoking dispatching-work's wrap-up branch")
+        disposition_index = source.index(
+            "Disposition what it reports — closed here, or carried into a "
+            "named follow-up task"
+        )
+        self.assertLess(
+            disposition_index,
+            invoke_index,
+            "the review must be dispositioned before the wrap-up branch is "
+            "invoked, or the branch's own guard still reads undispositioned",
+        )
+
+    def test_boss_say_dispositions_the_review_only_when_no_direct_close_out_did(
+        self,
+    ) -> None:
+        """The reciprocal half of `dispatching-work`'s guard: that branch
+        already skips disposition when `shipping-task` Task 6 or `boss-say`
+        Task 7 got there first, but nothing stopped a batch item manually
+        closed out mid-batch through the "close out `<task>`" passthrough
+        (dispositioned once at the Wrap-up branch) from being dispositioned
+        again once the whole batch later reaches Task 7.
+        """
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        self.assertIn(
+            "unless a direct close-out through dispatching-work's own "
+            "Wrap-up branch already dispositioned it",
+            boss_say,
+        )
+
     def test_the_workers_own_coordination_graph_obligation_reaches_the_contract(
         self,
     ) -> None:

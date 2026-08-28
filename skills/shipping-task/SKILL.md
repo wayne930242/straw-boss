@@ -96,7 +96,11 @@ For a `work-on`-produced plan (Task 1), this task runs once per plan task, as
 each one's own lifecycle completes — not once for the whole plan.
 
 Once the agent reports the lifecycle is complete (merged in team-mode,
-committed in solo-mode), confirm the merge or commit reference. Then invoke
+committed in solo-mode), confirm the merge or commit reference. The
+adversarial review this change carries beside its anchor is discharged against
+that confirmed reference: the worker's own, reported with the lifecycle, or one
+dispatched from here on the committed result. Disposition what it reports —
+closed here, or carried into a named follow-up task — before invoking
 `dispatching-work`'s wrap-up branch, which closes the worker pane and
 instruction and releases any shared-resource lock still held on it; in
 team-mode, remove the worktree with plain git. The coordinator's shared tab
@@ -107,12 +111,6 @@ subsequent direct work, fast-forward it after removing the team-mode worktree.
 Use the app's established remote/tracking configuration. When those conditions
 do not hold, report the merged reference and leave checkout synchronization to
 the owning workflow.
-
-The adversarial review this change carries beside its anchor is discharged
-against that confirmed reference: the worker's own, reported with the lifecycle,
-or one dispatched from here on the committed result. Disposition what it reports
-— closed here, or carried into a named follow-up task — before the task counts
-as complete.
 
 If the task originated from a tracker ticket, this skill (not the agent) updates it now that the lifecycle is actually complete.
 

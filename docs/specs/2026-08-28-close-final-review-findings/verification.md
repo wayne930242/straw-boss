@@ -22,6 +22,8 @@ Every finding from the independent adversarial review of `eb52d4c`.
 | The worker's own coordination-graph obligation reaches the contract | `test_the_workers_own_coordination_graph_obligation_reaches_the_contract` renders the real contract and requires the new bullet |
 | The glossary entry states both halves | `test_the_coordination_graph_glossary_entry_states_the_workers_half_too` requires the updated `CONTEXT.md` sentence |
 | The review route list is narrowed to what each reader can do | `test_the_review_route_offers_bringing_coworker_only_where_it_can_run` renders the contract for a top-level dispatch and for both coworker variants, and requires `bringing-coworker` on the first and no mention of "coworker" on either of the other two |
+| `shipping-task` dispositions the review before invoking the branch whose guard depends on that order | `test_shipping_task_dispositions_the_review_before_invoking_wrap_up` locates both phrases in the source and requires the disposition phrase's index to precede the invocation phrase's |
+| `boss-say` Task 7's disposition yields to a direct close-out that already ran | `test_boss_say_dispositions_the_review_only_when_no_direct_close_out_did` requires the reciprocal guard clause |
 
 ## Do the new tests actually fail on the defect?
 
@@ -70,11 +72,54 @@ test_shipping_task_dispositions_a_work_on_plans_review_per_task
   requires "discharged ... and dispositioned, not assumed," plus the new
   completion-reference clause) — none weakened.
 
+## Second pass: an independent adversarial review of the first commit
+
+Once the first commit landed (`7f8ba99`), a fresh-context subagent reviewed it
+against its parent without trusting the commit message or this spec family's
+own docs — it re-derived every claim from the actual skill text, traced the
+real control-flow paths (`plan-mechanics.md`'s auto-detach vs. the Wrap-up
+branch), and rendered `render_dispatch_contract` directly for all three
+`coworker_context` shapes rather than taking the tests' word for it.
+
+It found one medium, reachable defect this commit itself introduced:
+`shipping-task` Task 6's confirm-and-disposition paragraph sat *after* "Then
+invoke `dispatching-work`'s wrap-up branch" in reading order — so a literal
+walk-through invoked the branch first, at which point its new guard ("neither
+`shipping-task` Task 6 ... already dispositioned") was still true and ran its
+own disposition, then Task 6's later paragraph ran it again. It also found a
+low-severity, narrower gap: the guard only checked one direction, so a batch
+item closed out directly mid-batch could be dispositioned once at the
+Wrap-up branch and again when `boss-say` Task 7 later summarized the whole
+batch. Two more claims it initially flagged (the worker-facing
+coordination-graph bullet, and the `claude-p` half of the review-route
+narrowing) it re-examined and withdrew on its own, having misread the
+self-limiting-precondition technique the prior round already established.
+
+Two more tests were written red first, against the tree at `7f8ba99` (before
+the second commit's fix):
+
+```text
+python3 -m unittest tests.test_skill_instruction_quality.SkillInstructionQualityTests.test_shipping_task_dispositions_the_review_before_invoking_wrap_up tests.test_skill_instruction_quality.SkillInstructionQualityTests.test_boss_say_dispositions_the_review_only_when_no_direct_close_out_did
+Ran 2 tests — FAILED (failures=2)
+
+test_shipping_task_dispositions_the_review_before_invoking_wrap_up
+  AssertionError: 11980 not less than 11194 : the review must be dispositioned
+  before the wrap-up branch is invoked, or the branch's own guard still reads
+  undispositioned
+test_boss_say_dispositions_the_review_only_when_no_direct_close_out_did
+  AssertionError: 'unless a direct close-out through dispatching-work's own
+  Wrap-up branch already dispositioned it' not found in '...' (`boss-say/SKILL.md`)
+```
+
+The fix reorders `shipping-task` Task 6's paragraph so the reference is
+confirmed and the review dispositioned *before* invoking the wrap-up branch,
+and adds the reciprocal guard clause to `boss-say` Task 7.
+
 ## Commands
 
 ```text
 python3 -m unittest discover -s tests
-141 tests passed
+143 tests passed
 
 python3 -m compileall -q scripts tests
 passed

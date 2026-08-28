@@ -15,9 +15,35 @@ The fix adds the review's disposition as a step in the Wrap-up branch itself,
 guarded so it never re-runs work `shipping-task` Task 6 or `boss-say` Task 7
 already did: "if this instruction landed an ordinary programming change and
 neither ... already dispositioned its review." That guard is what keeps the set
-closed without double-counting — `shipping-task` Task 6 still calls into this
-same branch after doing its own disposition, so the branch has to recognize
-that case and skip, not redo, the work. `choosing-graph` now names all three.
+closed without double-counting — `shipping-task` Task 6 calls into this same
+branch after doing its own disposition, so the branch has to recognize that
+case and skip, not redo, the work. `choosing-graph` now names all three.
+
+## Second pass: the ordering the guard depends on, and its reciprocal
+
+An independent adversarial review of the first commit in this scope caught two
+gaps in how the guard itself was wired, both fixed in a follow-up commit before
+this change counted as done.
+
+**The order, not just the words, has to make the guard true.** `shipping-task`
+Task 6's confirm-and-disposition paragraph originally sat two paragraphs after
+"Then invoke `dispatching-work`'s wrap-up branch" — so a literal reading
+invoked the branch *before* dispositioning. At that moment the branch's own
+guard ("neither `shipping-task` Task 6 ... already dispositioned") was still
+true, so it ran its own disposition; Task 6's later paragraph then ran it
+again — the exact double-work class this whole change exists to close, now
+reachable through the one path it added. The fix reorders the paragraph:
+confirm the reference, disposition the review, *then* invoke the wrap-up
+branch — so the guard's premise is actually true by the time it is evaluated.
+
+**The guard needed its reciprocal.** The Wrap-up branch's own guard checks
+whether `shipping-task` Task 6 or `boss-say` Task 7 got there first, but
+nothing stopped the reverse: a batch item manually closed out mid-batch
+through the "close out `<task>`" passthrough gets dispositioned once at the
+Wrap-up branch, and could be dispositioned again once the whole batch later
+reaches `boss-say` Task 7. `boss-say` Task 7 now carries the matching
+condition: "unless a direct close-out through `dispatching-work`'s own
+Wrap-up branch already dispositioned it."
 
 ## A `work-on`-produced plan disciplines its review per task
 

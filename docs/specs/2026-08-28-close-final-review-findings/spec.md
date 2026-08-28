@@ -14,11 +14,16 @@
 - `shipping-task` Task 6 states that for a `work-on`-produced plan, it runs
   once per plan task as each one's own lifecycle completes, not once for the
   whole plan. Its Verification requires that.
+- `shipping-task` Task 6 confirms the reference and dispositions the review
+  *before* invoking `dispatching-work`'s wrap-up branch, so the branch's own
+  guard reads correctly by the time it runs — not after, where the guard would
+  still read undispositioned and double-run the work.
 - `boss-say` Task 7 confirms the item's own completed merge or commit reference
   from its terminal report before dispositioning the review against that
   confirmed reference — the same two-step order `shipping-task` Task 6 already
-  uses. Its Verification requires the reference be confirmed, not just the
-  review dispositioned.
+  uses — unless a direct close-out through `dispatching-work`'s own Wrap-up
+  branch already dispositioned it. Its Verification requires the reference be
+  confirmed, not just the review dispositioned.
 - The generated contract's adversarial-review bullet offers "bringing-coworker
   from an interactive Herdr tab" as a route only on a top-level dispatch's own
   contract; a coworker's own contract (`coworker_context` set) offers only "a
