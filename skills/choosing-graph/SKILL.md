@@ -69,9 +69,11 @@ agent — is not a branch of the work and never changes the graph.
   checkpoint to offer. Two routes discharge it: the worker reaches for it
   through its own `Agent` tool or `bringing-coworker`, or the main agent
   dispatches it against the committed result. The generated contract carries
-  that obligation to every worker, and the skill that confirms the change landed
-  confirms the review happened too — `shipping-task` Task 6, and `boss-say`
-  Task 7 for a batch item.
+  that obligation to every worker, and whichever skill confirms the change
+  landed confirms the review happened too — `shipping-task` Task 6 for a task
+  it drives to completion, `boss-say` Task 7 for a batch item, and
+  `dispatching-work`'s own Wrap-up branch for a dispatch closed out directly by
+  neither.
 
 Read-only work — an audit, research, a separate diagnosis — has no artifact to
 operate and no change to go red, so adversarial-review is its anchor. What that

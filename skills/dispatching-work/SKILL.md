@@ -140,8 +140,12 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
    confirming release. `references/shared-resource-coordination.md`'s "Releasing
    every lock on a wrapped-up instruction" covers both; every terminal status
    reaches here.
-4. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
+4. If this instruction landed an ordinary programming change and neither `shipping-task` Task 6 nor `boss-say` Task 7 already dispositioned its review, confirm the instruction's own completion reference from its terminal report, confirm the adversarial review beside its anchor was discharged against that reference, and disposition what it reports — closed here, or carried into a named follow-up — before archiving it. A read-only dispatch carries no change and skips this step.
+5. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
 
 **Verification:** the worker pane is confirmed closed before the file is archived;
 every shared-resource lock on this instruction is released before
-`wrap-up-task.py` runs; the coordinator pane and shared tab remain open.
+`wrap-up-task.py` runs; a landed change not already dispositioned by
+`shipping-task` Task 6 or `boss-say` Task 7 has its completion reference
+confirmed and its adversarial review discharged and dispositioned before the
+instruction is archived; the coordinator pane and shared tab remain open.

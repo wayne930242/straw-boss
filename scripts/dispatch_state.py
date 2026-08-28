@@ -115,6 +115,11 @@ def render_dispatch_contract(
     progress = command("report-progress.py")
     status = command("report-task-status.py")
     message = command("send-dispatch-message.py")
+    review_route = (
+        "a fresh-context subagent"
+        if coworker_context is not None
+        else "a fresh-context subagent, or bringing-coworker from an interactive Herdr tab"
+    )
     coworker_rules = ""
     if coworker_context is not None:
         writable_paths = coworker_context.get("coworker_writable_paths", [])
@@ -149,10 +154,12 @@ This contract is mandatory for this dispatched session.
   agent to name the anchor when this dispatch does not, through the
   `awaiting-main-agent` checkpoint below — it persists and notifies whether or
   not this session can wait for a reply.
+- State your own coordination graph for this task before you start, through
+  `choosing-graph`; the main agent already stated its own when it dispatched
+  you.
 - An ordinary programming change carries an independent adversarial review of
-  the finished result beside its anchor. Run it yourself before reporting done —
-  a fresh-context subagent, or a coworker — unless this dispatch says the main
-  agent runs it.
+  the finished result beside its anchor. Run it yourself before reporting
+  done — {review_route} — unless this dispatch says the main agent runs it.
 - Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or
   agent names for cross-session communication.
 - Report progress with:

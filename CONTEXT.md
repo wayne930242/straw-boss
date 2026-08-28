@@ -57,7 +57,8 @@ _Avoid_: coworker, subagent, Codex advisor
 
 **Coordination graph**:
 How the agents on one task are wired — single-loop, sub-agent fan-out/fan-in,
-or orchestrator-worker. The coordinator states it.
+or orchestrator-worker. The coordinator states it before it dispatches; a
+dispatched agent states its own for its own task.
 _Avoid_: topology, supervisor-worker
 
 **Dispatch shape**:

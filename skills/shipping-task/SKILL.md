@@ -92,6 +92,9 @@ If the target app is itself a submodule of a monorepo root and a pointer-bump pu
 
 ## Task 6: Confirm and wrap up
 
+For a `work-on`-produced plan (Task 1), this task runs once per plan task, as
+each one's own lifecycle completes — not once for the whole plan.
+
 Once the agent reports the lifecycle is complete (merged in team-mode,
 committed in solo-mode), confirm the merge or commit reference. Then invoke
 `dispatching-work`'s wrap-up branch, which closes the worker pane and
@@ -113,7 +116,7 @@ as complete.
 
 If the task originated from a tracker ticket, this skill (not the agent) updates it now that the lifecycle is actually complete.
 
-**Verification:** the completion reference is confirmed, not assumed; the adversarial review beside the anchor is discharged against the confirmed reference and its findings are dispositioned, not assumed; the dispatch instruction is wrapped up, not left `in-progress`; in team-mode, the worktree is removed by this skill; any originating ticket is updated by this skill, not the agent.
+**Verification:** the completion reference is confirmed, not assumed; the adversarial review beside the anchor is discharged against the confirmed reference and its findings are dispositioned, not assumed; a work-on-produced plan's disposition runs once per task, not once for the whole plan; the dispatch instruction is wrapped up, not left `in-progress`; in team-mode, the worktree is removed by this skill; any originating ticket is updated by this skill, not the agent.
 
 ## References
 

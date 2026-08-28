@@ -958,16 +958,20 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """`shipping-task` is not the only path an ordinary programming change
         takes: `boss-say`'s capped batch dispatches its items through
         `dispatching-work` Tasks 1-5 directly and closes them out in its own
-        Task 7, never reaching `shipping-task` Task 6.
+        Task 7, never reaching `shipping-task` Task 6 -- and a direct
+        `dispatching-work` close-out (`boss-say`'s own "close out `<task>`"
+        passthrough) reaches neither.
 
-        A rule that names one acceptance point while two paths land changes is
-        the same defect class it exists to close.
+        A rule that names two acceptance points while three paths land changes
+        is the same defect class it exists to close.
         """
         graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
         self.assertIn(
-            "the skill that confirms the change landed confirms the review "
-            "happened too — shipping-task Task 6, and boss-say Task 7 for a "
-            "batch item",
+            "whichever skill confirms the change landed confirms the review "
+            "happened too — shipping-task Task 6 for a task it drives to "
+            "completion, boss-say Task 7 for a batch item, and "
+            "dispatching-work's own Wrap-up branch for a dispatch closed out "
+            "directly by neither",
             graph,
         )
         boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
@@ -977,10 +981,153 @@ class SkillInstructionQualityTests(unittest.TestCase):
             boss_say,
         )
         self.assertIn(
-            "every item that landed a change has its adversarial review "
-            "discharged and dispositioned, not assumed",
+            "every item that landed a change has its completion reference "
+            "confirmed and its adversarial review discharged against that "
+            "reference and dispositioned, not assumed",
             boss_say,
         )
+
+    def test_a_directly_closed_out_dispatch_dispositions_its_own_review(self) -> None:
+        """The third acceptance point `choosing-graph` now names:
+        `boss-say`'s own "close out `<task>`" passthrough (Branch: Status
+        query, or closing out one dispatch) lands control on
+        `dispatching-work`'s Wrap-up branch directly, past both
+        `shipping-task` Task 6 and `boss-say` Task 7 -- so that branch has to
+        carry the disposition itself, for whatever reaches it without either.
+        """
+        dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
+        self.assertIn(
+            "neither shipping-task Task 6 nor boss-say Task 7 already "
+            "dispositioned its review",
+            dispatching,
+        )
+        self.assertIn(
+            "confirm the adversarial review beside its anchor was discharged "
+            "against that reference",
+            dispatching,
+        )
+        self.assertIn(
+            "a landed change not already dispositioned by shipping-task Task "
+            "6 or boss-say Task 7 has its completion reference confirmed and "
+            "its adversarial review discharged and dispositioned before the "
+            "instruction is archived",
+            dispatching,
+        )
+
+    def test_shipping_task_dispositions_a_work_on_plans_review_per_task(self) -> None:
+        """Task 6 was written entirely in one-agent lifecycle language
+        ("Once the agent reports the lifecycle is complete") while
+        `work-on:29` says `shipping-task` runs a multi-app/phase request as
+        separate per-app cycles -- leaving unstated whether disposition runs
+        once per plan task or once for the whole plan.
+        """
+        shipping = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
+        self.assertIn(
+            "For a work-on-produced plan (Task 1), this task runs once per "
+            "plan task, as each one's own lifecycle completes — not once "
+            "for the whole plan",
+            shipping,
+        )
+        self.assertIn(
+            "a work-on-produced plan's disposition runs once per task, not "
+            "once for the whole plan",
+            shipping,
+        )
+
+    def test_boss_say_confirms_the_items_own_reference_before_dispositioning_it(
+        self,
+    ) -> None:
+        """`shipping-task` Task 6 confirms the merge or commit reference
+        before dispositioning the review against it. `boss-say` Task 7
+        dispositioned against a reference it never confirmed -- Task 5 only
+        counts, refills, and relays, and Task 7's own data source is the
+        status file's free-text `note`.
+        """
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        self.assertIn(
+            "confirm the item's own completed merge or commit reference "
+            "from its terminal report",
+            boss_say,
+        )
+
+    def test_the_workers_own_coordination_graph_obligation_reaches_the_contract(
+        self,
+    ) -> None:
+        """`docs/roles.md` says a dispatched agent states its own
+        coordination graph for its own task, but nothing a worker is
+        required to read ever carried it -- every live "go invoke
+        `choosing-graph`" pointer for this purpose sat on the coordinator's
+        own task text (`dispatching-work` Task 3, `boss-say` Task 1), never
+        the contract or the brief.
+        """
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            import dispatch_state
+        finally:
+            sys.path.pop(0)
+
+        contract = dispatch_state.render_dispatch_contract(
+            instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
+        )
+        normalized_contract = " ".join(contract.replace("`", "").split())
+        self.assertIn(
+            "State your own coordination graph for this task before you "
+            "start, through choosing-graph",
+            normalized_contract,
+        )
+
+    def test_the_coordination_graph_glossary_entry_states_the_workers_half_too(
+        self,
+    ) -> None:
+        """The adjacent `Reality anchor` glossary entry states both halves --
+        who names it, who works inside it -- and `Coordination graph` stated
+        only the coordinator's half.
+        """
+        context = normalized(ROOT / "CONTEXT.md")
+        self.assertIn(
+            "The coordinator states it before it dispatches; a dispatched "
+            "agent states its own for its own task",
+            context,
+        )
+
+    def test_the_review_route_offers_bringing_coworker_only_where_it_can_run(
+        self,
+    ) -> None:
+        """A writable coworker's own bullet already forbids it from
+        coordinating another coworker (nesting stops at one level,
+        `docs/roles.md`), and `bringing-coworker` itself only runs from an
+        interactive worker sharing its own live Herdr tab -- a headless
+        `claude-p` worker has none. The obligation bullet named "a coworker"
+        as a route for every reader regardless.
+        """
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            import dispatch_state
+        finally:
+            sys.path.pop(0)
+
+        def review_bullet(coworker_context):
+            bullets = contract_bullets(
+                dispatch_state.render_dispatch_contract(
+                    instruction_path=Path(
+                        "/home/boss/.straw-boss/dispatch/app--slug.json"
+                    ),
+                    coworker_context=coworker_context,
+                )
+            )
+            carrying = [b for b in bullets if "adversarial review" in b]
+            self.assertEqual(len(carrying), 1)
+            return carrying[0]
+
+        top_level = review_bullet(None)
+        self.assertIn("bringing-coworker", top_level)
+
+        for coworker_context in (
+            {"coworker_writable_paths": ["src/"]},
+            {"coworker_writable_paths": []},
+        ):
+            nested = review_bullet(coworker_context)
+            self.assertNotIn("coworker", nested)
 
     def test_the_superseded_marker_is_its_own_block(self) -> None:
         """A marker appended to the end of the claim it retires reads as part
