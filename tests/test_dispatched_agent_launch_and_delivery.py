@@ -449,6 +449,121 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertEqual(len(prompts), 2)
         self.assertIn(["pane", "close", "worker-pane"], calls)
 
+    def test_launcher_refuses_receipt_when_task_prompt_only_reaches_the_composer(
+        self,
+    ) -> None:
+        # herdr can write the prompt text into an idle agent's composer
+        # without ever starting a turn. The old substring-only transcript
+        # check cannot tell that apart from a real delivery -- confirmation
+        # must also use herdr's own --wait/agent_prompt_stalled lifecycle
+        # gate (see `herdr agent prompt --help` on this machine's herdr 0.8.0).
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "composer-only-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
+                    {"worker-pane": "agent_prompt_stalled"}
+                ),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("agent_prompt_stalled", result.stderr)
+        self.assertFalse(receipt_path.exists())
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
+        self.assertEqual(len(prompts), 2)
+        self.assertTrue(all("--wait" in call for call in prompts))
+        # The composer-only prompt is still captured (visible on screen);
+        # only herdr's lifecycle gate, not transcript visibility, catches it.
+        self.assertIn("sb256:", prompts[0][3])
+        self.assertIn(["pane", "close", "worker-pane"], calls)
+
+    def test_launcher_refuses_receipt_when_a_persistently_blocked_worker_only_reaches_the_composer(
+        self,
+    ) -> None:
+        # A worker still blocked on a (possibly fresh) permission prompt
+        # after the launcher's own enter+wait recovery reaches
+        # prompt_task_with_confirmation with pre-send status "blocked" --
+        # herdr's --wait gate must still apply there, since blocked is a
+        # non-working state, not fall back to composer-only-vulnerable
+        # plain submission just because it isn't idle.
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "persistently-blocked-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_AGENT_STATUSES": json.dumps({"worker-pane": "blocked"}),
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
+                    {"worker-pane": "agent_prompt_stalled"}
+                ),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("agent_prompt_stalled", result.stderr)
+        self.assertFalse(receipt_path.exists())
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
+        self.assertEqual(len(prompts), 2)
+        self.assertTrue(all("--wait" in call for call in prompts))
+        self.assertIn(["pane", "close", "worker-pane"], calls)
+
+    def test_launcher_does_not_resend_on_an_ambiguous_prompt_wait_failure(
+        self,
+    ) -> None:
+        # A plain herdr --wait timeout is ambiguous (the turn may or may not
+        # have started) -- unlike a confirmed agent_prompt_stalled, it must
+        # not trigger a second prompt, or a genuinely-delivered task could be
+        # duplicated into the agent's composer.
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "ambiguous-wait-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps({"worker-pane": "timeout"}),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("timeout", result.stderr)
+        self.assertFalse(receipt_path.exists())
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
+        self.assertEqual(len(prompts), 1)
+        self.assertIn(["pane", "close", "worker-pane"], calls)
+
     def test_launcher_applies_codex_profile_model_and_effort(self) -> None:
         instruction_path, _ = self.write_dispatch(
             "codex",

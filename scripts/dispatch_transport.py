@@ -23,6 +23,18 @@ SUBPROCESS_TIMEOUT_S = 30
 TRANSCRIPT_CONFIRM_READ_LINES = 500
 TRANSCRIPT_CONFIRM_POLL_ATTEMPTS = 6
 TRANSCRIPT_CONFIRM_POLL_INTERVAL_S = 2.0
+# herdr's own gate: from a non-working state, --wait requires an observed
+# agent_status change within 5000ms or returns agent_prompt_stalled; a
+# shorter --timeout turns that confirmed non-delivery into an ambiguous
+# timeout instead, so this must stay >= 5000 (see `herdr agent prompt --help`).
+PROMPT_LIFECYCLE_WAIT_TIMEOUT_MS = 8000
+# States from which herdr's --wait gate above actually proves a new turn
+# started: idle, done, and blocked are all "non-working" so the observed-
+# change gate applies to them. Only an already-working target falls outside
+# it -- herdr documents that --wait "does not track turns" once working, so
+# that one state falls back to a plain submission instead of a false
+# guarantee.
+LIFECYCLE_CONFIRMABLE_STATUSES = frozenset({"idle", "done", "blocked"})
 Target = Literal["main", "root-main", "worker"]
 WORKER_TO_MAIN_INTENTS = frozenset({"question", "inform", "status"})
 MAIN_TO_WORKER_INTENTS = frozenset({"inform", "redirect", "reply", "reply-retry", "control"})
@@ -141,6 +153,33 @@ def confirm_transcript_contains(
     return False
 
 
+def prompt_delivery_args(pane_id: str, text: str, pre_send_status: str | None) -> list[str]:
+    """Build the `agent prompt` argv, using herdr's own lifecycle gate for
+    confirmation when the pre-send state makes that gate meaningful.
+
+    From `pre_send_status` idle/done/blocked, --wait makes a clean herdr exit
+    mean a turn genuinely started; herdr itself raises agent_prompt_stalled
+    if no state change is observed within 5000ms -- exactly the case where a
+    prompt reached the composer but never started a turn. The --until target
+    set depends on the starting state: from idle/done, either working or
+    blocked is proof a turn began; from blocked, only working counts --
+    re-observing blocked (a fresh permission prompt, or the same one) is not
+    proof this specific prompt did anything, so accepting it back as a match
+    would let the gate rubber-stamp a persistently-blocked pane. From any
+    other status (already working, or missing/unrecognized), this stays a
+    plain submission -- confirmation is then whatever the caller already
+    does (transcript check, or nothing, unchanged from before this existed).
+    """
+    if pre_send_status not in LIFECYCLE_CONFIRMABLE_STATUSES:
+        return ["agent", "prompt", pane_id, text]
+    until_states = ["working"] if pre_send_status == "blocked" else ["working", "blocked"]
+    args = ["agent", "prompt", pane_id, text, "--wait"]
+    for state in until_states:
+        args.extend(["--until", state])
+    args.extend(["--timeout", str(PROMPT_LIFECYCLE_WAIT_TIMEOUT_MS)])
+    return args
+
+
 def resolve_endpoint(instruction: dict[str, Any], target: Target) -> Endpoint:
     if target == "main":
         pane_id = instruction.get("main_agent_herdr_pane_id")
@@ -244,7 +283,13 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
     )
 
 
-def validate_live_session(endpoint: Endpoint) -> None:
+def validate_live_session(endpoint: Endpoint) -> str | None:
+    """Confirm the live agent at `endpoint` is the one the dispatch recorded,
+    and return its current `agent_status` (None if missing/not a string) so
+    the caller can pick a delivery-confirmation strategy for it -- one probe
+    serves both, since a second `agent get` right after this one could still
+    race a status change.
+    """
     payload = run_herdr(["agent", "get", endpoint.pane_id])
     agent = payload.get("result", {}).get("agent")
     if not isinstance(agent, dict) or agent.get("pane_id") != endpoint.pane_id:
@@ -252,6 +297,8 @@ def validate_live_session(endpoint: Endpoint) -> None:
             f"{endpoint.target} live agent does not match pane {endpoint.pane_id!r}; "
             "refusing to send"
         )
+    agent_status = agent.get("agent_status")
+    agent_status = agent_status if isinstance(agent_status, str) else None
     if endpoint.agent_kind == "codex":
         if agent.get("agent") != "codex":
             raise ValueError(
@@ -260,7 +307,7 @@ def validate_live_session(endpoint: Endpoint) -> None:
             )
         live_terminal_id = agent.get("terminal_id")
         if live_terminal_id == endpoint.expected_terminal_id:
-            return
+            return agent_status
         raise ValueError(
             f"{endpoint.target} terminal mismatch for pane {endpoint.pane_id!r}: "
             f"expected {endpoint.expected_terminal_id!r}, live {live_terminal_id!r}; "
@@ -270,11 +317,11 @@ def validate_live_session(endpoint: Endpoint) -> None:
     live_session = agent.get("agent_session")
     live_session_id = live_session.get("value") if isinstance(live_session, dict) else None
     if live_session_id == endpoint.expected_session_id:
-        return
+        return agent_status
     if endpoint.agent_kind == "claude":
         try:
             if _claude_registry_corroborates(endpoint):
-                return
+                return agent_status
         except (ValueError, OSError):
             pass  # probe or registry read/parse failed -- treat as not corroborated, same as before
     raise ValueError(
@@ -507,7 +554,7 @@ def send_instruction_message(
     if sender_instruction is not None and intent == "answer":
         assert sender_path is not None and in_reply_to is not None
         validate_peer_reply(sender_path, source, endpoint, in_reply_to)
-    validate_live_session(endpoint)
+    pre_send_status = validate_live_session(endpoint)
     delivery_id = message_id or str(uuid.uuid4())
     reference_suffix = (
         f" refs={json.dumps(normalized_references, separators=(',', ':'))}"
@@ -539,7 +586,7 @@ def send_instruction_message(
         )
     else:
         envelope = f"[main-agent {intent}{reference_suffix}] {message}"
-    run_herdr(["agent", "prompt", endpoint.pane_id, envelope])
+    run_herdr(prompt_delivery_args(endpoint.pane_id, envelope, pre_send_status))
     append_delivery_record(
         path,
         source,

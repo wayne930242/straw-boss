@@ -97,9 +97,14 @@ The launcher derives provider arguments from the recorded worker setup, then:
    `developer_instructions`;
 4. resolves the main pane and splits a worker pane in the same tab;
 5. starts the provider through herdr and handles an initial trust prompt;
-6. submits the recorded task, polls until its whitespace-normalized text appears
-   in the provider-appropriate transcript view, and retries once only after a
-   complete miss; two misses fail launch and remove the worker pane;
+6. submits the recorded task; when the pane was idle, already done, or
+   blocked (not yet already working) just before sending, also requires
+   herdr's own `--wait`/`agent_prompt_stalled` lifecycle gate to confirm a
+   turn actually started, not merely that the text reached the composer;
+   either way polls until its whitespace-normalized text appears in the
+   provider-appropriate transcript view; retries once only after a
+   herdr-confirmed stall or a complete transcript miss; two failures of
+   either kind fail launch and remove the worker pane;
 7. records the live provider fingerprint: Claude waits for
    `agent_session.value` and cross-checks its preassigned id; Codex records
    `terminal_id` without waiting for a session field;
@@ -126,9 +131,12 @@ Confirmation consumes the receipt and refuses any instruction, contract,
 provider, pane, or provider-fingerprint mismatch. It records the receipt values
 and moves the instruction to `in-progress`.
 
-Herdr accepting `agent prompt` is not delivery proof. The launcher writes the
-receipt only after transcript confirmation, so `confirm` cannot advance a task
-whose startup flow swallowed both task submissions.
+Herdr accepting `agent prompt` is not delivery proof -- text can land in an
+agent's composer without ever starting a turn. The launcher writes the
+receipt only after herdr's own lifecycle gate (where the pane's pre-send
+state makes it available) confirms a turn started and the transcript shows
+the delivered text, so `confirm` cannot advance a task whose startup flow
+only wrote its prompt into the composer or swallowed both task submissions.
 
 ## Headless launch
 

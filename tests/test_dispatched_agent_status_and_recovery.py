@@ -756,6 +756,220 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         status_path = instruction_path.with_name("api--contract-codex.status.json")
         self.assertEqual(json.loads(status_path.read_text())["status"], "done")
 
+    def test_report_task_status_leaves_no_ledger_entry_when_prompt_only_reaches_the_composer(
+        self,
+    ) -> None:
+        # send_instruction_message previously wrote the delivery ledger as
+        # soon as `herdr agent prompt` exited 0 -- which happens even when
+        # the text only reached the target's composer without starting a
+        # turn. The status file itself is still written first (existing,
+        # deliberate ordering); only the herdr notification and its ledger
+        # entry must be refused.
+        instruction_path, _ = self.write_dispatch("codex")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+        ledger_path = instruction_path.with_name("api--contract-codex.messages.jsonl")
+
+        result = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "verified end to end",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+                "HERDR_AGENT_KINDS": json.dumps({"worker-pane": "codex", "main-pane": "claude"}),
+                "HERDR_TERMINAL_IDS": json.dumps(
+                    {"worker-pane": "terminal-worker-pane", "main-pane": "terminal-main-pane"}
+                ),
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps({"main-pane": "agent_prompt_stalled"}),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("agent_prompt_stalled", result.stderr)
+        self.assertNotIn("notified main agent through herdr", result.stdout)
+        self.assertFalse(ledger_path.exists())
+        status_path = instruction_path.with_name("api--contract-codex.status.json")
+        self.assertEqual(json.loads(status_path.read_text())["status"], "done")
+
+    def test_reply_to_worker_does_not_retry_past_a_second_confirmed_stall(
+        self,
+    ) -> None:
+        # reply-to-worker.py already retries once (a distinct "reply-retry"
+        # intent) when the transcript never shows the reply. A stall herdr
+        # itself confirms on the first attempt must route into that same
+        # retry, but a second confirmed stall must fail outright rather than
+        # loop -- checkpoint replies get the same bounded-retry guarantee as
+        # the initial launch prompt.
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        status_path = instruction_path.with_name("api--contract-claude.status.json")
+        status_path.write_text(
+            json.dumps(
+                {"status": "awaiting-main-agent", "note": "need input", "timestamp": "1"},
+                indent=2,
+            )
+            + "\n"
+        )
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "reply-to-worker.py",
+            "--worker-instruction-path",
+            str(instruction_path),
+            "--reply",
+            "proceed with option B.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"worker-pane": "worker-session", "main-pane": "main-session"}
+                ),
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
+                    {"worker-pane": "agent_prompt_stalled"}
+                ),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("agent_prompt_stalled", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
+        self.assertEqual(len(prompts), 2)
+        updated = json.loads(status_path.read_text())
+        self.assertNotIn("resolved_by_main_agent_at", updated)
+
+    def test_send_dispatch_message_uses_best_effort_delivery_for_a_busy_target(
+        self,
+    ) -> None:
+        # herdr documents that --wait "does not track turns" once the target
+        # is already working, so an already-busy recipient must keep using
+        # plain (non---wait) delivery -- queuing behind its current turn is
+        # correct, not a bug, and must not be refused or blocked on.
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+        ledger_path = instruction_path.with_name("api--contract-claude.messages.jsonl")
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "inform",
+            "--message",
+            "still working, no action needed yet.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"worker-pane": "worker-session", "main-pane": "main-session"}
+                ),
+                "HERDR_AGENT_STATUSES": json.dumps({"main-pane": "working"}),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompt = next(
+            call for call in calls if call[:2] == ["agent", "prompt"] and call[2] == "main-pane"
+        )
+        self.assertNotIn("--wait", prompt)
+        self.assertTrue(ledger_path.exists())
+
+    def test_send_dispatch_message_leaves_no_ledger_entry_for_a_blocked_composer_only_target(
+        self,
+    ) -> None:
+        # blocked is a non-working state, so herdr's --wait gate applies to
+        # it the same as idle/done -- a target stuck behind a permission
+        # prompt (or one that flashes back to a fresh prompt) must not let a
+        # composer-only send through just because it started out blocked.
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+        ledger_path = instruction_path.with_name("api--contract-claude.messages.jsonl")
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "inform",
+            "--message",
+            "verified end to end.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"worker-pane": "worker-session", "main-pane": "main-session"}
+                ),
+                "HERDR_AGENT_STATUSES": json.dumps({"main-pane": "blocked"}),
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
+                    {"main-pane": "agent_prompt_stalled"}
+                ),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("agent_prompt_stalled", result.stderr)
+        self.assertFalse(ledger_path.exists())
+
+    def test_prompt_delivery_args_excludes_blocked_from_a_blocked_starts_until_list(
+        self,
+    ) -> None:
+        # From a blocked start, re-observing "blocked" is not proof this
+        # prompt did anything -- only a genuine transition to working counts,
+        # or the gate would rubber-stamp a persistently-blocked pane. Asserts
+        # the argv this fix builds, since the fake herdr always returns a
+        # fixed status rather than modeling a live blocked->blocked sequence.
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "inform",
+            "--message",
+            "verified end to end.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"worker-pane": "worker-session", "main-pane": "main-session"}
+                ),
+                "HERDR_AGENT_STATUSES": json.dumps({"main-pane": "blocked"}),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompt = next(
+            call for call in calls if call[:2] == ["agent", "prompt"] and call[2] == "main-pane"
+        )
+        self.assertIn("--wait", prompt)
+        self.assertEqual(prompt.count("--until"), 1)
+        self.assertEqual(prompt[prompt.index("--until") + 1], "working")
+        self.assertNotIn("blocked", prompt[prompt.index("--wait") :])
+
     def test_report_task_status_still_refuses_when_worker_pane_is_closed(self) -> None:
         """Characterization: `report-task-status.py`'s sender validation stays
         untouched. Even with the worker pane confirmed gone, the coordinator

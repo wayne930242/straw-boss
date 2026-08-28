@@ -21,6 +21,7 @@ from dispatch_state import dump_json, launch_receipt_path, load_json, sha256_tex
 from dispatch_transport import (
     HerdrCommandError,
     confirm_transcript_contains,
+    prompt_delivery_args,
     run_herdr,
 )
 
@@ -262,12 +263,26 @@ def task_start_prompt(task: str) -> str:
 def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> None:
     marker = task_delivery_marker(task)
     prompt = task_start_prompt(task)
-    run_herdr(["agent", "prompt", pane_id, prompt])
-    if confirm_transcript_contains(pane_id, marker, agent_kind):
-        return
-    run_herdr(["agent", "prompt", pane_id, prompt])
-    if confirm_transcript_contains(pane_id, marker, agent_kind):
-        return
+    attempts_remaining = 2
+    while attempts_remaining:
+        attempts_remaining -= 1
+        pre_send_status = live_agent(pane_id).get("agent_status")
+        pre_send_status = pre_send_status if isinstance(pre_send_status, str) else None
+        try:
+            run_herdr(prompt_delivery_args(pane_id, prompt, pre_send_status))
+        except HerdrCommandError as exc:
+            if exc.error_code != "agent_prompt_stalled":
+                raise
+            if not attempts_remaining:
+                raise ValueError(
+                    f"sent the initial task to pane {pane_id!r} via herdr twice but herdr "
+                    "confirmed neither attempt started a turn (agent_prompt_stalled: the "
+                    "prompt likely reached only the composer, not a real turn); refusing "
+                    "to write a launch receipt"
+                ) from exc
+            continue
+        if confirm_transcript_contains(pane_id, marker, agent_kind):
+            return
     raise ValueError(
         f"sent the initial task to pane {pane_id!r} via herdr twice but could not "
         "confirm it landed in the transcript via its delivery marker; refusing "

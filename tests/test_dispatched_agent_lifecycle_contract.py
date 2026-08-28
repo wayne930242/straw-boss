@@ -704,7 +704,14 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
-        self.assertEqual(calls[2], ["agent", "prompt", "worker-pane", "/compact preserve transport state"])
+        # Only the fixed positional prefix is asserted here -- the trailing
+        # flags are the lifecycle-delivery-confirmation strategy, not part of
+        # what this test is about (the slash command reaching the pane
+        # unwrapped, unlike every other intent's bracketed envelope).
+        self.assertEqual(
+            calls[2][:4],
+            ["agent", "prompt", "worker-pane", "/compact preserve transport state"],
+        )
 
     def test_wrap_up_archives_contract_receipt_and_delivery_ledger(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")

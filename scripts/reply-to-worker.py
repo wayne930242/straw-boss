@@ -28,6 +28,7 @@ from typing import Any
 
 from dispatch_state import dump_json, load_json, resolve_instruction_status_path
 from dispatch_transport import (
+    HerdrCommandError,
     confirm_transcript_contains,
     normalize_references,
     send_instruction_message,
@@ -67,13 +68,21 @@ def reply_to_worker(
         )
 
     normalized_references = normalize_references(references)
-    endpoint = send_instruction_message(
-        inst_path, "worker", "reply", reply, references=normalized_references
-    )
-    # A genuine herdr failure (timeout, pane gone) propagates immediately
-    # and never triggers a resend -- only a poll window that completes
-    # without ever finding the reply retries below.
-    if not confirm_transcript_contains(endpoint.pane_id, reply, str(agent_kind)):
+    # A genuine herdr failure other than a confirmed non-start -- any
+    # HerdrCommandError whose code isn't agent_prompt_stalled, including an
+    # ambiguous timeout -- propagates immediately and never triggers a
+    # resend. Only a stall herdr itself confirmed, or a poll window that
+    # completes without ever finding the reply, retries below.
+    try:
+        send_instruction_message(
+            inst_path, "worker", "reply", reply, references=normalized_references
+        )
+        delivered = confirm_transcript_contains(herdr_pane_id, reply, str(agent_kind))
+    except HerdrCommandError as exc:
+        if exc.error_code != "agent_prompt_stalled":
+            raise
+        delivered = False
+    if not delivered:
         send_instruction_message(
             inst_path,
             "worker",
@@ -81,9 +90,9 @@ def reply_to_worker(
             reply,
             references=normalized_references,
         )
-        if not confirm_transcript_contains(endpoint.pane_id, reply, str(agent_kind)):
+        if not confirm_transcript_contains(herdr_pane_id, reply, str(agent_kind)):
             raise ValueError(
-                f"sent the reply to pane {endpoint.pane_id!r} via herdr (that call itself succeeded) but could not "
+                f"sent the reply to pane {herdr_pane_id!r} via herdr (that call itself succeeded) but could not "
                 f"confirm it landed in the transcript after one retry -- likely still queued in a "
                 f"busy pane rather than lost, but not certain either way. status file left untouched "
                 f"at {status_path}; inspect the pane through the dispatch tooling before resending "
