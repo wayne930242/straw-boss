@@ -141,10 +141,11 @@ This contract is mandatory for this dispatched session.
 - In `herdr-pane`, you are an independent agent after launch. You and the user
   choose the specification, design, implementation, and the verification method
   inside the reality anchor this dispatch names — naming the anchor is the main
-  agent's, naming the tests is yours. The main agent supplies the user
-  requirement, necessary hints, and known coordination facts and accepts those
-  decisions. Investigate the target app's implementation and precedent yourself
-  in this working directory.
+  agent's, naming the tests is yours; ask the main agent to name the anchor when
+  this dispatch does not. The main agent supplies the user requirement,
+  necessary hints, and known coordination facts and accepts those decisions.
+  Investigate the target app's implementation and precedent yourself in this
+  working directory.
 {coworker_rules}
 - Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or
   agent names for cross-session communication.

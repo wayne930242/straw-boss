@@ -43,6 +43,13 @@ def instruction_lines(path: Path) -> list[tuple[int, str]]:
 
 
 def prose_surfaces(include_scripts: bool = False) -> list[Path]:
+    """Live instruction surfaces -- what an agent actually reads to act.
+
+    `docs` is deliberately non-recursive. `docs/specs/` and `docs/adr/` are
+    dated records of what one change decided and how it was verified; a
+    superseded ADR keeps its era's wording on purpose, so scanning them for
+    current vocabulary would report history as drift.
+    """
     paths = [
         *(ROOT / "skills").glob("**/*.md"),
         *(ROOT / "docs").glob("*.md"),
@@ -486,6 +493,186 @@ class SkillInstructionQualityTests(unittest.TestCase):
         )
         self.assertIn("which they can answer before the cause is known", troubleshooting)
         self.assertIn("It owns the mode decision", troubleshooting)
+
+    def test_the_deleted_allowed_list_exception_is_actually_gone(self) -> None:
+        """A record of a deletion has to be true of the tree it describes.
+
+        `969e0bd`'s commit message, this change's `design.md`, and its
+        `verification.md` all state that `dispatching-work` Task 3's "or the
+        reality anchor" allowed-list exception was deleted rather than
+        reworded. The diff only appended a second clause after it, so three
+        records -- two of them the change's own acceptance evidence -- disagree
+        with the file they describe.
+        """
+        spec = ROOT / "docs" / "specs" / "2026-08-28-anchor-authority-boundary"
+        self.assertIn("That clause is gone", normalized(spec / "design.md"))
+        self.assertIn(
+            "allowed-list exception is deleted, not rewritten",
+            normalized(spec / "verification.md"),
+        )
+
+        dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
+        allowed = [
+            sentence
+            for sentence in sentences(dispatching)
+            if "every brief statement traces to" in sentence
+        ]
+        self.assertEqual(len(allowed), 1, "one allowed-source list, in Task 3")
+        self.assertNotIn("reality anchor", allowed[0])
+        # The anchor is still required in the brief -- as a named element, not
+        # as an exception to the source rule.
+        self.assertIn("the brief names the anchor it settled on", dispatching)
+
+    def test_the_contract_says_what_to_do_when_a_dispatch_names_no_anchor(self) -> None:
+        """The generated contract asserts that the dispatch named an anchor.
+
+        Nothing carries the anchor structurally -- it lives in the free-text
+        brief -- so that assertion can be false on arrival, and a worker reading
+        it literally cannot tell how far its own verification authority runs.
+        The contract degrades to the checkpoint that owns the gap rather than
+        widening the grant to cover the anchor category itself.
+        """
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            import dispatch_state
+        finally:
+            sys.path.pop(0)
+
+        contract = " ".join(
+            dispatch_state.render_dispatch_contract(
+                instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
+            )
+            .replace("`", "")
+            .split()
+        )
+        self.assertIn("the reality anchor this dispatch names", contract)
+        self.assertIn(
+            "ask the main agent to name the anchor when this dispatch does not",
+            contract,
+        )
+
+    def test_the_release_rule_covers_both_locks_its_pointer_claims(self) -> None:
+        """`dispatching-work`'s Wrap-up step 3 sends the reader to a paragraph
+        that denies one of the two cases the step says it covers.
+
+        The paragraph opens "The worker never claimed this lock ... it has
+        nothing to report about it", which is true of the dispatch-time claim
+        and false of a lock the worker claimed inside its own task and reported
+        without confirming release -- the second case the pointer names.
+        """
+        shared = (
+            ROOT
+            / "skills"
+            / "dispatching-work"
+            / "references"
+            / "shared-resource-coordination.md"
+        )
+        release = [
+            block
+            for block in paragraphs(shared.read_text())
+            if "Releasing a dispatch-time claim" in block
+        ]
+        self.assertEqual(len(release), 1, "the release rule lives in one paragraph")
+        for case in (
+            "The worker never claimed the dispatch-time lock",
+            "a lock the worker claimed inside its own task and reported "
+            "without confirming release is released here too",
+        ):
+            self.assertIn(case, release[0], case)
+
+        # A new wrap-up step needs an acceptance condition of its own.
+        dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
+        self.assertIn(
+            "every shared-resource lock on this instruction is released before "
+            "wrap-up-task.py runs",
+            dispatching,
+        )
+
+    def test_no_retired_coordination_alias_is_live_in_the_skills(self) -> None:
+        """`_Avoid_` is per-concept aliasing, not a word ban.
+
+        "subagent", "model", and "role" are each retired as the name of one
+        concept and live as the name of another, so a blanket scan would be
+        wrong. The three coordination entries `969e0bd` added retire multi-word
+        coordination phrases instead, and those have to be dead in the skills --
+        otherwise the glossary retires a phrase the plugin is still using, in a
+        different sense, in the same task that states the concept.
+        """
+        headwords: list[str] = []
+        retired: dict[str, list[str]] = {}
+        term: str | None = None
+        for line in (ROOT / "CONTEXT.md").read_text().splitlines():
+            headword = re.fullmatch(r"\*\*(.+?)\*\*:", line.strip())
+            if headword:
+                term = headword.group(1)
+                headwords.append(term)
+            elif line.startswith("_Avoid_:") and term:
+                retired[term] = [
+                    alias.strip().lower()
+                    for alias in line.partition(":")[2].split(",")
+                    if alias.strip()
+                ]
+
+        coordination = ("Coordination graph", "Reality anchor", "Team-mode / solo-mode")
+        self.assertEqual(
+            sorted(term for term in retired if term in coordination),
+            sorted(coordination),
+        )
+        # The batching decision is its own concept and keeps its own entry, so
+        # the collision cannot come back as an unregistered term.
+        self.assertIn("Dispatch shape", headwords)
+
+        aliases = [alias for term in coordination for alias in retired[term]]
+        live = [
+            f"{path.relative_to(ROOT).as_posix()}:{number} {alias}"
+            for path in sorted((ROOT / "skills").glob("**/*.md"))
+            for number, line in instruction_lines(path)
+            for alias in aliases
+            if alias in line.lower()
+        ]
+        self.assertEqual(live, [])
+
+    def test_troubleshooting_names_the_anchor_on_both_of_its_branches(self) -> None:
+        """`choosing-graph` names three skills whose evidence references its
+        read-only anchor attacks; only two of them said so.
+
+        `troubleshooting-app` also is not read-only as a whole -- its default
+        branch lands a fix -- so the rule reaches its integration preflight, not
+        the skill.
+        """
+        troubleshooting = normalized(ROOT / "skills" / "troubleshooting-app" / "SKILL.md")
+        self.assertIn(
+            "an independent agent's adversarial review of the account",
+            troubleshooting,
+        )
+        self.assertIn("the fix is anchored on testing", troubleshooting)
+
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn("troubleshooting-app's integration preflight", graph)
+        self.assertIn("adversarial-review is its anchor", graph)
+
+    def test_one_graph_wins_when_single_loop_and_fan_out_both_fit(self) -> None:
+        """The criterion calls itself observable, so overlapping bullets need a
+        decision, not a reader's taste.
+
+        A coordinator driving one dispatch while running its own subagents, and
+        a worker that brought a coworker and also runs subagents, each satisfy
+        `single-loop` and `sub-agent fan-out/fan-in` as written.
+        """
+        source = (ROOT / "skills" / "choosing-graph" / "SKILL.md").read_text()
+        tie_break = "whether a branch of the work itself runs in a subagent"
+        deciding = [block for block in paragraphs(source) if tie_break in block]
+        self.assertEqual(len(deciding), 1, "one tie-break, stated once")
+        # It adjudicates those two and stops there. `orchestrator-worker` is
+        # the boundary with a mechanical consequence -- it alone writes a
+        # plan.json -- so a batch that also runs an item in a subagent stays
+        # that shape.
+        self.assertIn("single-loop", deciding[0])
+        self.assertIn("sub-agent fan-out/fan-in", deciding[0])
+        self.assertNotIn("orchestrator-worker", deciding[0])
+        # The exemption and the tie-break are one rule: the anchor's own check
+        # is the case the tie-break must not sweep into fan-out.
+        self.assertIn("never changes the graph", deciding[0])
 
     def test_every_dispatch_path_reaches_choosing_graph(self) -> None:
         boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")

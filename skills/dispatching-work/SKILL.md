@@ -62,8 +62,8 @@ the worker's and the user's.
 Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates Claude's session id and every provider's immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind, this session's provider, and the validated pane/provider-fingerprint pair from Task 1. Never hand-write the JSON, contract, or UUID.
 
 **Verification:** every brief statement traces to the user request, a necessary
-hint or constraint, an already-known coordination state, or the reality anchor;
-the brief names the anchor without prescribing the method inside it; target-app
+hint or constraint, or an already-known coordination state; the brief names the
+anchor it settled on without prescribing the method inside it; target-app
 discovery is assigned to the worker; instruction and hashed contract exist with
 `pending` status before any agent starts.
 
@@ -138,4 +138,5 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 4. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
 
 **Verification:** the worker pane is confirmed closed before the file is archived;
-the coordinator pane and shared tab remain open.
+every shared-resource lock on this instruction is released before
+`wrap-up-task.py` runs; the coordinator pane and shared tab remain open.

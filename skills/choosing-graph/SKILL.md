@@ -40,8 +40,10 @@ coordination loop, and by what mechanism.
   still settling. It is the only graph that writes
   `~/.straw-boss/plans/<slug>/plan.json`; the other two carry no dispatch plan.
 
-The anchor's own check — including an independent review agent — is not a
-branch of the work and never changes the graph.
+Between **single-loop** and **sub-agent fan-out/fan-in**, the deciding question
+is whether a branch of the work itself runs in a subagent: if one does, the
+shape is fan-out. The anchor's own check — including an independent review
+agent — is not a branch of the work and never changes the graph.
 
 ## Reality anchors
 
@@ -62,11 +64,13 @@ branch of the work and never changes the graph.
   checkpoint to offer. The worker reaches for it through its own `Agent` tool or
   `bringing-coworker`.
 
-Read-only work — an audit, research, a diagnosis — has no artifact to operate
-and no change to go red, so adversarial-review is its anchor. What that
+Read-only work — an audit, research, a separate diagnosis — has no artifact to
+operate and no change to go red, so adversarial-review is its anchor. What that
 independent agent attacks is the report's claims against the evidence references
-`inspecting-app`, `investigating-app`, and `troubleshooting-app` already
-require. Those references make the attack possible; they are not the anchor.
+`inspecting-app`, `investigating-app`, and `troubleshooting-app`'s integration
+preflight already require. Those references make the attack possible; they are
+not the anchor. `troubleshooting-app`'s other branch lands a fix, so it takes
+the testing anchor like any other change.
 
 ## The port a frontend anchor needs
 

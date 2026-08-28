@@ -49,12 +49,15 @@ python3 -m unittest discover -s tests   # at 7c00f06, with this change's tests
 118 tests, 12 failures
 ```
 
-The red set covers the three authority tests, the anchor-boundary test, the
-closed-set test, the two vocabulary tests, the plan-graph test, the
+The red set is the three authority tests, the scoping test, the anchor-boundary
+test, the closed-set test, the graph-vocabulary test, the plan-graph test, the
 read-only-anchor test, the release test, the lifecycle-mode test, and the stance
-test.
+test — twelve in all.
+`test_lifecycle_mode_names_are_consistent_across_every_live_surface` is not one
+of them: its pattern matches `full flow`/`light flow` only, and the phrasing
+this change replaced was a bare "flow decision".
 
-Two tests are deliberately not in that set.
+Two more are deliberately not in that set.
 `test_no_surface_gives_the_worker_the_anchor_category` guards the drift this
 change's own boundary makes possible — a surface handing the worker the anchor
 category — which the reviewed tree did not have, so it asserts against its own
@@ -78,11 +81,14 @@ git diff --check
 passed
 ```
 
-## Relationship to the earlier communication-contract spec
+## Relationship to the earlier dispatch specs
 
+Two earlier specs record the grant without the scope.
 `docs/specs/2026-08-26-agent-communication-contract/verification.md` records
 "the worker and user choose specification, design, implementation, and
-verification method" as verified. That statement stands, refined: the
-verification method is the method inside the reality anchor the dispatch names.
-The anchor category and its checkpoint were never part of that grant, and this
-spec is where that scope is now recorded.
+verification method" as verified, and
+`docs/specs/2026-08-25-clear-dispatch-instructions/spec.md` states the same
+grant as observable behavior. Both stand, refined: the verification method is
+the method inside the reality anchor the dispatch names. The anchor category and
+its checkpoint were never part of that grant, and this spec is where that scope
+is now recorded.

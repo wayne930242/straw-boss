@@ -64,13 +64,16 @@ later work can be routed or scheduled. Dispatch that diagnosis through
 `dispatching-work`, rooted in the resolved app, and require an explanatory,
 falsifiable root-cause account with evidence references to logs, tests, commands,
 files, or artifacts. The result must identify the affected boundary and the
-downstream work or dependency order it enables.
+downstream work or dependency order it enables. That dispatch produces a report
+and no change, so its anchor is an independent agent's adversarial review of the
+account against those evidence references.
 
 For every other app-level or uncertain failure, hand the cause-plus-fix outcome
 to `shipping-task` with the app already resolved. It owns the mode decision,
 worktree creation, dispatch, and authorization gates. One worker reproduces the
 failure, explains its mechanism and root cause, and repairs it without a second
-cold start.
+cold start. There the fix is anchored on testing: the reproduction the worker
+establishes is what goes red before the repair.
 
 On the continuous branch, frame the brief around the failure mechanism and root
 cause the worker must explain, then fix. Require reproduction observations and

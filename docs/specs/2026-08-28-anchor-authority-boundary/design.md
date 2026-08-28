@@ -40,10 +40,13 @@ reach that shape. A derivable fact does not need a prohibition.
 
 Making `adversarial-review` mandatory-as-anchor whenever the other three offered
 no checkpoint forced a second agent onto every audit and research dispatch, at
-no notice to the two skills that own those dispatches. The user's own phrasing
-is permissive — it *may* serve — so the rule now reads that way, and the two
-skills that own those dispatches say in their own deliverable paragraph what
-their anchor is.
+no notice to the two skills that own those dispatches. The general rule now
+matches the user's own permissive phrasing — adversarial review *may* serve as
+the anchor — but read-only work keeps a mandatory one, because nothing else is
+on offer: `choosing-graph` still reads "adversarial-review is its anchor". So
+the cost H named is unchanged. What changed is that the skills owning those
+dispatches state it in their own deliverable paragraph instead of inheriting it
+silently from another file.
 
 A first attempt named the evidence references themselves as the anchor for
 read-only work. That fails under this boundary: the main agent names an anchor

@@ -58,7 +58,13 @@ _Avoid_: coworker, subagent, Codex advisor
 **Coordination graph**:
 How the agents on one task are wired — single-loop, sub-agent fan-out/fan-in,
 or orchestrator-worker. The coordinator states it.
-_Avoid_: topology, dispatch shape, supervisor-worker
+_Avoid_: topology, supervisor-worker
+
+**Dispatch shape**:
+How much work goes out at once — one item to a specialist skill, a capped
+batch in this turn, or a self-paced `/loop` batch. `boss-say` picks it; it
+answers a different question from the coordination graph and neither renames
+the other.
 
 **Reality anchor**:
 The contact with reality that proves a result. The main agent names which one
