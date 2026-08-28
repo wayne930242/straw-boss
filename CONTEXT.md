@@ -6,10 +6,12 @@ Canonical actor names and authority live in `docs/roles.md`.
 
 **Own the loop, not the work.** The main agent selects dispatch mechanics,
 schedules dependencies, supplies the user requirement, necessary hints, and
-already-known coordination facts, acts on status events, and cleans up. The worker
-discovers target-app implementation context itself. A Herdr-launched session is an
-independent agent: it and the user decide the specification, design,
-implementation, and verification method. The main agent accepts those decisions.
+already-known coordination facts, names the reality anchor and arranges its
+checkpoint, acts on status events, and cleans up. The worker discovers
+target-app implementation context itself. A Herdr-launched session is an
+independent dispatched agent: it and the user decide the specification, design,
+implementation, and the verification method inside the reality anchor the
+dispatch names. The main agent accepts those decisions.
 
 When coordination or integration needs target-app investigation or current-state
 research, the main agent dispatches that investigation instead of reading across
@@ -52,3 +54,19 @@ _Avoid_: agent type, worker role
 **Advisor**:
 Claude Code's native second-model server tool attached to one worker session.
 _Avoid_: coworker, subagent, Codex advisor
+
+**Coordination graph**:
+How the agents on one task are wired — single-loop, sub-agent fan-out/fan-in,
+or orchestrator-worker. The coordinator states it.
+_Avoid_: topology, dispatch shape, supervisor-worker
+
+**Reality anchor**:
+The contact with reality that proves a result. The main agent names which one
+and arranges its checkpoint; the worker and user choose the method inside it.
+_Avoid_: acceptance gate, verification strategy
+
+**Team-mode / solo-mode**:
+The two git lifecycle shapes, picked from how the user regards the work:
+worktree → develop → MR → merge → archive, or a direct commit to the base
+branch.
+_Avoid_: full flow, light flow

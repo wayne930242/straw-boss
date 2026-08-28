@@ -67,7 +67,7 @@ files, or artifacts. The result must identify the affected boundary and the
 downstream work or dependency order it enables.
 
 For every other app-level or uncertain failure, hand the cause-plus-fix outcome
-to `shipping-task` with the app already resolved. It owns the flow decision,
+to `shipping-task` with the app already resolved. It owns the mode decision,
 worktree creation, dispatch, and authorization gates. One worker reproduces the
 failure, explains its mechanism and root cause, and repairs it without a second
 cold start.

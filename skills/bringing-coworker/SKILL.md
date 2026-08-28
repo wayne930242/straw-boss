@@ -34,8 +34,8 @@ the coworker's pane and instruction path.
 ## 3. Work with the user
 
 Point the user to the coworker pane. The coworker and user decide feedback and
-choose the specification, design, implementation, and verification method
-directly; continue on your disjoint scope.
+choose the specification, design, implementation, and the verification method
+inside the anchor you scoped for it; continue on your disjoint scope.
 
 Complete when the coworker reports `done` or `failed`; parent and root
 coordinator receive that terminal event automatically.

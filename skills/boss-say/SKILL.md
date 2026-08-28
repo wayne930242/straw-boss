@@ -7,7 +7,7 @@ description: The single entry point for handing any work to straw-boss — imple
 
 See `docs/roles.md` for the cast of characters and the authority framework the main agent acts under — not redefined here.
 
-**Everything comes through here — not just implementation.** The main agent decides dispatch shape and execution tier; once launched, the dispatched agent and user choose specification, design, implementation, and verification method. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one — including right after the trigger phrase itself (see the branch below) — but they are not the front door.
+**Everything comes through here — not just implementation.** The main agent decides dispatch shape and execution tier; once launched, the dispatched agent and user choose specification, design, implementation, and the verification method inside the reality anchor named here. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one — including right after the trigger phrase itself (see the branch below) — but they are not the front door.
 
 Three things this skill owns that nothing else does:
 
@@ -59,14 +59,16 @@ an explanatory, evidence-backed result.
 Then fix the **coordination graph** and the **reality anchor** for the work
 through `choosing-graph`, and state both. They travel with the dispatch. A
 capped batch is always orchestrator-worker — the plan plus the refill loop below
-is that shape.
+is that shape. Naming the anchor is where this stops: the tests, cases, and
+tools inside it are the worker's and the user's.
 
 **Verification:** the shape was decided here and stated out loud, with a reason;
 a single item was never turned into a batch plan; the user was not asked to pick
 the dispatch shape or execution tier; no main-agent or plain-subagent path reads
 inside a managed app root; every investigation asks for explanation plus
 evidence, not a binary answer; the coordination graph and reality anchor are
-named before anything is dispatched.
+named before anything is dispatched, and no brief prescribes the method inside
+the anchor.
 
 ## Task 2: Resolve each item's app
 

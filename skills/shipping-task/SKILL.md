@@ -27,7 +27,7 @@ Invoke the `work-on` skill now if the target app isn't already established in th
 
 Ask the user how they regard this piece of work — solo work they are carrying themselves, or team work that lands through review. Their reading of the work is the whole question. Determine the base/integration branch, and check the resolved app's `apps.json` entry for `forbidDirectCommit` while you're at it (if the field is absent, treat it as `false` — no direct-commit restriction — rather than asking the user to guess).
 
-- **solo-mode**: no worktree, develop directly in the app's primary checkout, commit straight to the base branch — no authorization needed, no MR. `forbidDirectCommit` (below) is the only gate on this path; once a task is offered solo-mode, its commit lands with no further check. The primary checkout is shared and unisolated — unlike a team-mode worktree, nothing keeps a solo-mode task's in-progress changes from colliding with anything else that touches the same checkout. Before dispatching one, check it's clean (`git -C <app_dir> status --porcelain`); a dirty tree almost always means an earlier solo-mode task's change is still mid-work or was abandoned — resolve that first rather than dispatching into contended state. Never have more than one solo-mode task in flight against the same app at once, for the same reason.
+- **solo-mode**: no worktree, develop directly in the app's primary checkout, commit straight to the base branch — no authorization needed, no MR. Say that much when you offer it, so the user is answering with the consequence in view. `forbidDirectCommit` (below) is the only gate on this path; once a task is offered solo-mode, its commit lands with no further check. The primary checkout is shared and unisolated — unlike a team-mode worktree, nothing keeps a solo-mode task's in-progress changes from colliding with anything else that touches the same checkout. Before dispatching one, check it's clean (`git -C <app_dir> status --porcelain`); a dirty tree almost always means an earlier solo-mode task's change is still mid-work or was abandoned — resolve that first rather than dispatching into contended state. Never have more than one solo-mode task in flight against the same app at once, for the same reason.
 - **team-mode**: worktree → develop → MR → merge → archive.
 
 If `forbidDirectCommit` is `true`, say so and only offer team-mode — do not ask the user to pick something the app itself blocks.
@@ -55,7 +55,8 @@ Build an outcome-oriented brief for `dispatching-work`:
 - Add only already-known coordination facts, exact artifact references supplied
   by the workflow, and material task-specific constraints.
 - The worker and user choose the **specification, design, implementation, and
-  verification method** in the dispatched session.
+  the verification method inside the reality anchor the brief names** in the
+  dispatched session.
 - Include a constraint only when it is verified, task-specific, and materially changes the acceptable result. Prefer a positive statement with its reason over a preventive list of things not to do.
 - Omit **generic lifecycle prose**, reporting commands, provider routing, checkpoint mechanics, tracker policy, and defensive reminders already supplied by the generated contract, this skill, or the target app's own instructions.
 
@@ -88,12 +89,11 @@ If the target app is itself a submodule of a monorepo root and a pointer-bump pu
 ## Task 6: Confirm and wrap up
 
 Once the agent reports the lifecycle is complete (merged in team-mode,
-committed in solo-mode), confirm the merge or commit reference. If the
-worker reports claiming a shared-resource lock without confirming release,
-check and release that claim. Release a port claimed at dispatch for a frontend
-anchor here too — the worker never claimed it, so it has nothing to report. Then invoke `dispatching-work`'s wrap-up branch to
-close the worker pane and instruction; in team-mode, remove the worktree
-with plain git. The coordinator's shared tab remains open.
+committed in solo-mode), confirm the merge or commit reference. Then invoke
+`dispatching-work`'s wrap-up branch, which closes the worker pane and
+instruction and releases any shared-resource lock still held on it; in
+team-mode, remove the worktree with plain git. The coordinator's shared tab
+remains open.
 
 If the primary checkout tracks the merged base, is clean, and is intended for
 subsequent direct work, fast-forward it after removing the team-mode worktree.

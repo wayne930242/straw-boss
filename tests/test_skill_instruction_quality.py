@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,49 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def normalized(path: Path) -> str:
     return " ".join(path.read_text().replace("`", "").split())
+
+
+def sentences(text: str) -> list[str]:
+    collapsed = " ".join(text.replace("`", "").split())
+    return [part.strip() for part in re.split(r"(?<=[.;])\s+", collapsed) if part.strip()]
+
+
+def paragraphs(text: str) -> list[str]:
+    """Instruction prose only -- YAML frontmatter is trigger metadata, not a
+    statement of who decides what."""
+    body = text
+    if body.startswith("---"):
+        body = body.partition("---\n")[2].partition("---\n")[2]
+    blocks = re.split(r"\n\s*\n", body.replace("`", ""))
+    return [" ".join(block.split()) for block in blocks if block.strip()]
+
+
+def instruction_lines(path: Path) -> list[tuple[int, str]]:
+    """Numbered lines a reader takes as instruction.
+
+    `CONTEXT.md`'s Language section records retired terms on `_Avoid_:` lines
+    on purpose, so a stale-vocabulary scan has to skip them or the glossary
+    can never name what it retires.
+    """
+    return [
+        (number, line)
+        for number, line in enumerate(path.read_text().splitlines(), 1)
+        if not line.startswith("_Avoid_:")
+    ]
+
+
+def prose_surfaces(include_scripts: bool = False) -> list[Path]:
+    paths = [
+        *(ROOT / "skills").glob("**/*.md"),
+        *(ROOT / "docs").glob("*.md"),
+        ROOT / "CONTEXT.md",
+        ROOT / "README.md",
+        ROOT / "README.zh-TW.md",
+    ]
+    if include_scripts:
+        paths += sorted((ROOT / "scripts").glob("*.py"))
+    return sorted(paths)
+
 
 
 class SkillInstructionQualityTests(unittest.TestCase):
@@ -178,7 +222,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         # injected stance previously restated work-content ownership, conflict
         # handling, and cleanup authority across four sections.
         for phrase in (
-            "specification, design, implementation, and verification method",
+            "specification, design, implementation, and the verification method",
             "awaiting-main-agent",
             "conflict",
             "authorization",
@@ -201,48 +245,247 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertNotIn("once the worktree is removed, sync the app's primary checkout too", source)
         self.assertNotIn("This finding needs DB/infra access I don't have", source)
 
-    def test_dispatch_plan_belongs_to_the_orchestrator_worker_graph_alone(self) -> None:
-        source = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
-        self.assertIn("single-loop", source)
-        self.assertIn("sub-agent fan-out/fan-in", source)
-        self.assertIn("orchestrator-worker", source)
-        self.assertIn("the coordinator's shape alone", source)
-        self.assertIn("dispatched under a concurrency cap", source)
-        self.assertIn(
-            "the graph that writes ~/.straw-boss/plans/<slug>/plan.json", source
-        )
-        self.assertIn("The other two carry no dispatch plan", source)
-        self.assertNotIn("supervisor-worker", source)
+    def test_every_grant_of_the_verification_method_is_scoped_to_the_anchor(
+        self,
+    ) -> None:
+        """The mandatory contract and the skills have to agree on one boundary.
 
-    def test_choosing_graph_names_four_reality_anchors(self) -> None:
-        source = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
-        self.assertIn("**testing** — the default", source)
-        self.assertIn("escalates to integration or E2E", source)
-        self.assertIn("screenshot and measurement", source)
+        `1da9e55` broke exactly this: the generated contract went on granting
+        the worker an unqualified "verification method" while the new skills
+        started fixing the reality anchor at dispatch, so a worker received two
+        instructions and no rule for which one wins. Scoping the grant is what
+        makes both true at once, so every surface that states the grant has to
+        carry the scope -- including the contract the dispatcher really builds.
+        """
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            import dispatch_state
+        finally:
+            sys.path.pop(0)
+
+        surfaces = {
+            "generated contract": dispatch_state.render_dispatch_contract(
+                instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
+            ),
+        }
+        for path in prose_surfaces():
+            surfaces[path.relative_to(ROOT).as_posix()] = path.read_text()
+
+        unscoped = [
+            f"{name}: {sentence}"
+            for name, text in surfaces.items()
+            for sentence in sentences(text)
+            if "verification method" in sentence.lower()
+            and "anchor" not in sentence.lower()
+        ]
+        self.assertEqual(unscoped, [])
+        self.assertGreaterEqual(
+            sum(
+                1
+                for text in surfaces.values()
+                for sentence in sentences(text)
+                if "verification method" in sentence.lower()
+            ),
+            5,
+            "the grant vanished instead of being scoped",
+        )
+
+    def test_the_anchor_is_the_coordinators_and_the_method_inside_it_is_not(
+        self,
+    ) -> None:
+        """Both halves of the boundary, stated where authority is defined."""
+        roles = normalized(ROOT / "docs" / "roles.md")
+        self.assertIn("The reality anchor is coordination; the method inside it is work", roles)
+        self.assertIn("The main agent names which anchor proves a task", roles)
+        self.assertIn("Naming the anchor is not naming the tests", roles)
+
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn("Naming the anchor is not naming the tests", graph)
+        # The testing anchor's own escalation stays with the worker on every
+        # surface that spells the default out.
+        for name, source in (("choosing-graph", graph), ("docs/roles.md", roles)):
+            self.assertIn("smallest credible seam that can go red before the change", source, name)
+            self.assertIn("integration or E2E", source, name)
         self.assertIn(
-            "ask the user whether their own risk judgment prefers pseudo-human",
-            source,
+            "the worker escalates to integration or E2E when the target project's own conventions call for it",
+            graph,
+        )
+
+    def test_graph_names_are_the_same_three_on_every_surface_that_lists_them(
+        self,
+    ) -> None:
+        # The zh-TW README localizes the middle name; the other two are
+        # identifiers and stay verbatim everywhere.
+        graphs = (
+            ("single-loop",),
+            ("sub-agent fan-out/fan-in", "sub-agent 扇出／扇入"),
+            ("orchestrator-worker",),
+        )
+
+        def named(text: str) -> int:
+            return sum(any(form in text for form in graph) for graph in graphs)
+
+        listing = [path for path in prose_surfaces() if named(path.read_text()) >= 2]
+        self.assertNotEqual(listing, [], "no surface enumerates the graphs")
+        incomplete = [
+            path.relative_to(ROOT).as_posix()
+            for path in listing
+            if named(path.read_text()) != len(graphs)
+        ]
+        self.assertEqual(incomplete, [])
+
+        stale = re.compile(r"supervisor-worker|coordinator's shape alone")
+        self.assertEqual(
+            [
+                f"{path.relative_to(ROOT).as_posix()}:{number}"
+                for path in prose_surfaces()
+                for number, line in instruction_lines(path)
+                if stale.search(line)
+            ],
+            [],
+        )
+
+    def test_only_orchestrator_worker_is_described_as_writing_a_dispatch_plan(
+        self,
+    ) -> None:
+        graph_source = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn(
+            "the only graph that writes ~/.straw-boss/plans/<slug>/plan.json",
+            graph_source,
+        )
+        self.assertIn("the other two carry no dispatch plan", graph_source)
+        # boss-say is the one skill that writes a plan for work it did not
+        # decompose, so it has to name the same graph.
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        self.assertIn("A capped batch is always orchestrator-worker", boss_say)
+
+    def test_a_dispatch_time_claim_is_released_from_every_terminal_path(self) -> None:
+        """F: the batch/plan path ends in auto-detach, not the Wrap-up branch.
+
+        Both have to reach the release rule, and the rule itself has to say it
+        applies to every terminal status -- `done` included.
+        """
+        shared = normalized(
+            ROOT
+            / "skills"
+            / "dispatching-work"
+            / "references"
+            / "shared-resource-coordination.md"
         )
         self.assertIn(
-            "Every ordinary programming change carries adversarial-review", source
+            "Releasing a dispatch-time claim -- every terminal status, every path",
+            shared.replace("—", "--"),
         )
-        self.assertIn("A human reading code or a document is review", source)
+        self.assertIn("done is not an exception", shared)
+        for name, source in (
+            ("Wrap-up branch", normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")),
+            (
+                "plan auto-detach",
+                normalized(
+                    ROOT
+                    / "skills"
+                    / "dispatching-work"
+                    / "references"
+                    / "plan-mechanics.md"
+                ),
+            ),
+        ):
+            self.assertIn("Releasing a dispatch-time claim", source, name)
 
-    def test_frontend_anchor_port_is_claimed_at_dispatch(self) -> None:
-        source = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
-        self.assertIn("the main agent claims the port at dispatch", source)
-        self.assertIn("the worker binds it", source)
-        # The mechanism itself lives in one place; this skill only points at it.
-        self.assertNotIn("claim-port call keyed on", source)
+    def test_the_claim_port_command_is_written_out_exactly_once(self) -> None:
+        """Single source of truth, checked by counting the real command."""
+        holders = [
+            path.relative_to(ROOT).as_posix()
+            for path in sorted((ROOT / "skills").glob("**/*.md"))
+            if "claim-resource.py\" claim-port" in path.read_text()
+            or "claim-resource.py claim-port" in path.read_text()
+        ]
+        self.assertEqual(
+            holders,
+            ["skills/dispatching-work/references/shared-resource-coordination.md"],
+        )
 
-    def test_lifecycle_mode_is_the_users_reading_of_the_work(self) -> None:
-        source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
-        self.assertIn("team-mode", source)
-        self.assertIn("solo-mode", source)
-        self.assertIn("how the user regards this piece of work", source)
-        self.assertNotIn("real size or risk", source)
-        self.assertNotIn("diff size", source)
-        self.assertNotIn("low-risk changes", source)
+    def test_read_only_dispatch_skills_name_the_anchor_their_evidence_feeds(
+        self,
+    ) -> None:
+        for skill in ("inspecting-app", "investigating-app"):
+            source = normalized(ROOT / "skills" / skill / "SKILL.md")
+            self.assertIn("what this work's anchor attacks", source, skill)
+            self.assertIn(
+                "anchors it on an independent agent's adversarial review", source, skill
+            )
+
+    def test_the_anchor_set_is_closed_and_identical_on_every_surface(self) -> None:
+        """A main agent has to name an anchor from a list, so the list has to be
+        the same list everywhere.
+
+        Naming a fifth kind in the skill while `docs/roles.md` enumerates four
+        leaves audit and research dispatches with no nameable category -- the
+        same shape of defect as an unscoped verification-method grant.
+        """
+        graph_body = (ROOT / "skills" / "choosing-graph" / "SKILL.md").read_text()
+        anchors_section = graph_body.partition("## Reality anchors")[2].partition("\n## ")[0]
+        named = re.findall(r"^- \*\*([a-z-]+)\*\*", anchors_section, re.MULTILINE)
+        self.assertEqual(
+            named, ["testing", "pseudo-human", "human", "adversarial-review"]
+        )
+
+        roles = normalized(ROOT / "docs" / "roles.md")
+        enumeration = [
+            sentence
+            for sentence in sentences(roles)
+            if "names which anchor proves a task" in sentence
+        ]
+        self.assertEqual(
+            len(enumeration), 1, "docs/roles.md enumerates the anchors exactly once"
+        )
+        for anchor in ("testing", "pseudo-human", "human", "adversarial review"):
+            self.assertIn(anchor, enumeration[0], anchor)
+        # Anything the skill anchors on has to be one of those four.
+        self.assertIn("adversarial-review is its anchor", " ".join(graph_body.split()))
+
+    def test_no_surface_gives_the_worker_the_anchor_category(self) -> None:
+        """The mirror of the scoping test.
+
+        Scoping the grant is only half the boundary: a surface that has the
+        worker picking the anchor itself would still satisfy the scope check,
+        because the word "anchor" would be right there in the sentence.
+        """
+        # The worker has to be the subject, so the decision verb is required to
+        # follow it -- otherwise every correct sentence that merely mentions a
+        # worker somewhere reads as a violation.
+        takes_the_category = re.compile(
+            r"\b(?:worker|dispatched agent|coworker)\b[^.;]{0,60}?"
+            r"\b(?:choose|chooses|choosing|pick|picks|picking|decide|decides|deciding"
+            r"|select|selects|fix|fixes|name|names|settle|settles)\s+"
+            r"(?:its own\s+|their own\s+|the\s+|a\s+|an\s+|which\s+)?"
+            r"(?:reality\s+)?anchor\b",
+            re.IGNORECASE,
+        )
+        offenders = [
+            f"{path.relative_to(ROOT).as_posix()}: {sentence}"
+            for path in prose_surfaces()
+            for sentence in sentences(path.read_text())
+            if takes_the_category.search(sentence)
+        ]
+        self.assertEqual(offenders, [])
+        # And the check is live: the sentence it exists to reject is rejected.
+        self.assertRegex(
+            "The worker chooses the reality anchor and the method inside it.",
+            takes_the_category,
+        )
+
+    def test_the_lifecycle_mode_question_is_the_users_reading_of_the_work(self) -> None:
+        """The mode is the user's reading, and both skills that raise it agree
+        it can be answered before the work's scope is known."""
+        shipping = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
+        self.assertIn("how the user regards this piece of work", shipping)
+        self.assertIn("the user is answering with the consequence in view", shipping)
+        troubleshooting = normalized(
+            ROOT / "skills" / "troubleshooting-app" / "SKILL.md"
+        )
+        self.assertIn("which they can answer before the cause is known", troubleshooting)
+        self.assertIn("It owns the mode decision", troubleshooting)
 
     def test_every_dispatch_path_reaches_choosing_graph(self) -> None:
         boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
@@ -252,38 +495,15 @@ class SkillInstructionQualityTests(unittest.TestCase):
             "Invoke choosing-graph when the graph and anchor are not fixed yet",
             dispatching,
         )
-        self.assertIn("names the reality anchor", dispatching)
-
-    def test_a_dispatch_time_port_is_released_at_wrap_up(self) -> None:
-        source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
-        self.assertIn("a port claimed at dispatch for a frontend anchor", source)
-
-    def test_shared_resource_reference_covers_the_dispatch_time_port(self) -> None:
-        source = normalized(
-            ROOT
-            / "skills"
-            / "dispatching-work"
-            / "references"
-            / "shared-resource-coordination.md"
-        )
-        self.assertIn("A frontend check anchored on human or pseudo-human", source)
-        self.assertIn("the main agent runs claim-port once at dispatch", source)
-        self.assertIn("worker resolves the target app's actual resource configuration", source)
-        self.assertIn("apart from the frontend-anchor port above", source)
+        self.assertIn("The brief then names the reality anchor it settled on", dispatching)
 
     def test_lifecycle_mode_names_are_consistent_across_every_live_surface(self) -> None:
         stale = re.compile(r"full[ -]flow|light[ -]flow", re.IGNORECASE)
-        surfaces = [
-            *(ROOT / "skills").glob("**/*.md"),
-            ROOT / "docs" / "architecture.md",
-            ROOT / "docs" / "roles.md",
-            ROOT / "README.md",
-            ROOT / "README.zh-TW.md",
-        ]
         offenders = [
-            path.relative_to(ROOT).as_posix()
-            for path in sorted(surfaces)
-            if stale.search(path.read_text())
+            f"{path.relative_to(ROOT).as_posix()}:{number}"
+            for path in prose_surfaces(include_scripts=True)
+            for number, line in instruction_lines(path)
+            if stale.search(line)
         ]
         self.assertEqual(offenders, [])
 

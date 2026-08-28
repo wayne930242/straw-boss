@@ -179,6 +179,31 @@ class SharedResourcePortClaimTests(unittest.TestCase):
         reclaimed = self.claim_port(key="/wt/a", holder="webapp--task-c", base=base)
         self.assertEqual(reclaimed["port"], base)
 
+    def test_the_same_holder_reclaiming_its_own_key_lands_on_another_port(self) -> None:
+        """Why a worker handed a dispatch-time port never re-runs the claim.
+
+        The lock is keyed on the port number and carries no holder identity, so
+        a second `claim-port` from the very same holder reads its own live lock
+        as contention and walks on -- with nothing listening anywhere, which is
+        exactly the state a worker is in before it starts its dev server. The
+        worker would bind a number nobody was told about and leak the first
+        lock. `shared-resource-coordination.md` states this reason; this pins
+        it.
+        """
+        base = reserve_free_base(2)
+        dispatched = self.claim_port(
+            key="/repo/webapp", holder="webapp--ui-task", base=base, port_range=1
+        )
+        reclaimed = self.claim_port(
+            key="/repo/webapp", holder="webapp--ui-task", base=base, port_range=1
+        )
+
+        self.assertNotEqual(reclaimed["port"], dispatched["port"])
+        self.assertEqual(reclaimed["port"], base + 1)
+        for port in (base, base + 1):
+            lock = json.loads((self.locks / f"port--webapp--{port}.json").read_text())
+            self.assertEqual(lock["holder"], "webapp--ui-task")
+
     def test_an_exhausted_band_fails_loudly_instead_of_assigning_a_held_port(self) -> None:
         base = reserve_free_base(1)
         self.claim_port(key="/wt/a", holder="webapp--task-a", base=base)

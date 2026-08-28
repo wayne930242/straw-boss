@@ -30,10 +30,12 @@ route, but do not invent a model choice outside the configured route.
 Frame the audit around which rules apply, how the target behaves against them,
 and what consequence follows. Require evidence references to the exact rule
 source and observed implementation, test, log, or artifact. The deliverable is
-an explanatory, evidence-backed assessment. The
-worker decides whether to run the app's local audit skill or global `inspecting`;
-the generated contract supplies instruction-keyed status and communication
-commands.
+an explanatory, evidence-backed assessment, and those references are what this
+work's anchor attacks: an audit has nothing to operate, so `choosing-graph`
+anchors it on an independent agent's adversarial review of the report. The
+worker decides whether to run the app's local audit skill or global
+`inspecting`; the generated contract supplies instruction-keyed status and
+communication commands.
 
 Target-app rule and file access stays inside the worker. The main agent
 integrates the worker's assessment and evidence references when it returns.

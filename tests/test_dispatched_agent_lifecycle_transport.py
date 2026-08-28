@@ -454,9 +454,12 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             self.assertIn("requested outcome", normalized)
             self.assertIn("already-known coordination facts", normalized)
             self.assertIn(
-                "specification, design, implementation, and verification method",
+                "specification, design, implementation, and the verification method",
                 normalized,
             )
+            # Scoped to the anchor the main agent named, so the brief boundary
+            # and the generated contract cannot contradict each other.
+            self.assertRegex(normalized, r"verification method[^.]{0,60}anchor")
             self.assertIn("generic lifecycle prose", source.lower())
             self.assertNotIn("possible implementation", source)
             self.assertNotIn("concrete deliverable and proof", source)
@@ -606,9 +609,10 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         for source in (roles, context, orchestrator, dispatching, boss_say, contract_source):
             normalized = " ".join(source.split())
             self.assertIn(
-                "specification, design, implementation, and verification method",
+                "specification, design, implementation, and the verification method",
                 normalized,
             )
+            self.assertRegex(normalized, r"verification method[^.]{0,60}anchor")
         normalized_contract = " ".join(contract_source.split())
         self.assertIn(
             "supplies the user requirement, necessary hints, and known coordination facts",
@@ -2371,7 +2375,8 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         normalized = " ".join(injected.replace("`", "").split())
         for boundary in (
             "Own the loop, not the work",
-            "specification, design, implementation, and verification method",
+            "specification, design, implementation, and the verification method",
+            "inside that anchor",
             "dispatches that investigation instead of reading across managed app roots",
             "Keep the lifecycle event-driven",
             "A dispatch reports itself",

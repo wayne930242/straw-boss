@@ -13,7 +13,8 @@ scheduling, shared resources, status-event handling, and cleanup.
 
 **Dispatched agent** — an independent task owner once launched through Herdr. It
 works in the target app with that app's harness. The user and dispatched agent
-decide the specification, design, implementation, and verification method. The
+decide the specification, design, implementation, and the verification method
+inside the reality anchor the dispatch names (Authority boundary below). The
 main agent accepts their conclusions and user-approved decisions.
 
 **Subagent** — an ephemeral agent-tool call for self-contained work that does not
@@ -38,6 +39,15 @@ does not investigate the implementation to build a fuller brief. After launch,
 the user and dispatched agent own
 the task conversation and work definition; the main agent accepts their decision
 and keeps the orchestration loop moving.
+
+**The reality anchor is coordination; the method inside it is work.** The main
+agent names which anchor proves a task — testing, pseudo-human, human, or an
+independent agent's adversarial review — and arranges its checkpoint, including
+any shared resource that has to exist before the worker has anything to show.
+Inside that anchor the user and dispatched agent choose the method: for testing,
+unit tests at the smallest credible seam that can go red before the change,
+escalated to integration or E2E when the target project's own conventions call
+for it. Naming the anchor is not naming the tests.
 
 When coordination or integration needs target-app problem investigation or
 current-state research, the main agent dispatches that investigation instead of

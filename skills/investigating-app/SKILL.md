@@ -31,8 +31,10 @@ project's confirmed route with an invented model choice.
 Frame the task around what current behavior, structure, mechanism, cause, or
 impact the worker must explain. Require evidence references such as file and
 line locations, tests, logs, commands, or generated artifacts. The deliverable
-is an explanatory, evidence-backed account of the finding. The worker decides
-whether to run an app-local research skill or global
+is an explanatory, evidence-backed account of the finding, and those references
+are what this work's anchor attacks: research has nothing to operate, so
+`choosing-graph` anchors it on an independent agent's adversarial review of the
+report. The worker decides whether to run an app-local research skill or global
 `investigating`; the generated contract supplies instruction-keyed status and
 communication commands.
 
