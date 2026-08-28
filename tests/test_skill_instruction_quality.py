@@ -148,9 +148,16 @@ class SkillInstructionQualityTests(unittest.TestCase):
             ROOT / "skills" / "troubleshooting-app" / "SKILL.md"
         )
         self.assertNotIn("from your own diagnosis", troubleshooting)
-        lifecycle_tests = (
-            ROOT / "tests" / "test_dispatched_agent_lifecycle_transport.py"
-        ).read_text()
+        lifecycle_tests = "\n".join(
+            (ROOT / "tests" / name).read_text()
+            for name in (
+                "dispatched_agent_lifecycle_support.py",
+                "test_dispatched_agent_lifecycle_contract.py",
+                "test_dispatched_agent_naming_and_coworker.py",
+                "test_dispatched_agent_launch_and_delivery.py",
+                "test_dispatched_agent_status_and_recovery.py",
+            )
+        )
         self.assertNotIn("Do not investigate the target app to enrich the brief", lifecycle_tests)
         self.assertNotIn('self.assertIn("not a yes-or-no answer"', lifecycle_tests)
 
