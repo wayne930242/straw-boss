@@ -24,13 +24,18 @@ Before launching anything, call:
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --app <app> --slug <slug> --task "<task>" \
   --mode claude-p|herdr-pane --repo-root <repo_root> \
-  [--batch <batch>] [--plan <plan> --task-id <task>] \
+  [--batch <batch>] [--plan <plan> --task-id <task>] [--role <workroom>] \
   --agent-kind claude|codex --main-agent-kind claude|codex \
   [--agent-profile <profile>] [--agent-model <model>] \
   [--agent-effort <effort>] [--advisor-model <claude-model>] \
   [--main-agent-pane-id <pane>] \
   [--main-agent-session-id <session> | --main-agent-terminal-id <terminal>]
 ```
+
+Pass `--role` when the brief already names a short workroom the task belongs to
+(e.g. `database`, `frontend`, `api`) — distinct from `--app` when several tasks
+share one app but work different concerns. The launcher's derived agent name
+prefers it over `--app`; omit it only when no such label is actually known.
 
 For `herdr-pane`, obtain the main-agent pane and provider fingerprint from the
 current live Herdr record: Claude uses `agent_session.value`; Codex uses
@@ -60,33 +65,49 @@ each flag as one argument; do not depend on shell word splitting.
 
 ## Interactive herdr launch
 
-Validate a unique operator-visible agent name. The launcher resolves the
-instruction's recorded main pane and splits the worker into that same tab with
-`repo_root` as cwd. Internally it runs
+Omit `--name` and the launcher derives a unique operator-visible handle itself
+from the instruction's `role` when `write` recorded one, else its `app`
+(`<workroom>-worker`, or `<workroom>-coworker` for a dispatch with a
+`parent_instruction_path`) — so two tasks sharing one `app` but different
+`--role`s (e.g. `database`, `frontend`) still read as distinct at a glance, not
+as `<app>-worker`/`<app>-worker-2`. It checks `herdr agent list` first and, if
+`herdr agent start` still rejects the chosen name as `agent_name_taken` (a
+sibling task in the same wave won the race), retries with the next
+collision-suffixed candidate, up to a bounded number of attempts. An explicit
+`--name` overrides derivation and is used as given with no retry — a
+collision on it is the caller's to fix; validate one first with
+`check-agent-name.py` if hand-picking. The launcher resolves the instruction's
+recorded main pane and splits the worker into that same tab with `repo_root`
+as cwd. Internally it runs
 `herdr pane split <main-pane> --direction right --cwd <repo_root> --no-focus`.
 Run only:
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/launch-dispatched-agent.py" \
   --instruction-path <instruction path> \
-  --name <agent name> \
+  [--name <agent name>] \
   [--agent-arg <one provider argument>]...
 ```
 
 The launcher derives provider arguments from the recorded worker setup, then:
 
 1. verifies the instruction is pending and the contract digest matches;
-2. injects Claude with `--append-system-prompt-file`, or Codex with
+2. resolves the worker's name as above;
+3. injects Claude with `--append-system-prompt-file`, or Codex with
    `developer_instructions`;
-3. resolves the main pane and splits a worker pane in the same tab;
-4. starts the provider through herdr and handles an initial trust prompt;
-5. submits the recorded task, polls until its whitespace-normalized text appears
+4. resolves the main pane and splits a worker pane in the same tab;
+5. starts the provider through herdr and handles an initial trust prompt;
+6. submits the recorded task, polls until its whitespace-normalized text appears
    in the provider-appropriate transcript view, and retries once only after a
    complete miss; two misses fail launch and remove the worker pane;
-6. records the live provider fingerprint: Claude waits for
+7. records the live provider fingerprint: Claude waits for
    `agent_session.value` and cross-checks its preassigned id; Codex records
    `terminal_id` without waiting for a session field;
-7. writes `<app>--<slug>.launch.json` with the worker pane and shared tab.
+8. writes `<app>--<slug>.launch.json` with the worker pane and shared tab;
+9. on a top-level dispatch (never a coworker's), best-effort-names the
+   coordinator's own still-unnamed pane `<app>-coordinator` — an already-named
+   coordinator pane is left alone, and a failure here never fails the launch
+   that already succeeded.
 
 Provider profile/model/effort are instruction-owned. Claude receives
 `--agent`/`--model`/`--effort`; Codex receives

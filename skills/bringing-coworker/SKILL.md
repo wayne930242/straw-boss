@@ -22,14 +22,15 @@ uv run --script "$HOME/.straw-boss/bin/run-straw-boss-script.py" \
   --origin-root "${CLAUDE_PLUGIN_ROOT:-$PWD}" --prefer-installed \
   --script dispatch-coworker.py -- \
   --parent-instruction-path <your-instruction-path> \
-  --slug <unique-slug> --name <short-name> \
+  --slug <unique-slug> [--name <short-name>] \
   --agent-kind claude|codex --task "<user requirement and integrated context>" \
   [--writable-path <repo-relative-path>]...
 ```
 
 The command authenticates your session, opens the coworker in this tab and
-worktree, injects its contract, and confirms delivery. Complete when it returns
-the coworker's pane and instruction path.
+worktree, injects its contract, and confirms delivery. Omit `--name` for a
+`<app>-coworker` handle derived automatically. Complete when it returns the
+coworker's pane and instruction path.
 
 ## 3. Work with the user
 

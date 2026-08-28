@@ -157,6 +157,7 @@ def write_instruction(
     batch: str | None,
     plan_slug: str | None,
     task_id: str | None,
+    role: str | None,
     agent_kind: str,
     main_agent_kind: str,
     agent_profile: str | None,
@@ -205,6 +206,7 @@ def write_instruction(
     contract_digest = sha256_text(contract)
     payload: dict[str, Any] = {
         "app": app,
+        "role": role,
         "task": task,
         "mode": mode,
         "batch": batch,
@@ -356,6 +358,13 @@ def main() -> int:
     write_p.add_argument("--plan", default=None, help="plan slug, if this is a plan task")
     write_p.add_argument("--task-id", default=None, help="this task's task_id within the plan")
     write_p.add_argument(
+        "--role",
+        default=None,
+        help="short workroom/role label (e.g. database, frontend, api) the caller already "
+        "knows for this dispatch; the launcher derives the operator-visible agent name from "
+        "this instead of --app when given",
+    )
+    write_p.add_argument(
         "--agent-kind",
         default="claude",
         choices=["claude", "codex"],
@@ -462,6 +471,7 @@ def main() -> int:
                 batch=args.batch,
                 plan_slug=args.plan,
                 task_id=args.task_id,
+                role=args.role,
                 agent_kind=args.agent_kind,
                 main_agent_kind=args.main_agent_kind,
                 agent_profile=args.agent_profile,

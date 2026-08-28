@@ -22,19 +22,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from typing import Any
 
-NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
-
-
-def live_names(agent_list_payload: dict[str, Any]) -> set[str]:
-    try:
-        agents = agent_list_payload["result"]["agents"]
-    except KeyError as exc:
-        raise ValueError(f"unexpected 'herdr agent list' shape -- missing {exc}") from exc
-    return {a["name"] for a in agents if "name" in a}
+from agent_naming import NAME_PATTERN, live_names
 
 
 def check(name: str, agent_list_payload: dict[str, Any]) -> None:

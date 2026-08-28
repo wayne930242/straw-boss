@@ -14,7 +14,7 @@ reality anchor the brief names.
 
 `~/.straw-boss/capability.json` records an explicit `claude-p-only` opt-out from `init`, if the user ever gave one. Its absence is not a hard stop and is not evidence herdr is unavailable — see Task 1's no-`capability.json` handling; `claude-p` dispatch never needed it.
 
-**Self-compact.** The main agent can compact its own context anytime, on its own judgment, regardless of dispatch mode or whether a plan is involved — `herdr agent prompt "$HERDR_PANE_ID" "/compact [focus]"` types the command into its own pane, the same mechanism `cross-session-coordination.md`'s `/rename` self-injection already uses, no separate tool or permission needed. It never needs to ask the user first. Reach for it once anything the next turn would need is already persisted somewhere durable (`plan.json`, an instruction file) rather than sitting only in this turn's own reasoning — full mechanics, including why this never interrupts work in flight, in `cross-session-coordination.md`'s "Self-compact".
+**Self-compact.** The main agent can compact its own context anytime, on its own judgment, regardless of dispatch mode or whether a plan is involved — `herdr agent prompt "$HERDR_PANE_ID" "/compact [focus]"` types the command into its own pane; no separate tool or permission needed. It never needs to ask the user first. Reach for it once anything the next turn would need is already persisted somewhere durable (`plan.json`, an instruction file) rather than sitting only in this turn's own reasoning — full mechanics, including why this never interrupts work in flight, in `cross-session-coordination.md`'s "Self-compact".
 
 ## Task 1: Choose the dispatch mode and work route
 
@@ -95,7 +95,7 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 
 **Worktree ownership (team-mode tasks).** The main agent creates every worktree itself, for every managed app uniformly, regardless of the app's own tooling — plain `git worktree add`, never `herdr worktree create` (see `plan-mechanics.md`'s "Worktree ownership" for why). Verify `git rev-parse --show-toplevel` inside it resolves to the worktree's own path — repos with `extensions.worktreeConfig = true` silently don't, regardless of creation method — and repair with a `config.worktree` file if not (exact steps in `plan-mechanics.md`). Never dispatch into an unverified worktree. Record that verified path as `repo_root`; the launcher opens its worker pane beside the coordinator in the same tab.
 
-**Agent naming.** Derive the herdr handle from `plan_id`/`task_id` for operator visibility. Communication scripts address the instruction, never this name.
+**Agent naming.** `launch-dispatched-agent.py` derives each task's operator-visible handle from its `--role` when the wave gives one, else its `app`, the same as a standalone dispatch (`dispatch-mechanics.md`'s "Interactive herdr launch") — omit `--name` per task rather than hand-picking one, and pass `--role` on `dispatch-task.py write` whenever the task's own workroom is already known (`plan-mechanics.md`'s "Agent naming"). Communication scripts address the instruction, never this name.
 
 **Cross-task artifacts.** When task B depends on task A and genuinely needs A's output, both dispatch instructions state the exact path under `~/.straw-boss/plans/<slug>/artifacts/` — A's says where to write it, B's says where to read it and that it's required input, not optional context. `plan.json`'s `description` field is prose, not a handoff mechanism.
 

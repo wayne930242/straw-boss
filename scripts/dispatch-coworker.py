@@ -43,7 +43,7 @@ def dispatch_coworker(
     parent_instruction_path: str,
     slug: str,
     task: str,
-    name: str,
+    name: str | None,
     agent_kind: str,
     writable_paths: list[str],
     agent_args: list[str],
@@ -79,12 +79,9 @@ def dispatch_coworker(
     written = run_public_script("dispatch-task.py", write_args)
     instruction_path = str(written["instruction_path"])
 
-    launch_args = [
-        "--instruction-path",
-        instruction_path,
-        "--name",
-        name,
-    ]
+    launch_args = ["--instruction-path", instruction_path]
+    if name is not None:
+        launch_args.extend(["--name", name])
     effective_agent_args = list(agent_args)
     if agent_kind == "codex" and not writable_paths and not effective_agent_args:
         effective_agent_args = ["--sandbox", "read-only"]
@@ -106,7 +103,11 @@ def main() -> int:
     parser.add_argument("--parent-instruction-path", required=True)
     parser.add_argument("--slug", required=True)
     parser.add_argument("--task", required=True)
-    parser.add_argument("--name", required=True)
+    parser.add_argument(
+        "--name",
+        default=None,
+        help="operator-visible herdr agent name; omit for one the launcher derives automatically",
+    )
     parser.add_argument("--agent-kind", required=True, choices=("claude", "codex"))
     parser.add_argument("--writable-path", action="append", default=[])
     parser.add_argument("--agent-arg", action="append", default=[])

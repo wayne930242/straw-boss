@@ -196,10 +196,15 @@ status revision; the watcher emits the overwrite for recovery.
 
 ## Agent naming
 
-Derive the Herdr agent name from `plan_id`/`task_id`, e.g.
-`<plan-slug short>-<task-id>`. Pane and agent listings should reveal the task
-without cross-referencing files. Validate format and live uniqueness with
-`check-agent-name.py`.
+No plan-specific rule: each task dispatches through the same
+`launch-dispatched-agent.py` as a standalone task and gets the same
+automatically derived handle (`dispatch-mechanics.md`'s "Interactive herdr
+launch"). Pass `--role` on `dispatch-task.py write` with the task's short
+workroom label when `plan.json`'s task `description` (or already-known
+coordination context) names one — e.g. a `database` task and a `frontend` task
+sharing `app: "api"` still name apart as `database-worker`/`frontend-worker`
+rather than collapsing to `api-worker`/`api-worker-2`. Only fall back to a bare
+`<app>-worker` when the wave genuinely gives no per-task role signal.
 
 ## Worktree ownership (every managed app, uniformly)
 

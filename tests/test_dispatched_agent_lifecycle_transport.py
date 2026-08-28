@@ -53,6 +53,8 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         agent_model: str | None = None,
         agent_effort: str | None = None,
         advisor_model: str | None = None,
+        slug: str | None = None,
+        role: str | None = None,
     ) -> tuple[Path, dict[str, object]]:
         args = [
             "dispatch-task.py",
@@ -60,7 +62,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "--app",
             "api",
             "--slug",
-            f"contract-{agent_kind}",
+            slug or f"contract-{agent_kind}",
             "--task",
             "Implement the requested slice and verify it.",
             "--mode",
@@ -83,6 +85,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             ("--agent-model", agent_model),
             ("--agent-effort", agent_effort),
             ("--advisor-model", advisor_model),
+            ("--role", role),
         ):
             if value is not None:
                 args.extend([flag, value])
@@ -109,6 +112,11 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    print(json.dumps({'result': {'pane': {'pane_id': target, 'tab_id': os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1')}}}))\n"
             "elif args[:2] == ['pane', 'split']:\n"
             "    print(json.dumps({'result': {'pane': {'pane_id': os.environ.get('HERDR_WORKER_PANE_ID', 'worker-pane'), 'tab_id': os.environ.get('HERDR_WORKER_TAB_ID', os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1'))}}}))\n"
+            "elif args[:2] == ['agent', 'list']:\n"
+            "    print(json.dumps({'result': {'agents': json.loads(os.environ.get('HERDR_AGENT_LIST', '[]'))}}))\n"
+            "elif args[:2] == ['agent', 'start'] and args[2] in json.loads(os.environ.get('HERDR_NAME_TAKEN', '[]')):\n"
+            "    print(json.dumps({'error': {'code': 'agent_name_taken', 'message': f'agent name {args[2]} is already used'}}), file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
             "elif args[:2] == ['agent', 'start'] and sum(call[:2] == ['agent', 'start'] for call in captured) <= int(os.environ.get('HERDR_PANE_BUSY_ATTEMPTS', '0')):\n"
             "    print(json.dumps({'error': {'code': 'agent_pane_busy', 'message': f'agent target pane {args[args.index(\"--pane\") + 1]} is not an available shell'}}, separators=(',', ':')), file=sys.stderr)\n"
             "    raise SystemExit(1)\n"
@@ -144,6 +152,8 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    agent_kinds = json.loads(os.environ.get('HERDR_AGENT_KINDS', '{}'))\n"
             "    terminal_ids = json.loads(os.environ.get('HERDR_TERMINAL_IDS', '{}'))\n"
             "    agent = {'name': 'worker', 'agent': agent_kinds.get(target, os.environ.get('HERDR_AGENT_KIND', started_kind)), 'agent_status': 'blocked' if blocked else 'idle', 'pane_id': target, 'terminal_id': terminal_ids.get(target, os.environ.get('HERDR_TERMINAL_ID', f'terminal-{target}'))}\n"
+            "    if target in json.loads(os.environ.get('HERDR_UNNAMED_PANES', '[]')):\n"
+            "        del agent['name']\n"
             "    if os.environ.get('HERDR_OMIT_AGENT_SESSION') != '1' and not blocked and (not prompt_positions or get_after_prompt > delay):\n"
             "        agent['agent_session'] = {'value': session}\n"
             "    print(json.dumps({'result': {'agent': agent}}))\n"
@@ -280,6 +290,18 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertEqual(instruction["agent_model"], "sonnet")
         self.assertEqual(instruction["agent_effort"], "high")
         self.assertEqual(instruction["advisor_model"], "opus")
+
+    def test_write_records_an_explicit_workroom_role(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude", role="database")
+
+        instruction = json.loads(instruction_path.read_text())
+        self.assertEqual(instruction["role"], "database")
+
+    def test_write_defaults_role_to_none_when_omitted(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+
+        instruction = json.loads(instruction_path.read_text())
+        self.assertIsNone(instruction["role"])
 
     def test_write_rejects_codex_advisor_before_creating_instruction(self) -> None:
         result = self.run_script(
@@ -733,6 +755,305 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         self.assertEqual(receipt["session_id"], instruction["session_id"])
         self.assertEqual(receipt["pane_id"], "worker-pane")
         self.assertEqual(receipt["tab_id"], "tab-1")
+
+    def test_launcher_derives_a_worker_name_from_app_when_name_is_omitted(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        self.assertEqual(start[2], "api-worker")
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+        receipt = json.loads(receipt_path.read_text())
+        self.assertEqual(receipt["name"], "api-worker")
+
+    def test_launcher_avoids_a_derived_name_collision_with_a_live_agent(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_AGENT_LIST": json.dumps([{"name": "api-worker"}]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        self.assertEqual(start[2], "api-worker-2")
+
+    def test_launcher_retries_a_derived_name_that_a_concurrent_sibling_just_claimed(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_NAME_TAKEN": json.dumps(["api-worker"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        starts = [call for call in calls if call[:2] == ["agent", "start"]]
+        self.assertEqual([call[2] for call in starts], ["api-worker", "api-worker-2"])
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+        receipt = json.loads(receipt_path.read_text())
+        self.assertEqual(receipt["name"], "api-worker-2")
+
+    def test_launcher_retries_past_two_concurrent_siblings_without_double_suffixing(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_NAME_TAKEN": json.dumps(["api-worker", "api-worker-2"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        starts = [call for call in calls if call[:2] == ["agent", "start"]]
+        self.assertEqual(
+            [call[2] for call in starts], ["api-worker", "api-worker-2", "api-worker-3"]
+        )
+
+    def test_launcher_does_not_retry_a_name_taken_error_for_an_explicit_name(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_NAME_TAKEN": json.dumps(["api-worker"]),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("agent_name_taken", result.stderr)
+
+    def test_launcher_prefers_an_explicit_role_over_app_for_the_worker_name(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude", role="database")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        self.assertEqual(start[2], "database-worker")
+
+    def test_multiple_plan_tasks_sharing_an_app_get_distinct_role_names(self) -> None:
+        fake_bin, capture = self.install_fake_herdr()
+        expected = {
+            "plan-db": ("database", "database-worker"),
+            "plan-fe": ("frontend", "frontend-worker"),
+            "plan-api": ("api", "api-worker"),
+        }
+        started_names = []
+        for slug, (role, _expected_name) in expected.items():
+            instruction_path, _ = self.write_dispatch("claude", slug=slug, role=role)
+            instruction = json.loads(instruction_path.read_text())
+            capture.write_text("")
+            result = self.run_script(
+                "launch-dispatched-agent.py",
+                "--instruction-path",
+                str(instruction_path),
+                extra_env={
+                    "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                    "HERDR_CAPTURE": str(capture),
+                    "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            calls = [json.loads(line) for line in capture.read_text().splitlines()]
+            start = next(call for call in calls if call[:2] == ["agent", "start"])
+            started_names.append(start[2])
+
+        self.assertEqual(
+            started_names, [expected_name for _role, expected_name in expected.values()]
+        )
+        self.assertEqual(len(set(started_names)), len(started_names))
+
+    def test_launcher_names_a_still_unnamed_coordinator_pane_on_first_dispatch(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_UNNAMED_PANES": json.dumps(["main-pane"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertIn(["agent", "rename", "main-pane", "api-coordinator"], calls)
+
+    def test_launcher_does_not_rename_an_already_named_coordinator_pane(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse(any(call[:2] == ["agent", "rename"] for call in calls))
+
+    def test_launcher_still_reports_success_when_coordinator_naming_fails(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_AGENT_GET_ERROR_CODES": json.dumps({"main-pane": "agent_not_found"}),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse(any(call[:2] == ["agent", "rename"] for call in calls))
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+        self.assertTrue(receipt_path.is_file())
+
+    def test_launcher_names_the_coordinator_after_the_worker_is_confirmed(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_UNNAMED_PANES": json.dumps(["main-pane"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        rename_index = next(
+            i for i, call in enumerate(calls) if call[:2] == ["agent", "rename"]
+        )
+        prompt_index = next(
+            i for i, call in enumerate(calls) if call[:2] == ["agent", "prompt"]
+        )
+        self.assertGreater(rename_index, prompt_index)
+        self.assertEqual(calls[rename_index], ["agent", "rename", "main-pane", "api-coordinator"])
+
+    def test_launcher_derives_a_coworker_name_and_never_renames_its_parent(self) -> None:
+        parent_path, _ = self.write_dispatch("claude", main_agent_kind="codex")
+        self.set_worker_endpoint(parent_path)
+        written = self.write_coworker(parent_path)
+        self.assertEqual(written.returncode, 0, written.stderr)
+        child_path = Path(json.loads(written.stdout)["instruction_path"])
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(child_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_WORKER_PANE_ID": "coworker-pane",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        self.assertEqual(start[2], "api-coworker")
+        self.assertFalse(any(call[:2] == ["agent", "rename"] for call in calls))
 
     def test_launcher_applies_claude_profile_model_effort_and_advisor(self) -> None:
         instruction_path, _ = self.write_dispatch(

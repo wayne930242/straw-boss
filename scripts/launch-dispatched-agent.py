@@ -16,6 +16,7 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
+from agent_naming import derive_agent_name, live_names, unique_agent_name
 from dispatch_state import dump_json, launch_receipt_path, load_json, sha256_text
 from dispatch_transport import (
     HerdrCommandError,
@@ -27,6 +28,7 @@ from dispatch_transport import (
 AGENT_START_PANE_READY_TIMEOUT_SECONDS = 5.0
 AGENT_START_PANE_READY_POLL_INTERVAL_SECONDS = 0.25
 TASK_DELIVERY_MARKER_PREFIX = "sb256"
+MAX_NAME_COLLISION_ATTEMPTS = 5
 
 
 def _option_present(args: list[str], flags: tuple[str, ...]) -> bool:
@@ -126,6 +128,25 @@ def live_agent_terminal_id(pane_id: str, agent_kind: str) -> str:
     if not isinstance(terminal_id, str) or not terminal_id:
         raise ValueError(f"launched agent in pane {pane_id!r} did not expose terminal_id")
     return terminal_id
+
+
+def ensure_coordinator_named(instruction: dict[str, object], taken: set[str]) -> None:
+    """Give the coordinator's own pane an operator-visible name, once.
+
+    Runs only for a top-level dispatch (never a coworker's, whose "main pane"
+    is a fellow worker, not the coordinator) and only while that pane is still
+    unnamed -- an existing name, however it got there, is left alone.
+    """
+    main_pane_id = instruction.get("main_agent_herdr_pane_id")
+    if not isinstance(main_pane_id, str) or not main_pane_id:
+        raise ValueError("dispatch instruction has no main-agent herdr pane")
+    if live_agent(main_pane_id).get("name"):
+        return
+    candidate = unique_agent_name(
+        derive_agent_name("coordinator", str(instruction["app"])), taken
+    )
+    run_herdr(["agent", "rename", main_pane_id, candidate])
+    taken.add(candidate)
 
 
 def wait_for_agent_session(
@@ -256,7 +277,7 @@ def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> N
 
 def launch(
     instruction_path: str,
-    name: str,
+    name: str | None,
     agent_args: list[str],
 ) -> dict[str, Any]:
     inst_path = Path(instruction_path).resolve()
@@ -275,49 +296,76 @@ def launch(
     if sha256_text(contract) != instruction.get("contract_sha256"):
         raise ValueError("dispatch contract digest does not match the instruction")
 
+    is_coworker = bool(instruction.get("parent_instruction_path"))
+    name_is_derived = name is None
+    base_candidate_name = ""
+    if name_is_derived:
+        agent_role = "coworker" if is_coworker else "worker"
+        workroom = instruction.get("role") or instruction["app"]
+        base_candidate_name = derive_agent_name(agent_role, str(workroom))
+        name = unique_agent_name(base_candidate_name, live_names(run_herdr(["agent", "list"])))
+
     agent_kind = str(instruction.get("agent_kind"))
-    provider_args = provider_profile_args(instruction, agent_args)
-    if agent_kind == "claude":
-        provider_args = [
-            "--session-id",
-            str(instruction["session_id"]),
-            "--name",
-            name,
-            "--append-system-prompt-file",
-            str(contract_path),
-            *provider_args,
-        ]
-    elif agent_kind == "codex":
-        provider_args = [
-            "-c",
-            (
-                "developer_instructions=Before any task action, read and follow "
-                f"the mandatory contract at {contract_path}."
-            ),
-            *provider_args,
-        ]
-    else:
+    base_provider_args = provider_profile_args(instruction, agent_args)
+
+    def provider_args_for(current_name: str) -> list[str]:
+        if agent_kind == "claude":
+            return [
+                "--session-id",
+                str(instruction["session_id"]),
+                "--name",
+                current_name,
+                "--append-system-prompt-file",
+                str(contract_path),
+                *base_provider_args,
+            ]
+        if agent_kind == "codex":
+            return [
+                "-c",
+                (
+                    "developer_instructions=Before any task action, read and follow "
+                    f"the mandatory contract at {contract_path}."
+                ),
+                *base_provider_args,
+            ]
         raise ValueError(f"unsupported agent kind {agent_kind!r}")
+
+    provider_args = provider_args_for(name)
 
     pane_id, tab_id = create_worker_pane(instruction)
     try:
         start_error: ValueError | None = None
-        try:
-            start_agent_when_pane_ready(
-                [
-                    "agent",
-                    "start",
-                    name,
-                    "--kind",
-                    agent_kind,
-                    "--pane",
-                    pane_id,
-                    "--",
-                    *provider_args,
-                ]
-            )
-        except ValueError as exc:
-            start_error = exc
+        attempted_names = {name}
+        while True:
+            try:
+                start_agent_when_pane_ready(
+                    [
+                        "agent",
+                        "start",
+                        name,
+                        "--kind",
+                        agent_kind,
+                        "--pane",
+                        pane_id,
+                        "--",
+                        *provider_args,
+                    ]
+                )
+                break
+            except HerdrCommandError as exc:
+                if (
+                    not name_is_derived
+                    or exc.error_code != "agent_name_taken"
+                    or len(attempted_names) >= MAX_NAME_COLLISION_ATTEMPTS
+                ):
+                    start_error = exc
+                    break
+                name = unique_agent_name(base_candidate_name, attempted_names)
+                attempted_names.add(name)
+                provider_args = provider_args_for(name)
+            except ValueError as exc:
+                start_error = exc
+                break
 
         try:
             agent = live_agent(pane_id)
@@ -375,13 +423,25 @@ def launch(
     }
     receipt_path = launch_receipt_path(inst_path)
     dump_json(receipt_path, receipt)
+
+    if not is_coworker:
+        try:
+            ensure_coordinator_named(instruction, live_names(run_herdr(["agent", "list"])))
+        except ValueError:
+            pass
+
     return {"launch_receipt_path": str(receipt_path), "launched": True}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--instruction-path", required=True)
-    parser.add_argument("--name", required=True)
+    parser.add_argument(
+        "--name",
+        default=None,
+        help="operator-visible herdr agent name; omit for one derived automatically "
+        "from the instruction's app and role",
+    )
     parser.add_argument(
         "--agent-arg",
         action="append",
