@@ -45,6 +45,15 @@ app-rooted worker under one coordination loop is that shape whatever else runs
 beside it, because it alone writes the dispatch plan. Subagents the coordinator
 runs alongside those workers do not move it.
 
+`single-loop` and `sub-agent fan-out/fan-in` route this work exactly as far as
+it needs to go: no `plan.json`, and no repo-internal Straw Boss planning or
+spec document either — that plan is `orchestrator-worker`'s alone to write.
+Every app-rooted dispatch still writes its own
+`~/.straw-boss/dispatch/<app>--<slug>.json` instruction and `.contract.md`,
+whichever graph carries it — the dispatch's lifecycle record, archived once
+the dispatch wraps up. That record is the routing mechanism's own bookkeeping,
+not the dispatch plan or spec document this section is about.
+
 Between **single-loop** and **sub-agent fan-out/fan-in**, the deciding question
 is whether a branch of the work itself runs in a subagent: if one does, the
 shape is fan-out. The anchor's own check — including an independent review

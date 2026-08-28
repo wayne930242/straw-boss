@@ -1258,6 +1258,49 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertEqual(len(blocks), 1, "the marker stands on its own")
         self.assertIn("2026-08-28-close-rereview-findings", blocks[0])
 
+    def test_the_dispatch_files_are_the_lifecycle_record_not_a_plan_on_both_surfaces(
+        self,
+    ) -> None:
+        """A main agent reads `boss-say`; a dispatched worker reads
+        `choosing-graph` and never reads `boss-say`. The rule that
+        `single-loop`/`sub-agent fan-out/fan-in` write no plan or repo spec
+        document, and the rule that the dispatch instruction/contract/status
+        files are ephemeral lifecycle mechanics rather than that plan or spec,
+        both need a reader on each side or one surface can drift from the
+        other. Requiring "archived" alongside the no-plan claim in the same
+        paragraph also guards the fix from overshooting into claiming an
+        app-rooted dispatch writes no files at all.
+        """
+        for name in ("boss-say", "choosing-graph"):
+            source = (ROOT / "skills" / name / "SKILL.md").read_text()
+            block = [p for p in paragraphs(source) if "the dispatch's lifecycle record" in p]
+            self.assertEqual(len(block), 1, name)
+            self.assertIn("archived once the dispatch wraps up", block[0], name)
+            self.assertIn(
+                "no repo-internal Straw Boss planning or spec document",
+                block[0],
+                name,
+            )
+            self.assertIn("plan.json", block[0], name)
+            # The mode question stays the user's reading of the work, not a
+            # scale judgment -- this rule must never reach for either term.
+            self.assertNotIn("solo-mode", block[0], name)
+            self.assertNotIn("team-mode", block[0], name)
+
+    def test_boss_say_names_its_own_graph_vocabulary_for_a_single_item(self) -> None:
+        """boss-say has to carry the durability rule in its own words -- a
+        main agent reading only this file, never `choosing-graph`, still has
+        to land on the same two graph names for its own single item."""
+        boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
+        block = [
+            p
+            for p in paragraphs(boss_say)
+            if "no repo-internal Straw Boss planning or spec document" in p
+        ]
+        self.assertEqual(len(block), 1)
+        self.assertIn("single-loop", block[0])
+        self.assertIn("sub-agent fan-out/fan-in", block[0])
+
 
 if __name__ == "__main__":
     unittest.main()

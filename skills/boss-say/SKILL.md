@@ -62,13 +62,25 @@ capped batch is always orchestrator-worker — the plan plus the refill loop bel
 is that shape. Naming the anchor is where this stops: the tests, cases, and
 tools inside it are the worker's and the user's.
 
+A single item's graph is `single-loop` when one worker carries it end to end,
+or `sub-agent fan-out/fan-in` when a branch of that item's own work runs in a
+subagent. Either way this skill writes no `plan.json` and no repo-internal
+Straw Boss planning or spec document for it — a capped batch's `plan.json` is
+`orchestrator-worker`'s alone. The dispatch instruction, contract, and status
+files `dispatching-work` still writes under `~/.straw-boss/dispatch/` for that
+one worker are the dispatch's lifecycle record, needed for every app-rooted
+dispatch regardless of graph and archived once the dispatch wraps up — not a
+work spec.
+
 **Verification:** the shape was decided here and stated out loud, with a reason;
 a single item was never turned into a batch plan; the user was not asked to pick
 the dispatch shape or execution tier; no main-agent or plain-subagent path reads
 inside a managed app root; every investigation asks for explanation plus
 evidence, not a binary answer; the coordination graph and reality anchor are
 named before anything is dispatched, and no brief prescribes the method inside
-the anchor.
+the anchor; a single item invents no plan or spec document for itself, and its
+own dispatch instruction/contract/status files stay read as mechanics, never
+mistaken for one.
 
 ## Task 2: Resolve each item's app
 
