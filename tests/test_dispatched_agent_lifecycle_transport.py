@@ -124,6 +124,10 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "elif args[:2] == ['agent', 'get'] and args[2] in json.loads(os.environ.get('HERDR_MISSING_PANES', '[]')):\n"
             "    print(json.dumps({'error': {'code': 'agent_not_found', 'message': 'no live agent'}}), file=sys.stderr)\n"
             "    raise SystemExit(1)\n"
+            "elif args[:2] == ['agent', 'get'] and args[2] in json.loads(os.environ.get('HERDR_AGENT_GET_ERROR_CODES', '{}')):\n"
+            "    code = json.loads(os.environ['HERDR_AGENT_GET_ERROR_CODES'])[args[2]]\n"
+            "    print(json.dumps({'error': {'code': code, 'message': 'simulated herdr failure'}}), file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
             "elif args[:2] == ['agent', 'get']:\n"
             "    target = args[2]\n"
             "    sessions = json.loads(os.environ.get('HERDR_SESSIONS', '{}'))\n"
@@ -2606,6 +2610,42 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("sender pane mismatch", result.stderr)
+        self.assertFalse(status_path.exists())
+
+    def test_recover_task_status_refuses_when_the_pane_probe_fails_for_an_unrelated_reason(
+        self,
+    ) -> None:
+        """An adversarial review of this feature found that
+        `worker_endpoint_confirmed_closed` treated *any* `HerdrCommandError`
+        as "confirmed closed", not just herdr's own "no such agent" code --
+        so a transient herdr-side failure with an unrelated error code (rate
+        limiting, a permission error, a future error code) would silently
+        authorize a fabricated status. Only `agent_not_found` may confirm
+        closure; anything else must propagate and refuse."""
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Recovering while the probe itself is failing for an unrelated reason.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+                "HERDR_AGENT_GET_ERROR_CODES": json.dumps({"worker-pane": "internal_error"}),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("internal_error", result.stderr)
         self.assertFalse(status_path.exists())
 
     def test_recover_task_status_rejects_more_than_two_sentences_before_persistence(self) -> None:

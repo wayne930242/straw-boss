@@ -284,11 +284,20 @@ def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
     saying "no agent here" decides yes, herdr being unreachable right now
     decides nothing and must propagate -- which a single raise/no-raise
     signal can't express.
+
+    Only herdr's own `agent_not_found` confirms closure -- any other
+    `HerdrCommandError` (rate limiting, a permission error, a future error
+    code unrelated to pane liveness) still establishes nothing and must
+    propagate too, the same way `launch-dispatched-agent.py` narrows its own
+    `HerdrCommandError` handling to one specific `error_code` rather than
+    the exception class as a whole.
     """
     try:
         payload = run_herdr(["agent", "get", endpoint.pane_id])
-    except HerdrCommandError:
-        return True
+    except HerdrCommandError as exc:
+        if exc.error_code == "agent_not_found":
+            return True
+        raise
     agent = payload.get("result", {}).get("agent")
     if not isinstance(agent, dict) or agent.get("pane_id") != endpoint.pane_id:
         return True
@@ -301,6 +310,14 @@ def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
     live_session_id = live_session.get("value") if isinstance(live_session, dict) else None
     if live_session_id == endpoint.expected_session_id:
         return False
+    # _claude_registry_corroborates returns False both when it positively
+    # rules out a match and when its own registry read fails (OSError,
+    # JSONDecodeError) -- the latter is fail-closed (refuse) in
+    # validate_live_session's raise, but fail-open (confirmed closed) here.
+    # Accepted narrow risk: only reachable after herdr already reported a
+    # session-id mismatch at this pane, and disambiguating the two cases
+    # would mean duplicating that function's internals rather than reusing
+    # it.
     if endpoint.agent_kind == "claude" and _claude_registry_corroborates(endpoint):
         return False
     return True
