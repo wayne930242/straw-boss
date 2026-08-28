@@ -168,7 +168,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("needed to shape or schedule later dispatches", source)
         self.assertIn("stays in the same worker", source)
         self.assertIn("every other app-level or uncertain failure", source)
-        self.assertIn("One worker reproduces the failure", source)
+        self.assertIn("One agent reproduces the failure", source)
 
     def test_shared_resource_discovery_stays_with_worker(self) -> None:
         source = normalized(
@@ -261,9 +261,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
         # Worker-side mechanism a main agent never executes.
         self.assertNotIn("persists the state first and then notifies", stance)
 
-        # Positive, direct phrasing outside the one negation the section title
-        # carries by name.
-        body = stance.replace("Own the loop, not the work", "")
+        # Positive, direct phrasing throughout the compact stance.
+        body = stance
         for defensive in (" do not ", " never ", " without asking ", ", not "):
             self.assertNotIn(defensive, body)
 
@@ -442,9 +441,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         for skill in ("inspecting-app", "investigating-app"):
             source = normalized(ROOT / "skills" / skill / "SKILL.md")
             self.assertIn("what this work's anchor attacks", source, skill)
-            self.assertIn(
-                "anchors it on an independent agent's adversarial review", source, skill
-            )
+            self.assertIn("adversarial-review is the reality anchor", source, skill)
 
     def test_the_anchor_set_is_closed_and_identical_on_every_surface(self) -> None:
         """A main agent has to name an anchor from a list, so the list has to be
@@ -670,11 +667,11 @@ class SkillInstructionQualityTests(unittest.TestCase):
             "an independent agent's adversarial review of the account",
             troubleshooting,
         )
-        self.assertIn("the fix is anchored on testing", troubleshooting)
+        self.assertIn("the fix is anchored on testing", troubleshooting.lower())
 
         graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
-        self.assertIn("troubleshooting-app's integration preflight", graph)
         self.assertIn("adversarial-review is its anchor", graph)
+        self.assertIn("A troubleshooting branch that lands a fix uses testing", graph)
 
     def test_one_graph_wins_when_single_loop_and_fan_out_both_fit(self) -> None:
         """The criterion calls itself observable, so overlapping bullets need a
@@ -750,14 +747,9 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertEqual(
             len(carrying), 1, "the obligation is one standing contract bullet"
         )
-        self.assertIn(
-            "An ordinary programming change carries an independent adversarial "
-            "review of the finished result beside its anchor",
-            carrying[0],
-        )
-        # Self-limiting: it says which dispatches it covers, and it names the
-        # route so a worker knows whether the action is its own.
-        self.assertIn("unless this dispatch says the main agent runs it", carrying[0])
+        self.assertIn("one coherent change-set", carrying[0])
+        self.assertIn("one fresh-context adversarial review", carrying[0])
+        self.assertIn("The brief states when the main agent owns this review", carrying[0])
         # A standing rule cannot be scoped to one transport.
         self.assertNotIn("herdr-pane", carrying[0])
         self.assertNotIn("claude-p", carrying[0])
@@ -769,18 +761,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
         class this spec family exists to close, so both routes are named.
         """
         graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
-        self.assertIn(
-            "the worker reaches for it through its own Agent tool or bringing-coworker",
-            graph,
-        )
-        self.assertIn(
-            "the main agent dispatches it against the committed result", graph
-        )
-        self.assertIn(
-            "an ordinary programming change has an adversarial review beside its "
-            "anchor, run by the worker or dispatched by the main agent",
-            graph,
-        )
+        self.assertIn("The lifecycle owner records the review once", graph)
+        self.assertIn("one coherent change-set", graph)
 
     def test_the_skill_that_carries_ordinary_changes_states_and_checks_the_review(
         self,
@@ -792,17 +774,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
         step anywhere confirmed one had happened.
         """
         shipping = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
-        self.assertIn(
-            "Every ordinary programming change carries an independent adversarial "
-            "review of the finished result beside its anchor",
-            shipping,
-        )
-        self.assertIn("Disposition what it reports", shipping)
-        self.assertIn(
-            "the adversarial review beside the anchor is discharged against the "
-            "confirmed reference and its findings are dispositioned, not assumed",
-            shipping,
-        )
+        self.assertIn("the single review disposition required by choosing-graph", shipping)
+        self.assertIn("one review disposition", shipping)
 
     def test_the_missing_anchor_fallback_applies_in_every_dispatch_mode(self) -> None:
         """`cc690f3` put the fallback inside the bullet that opens "In
@@ -972,27 +945,14 @@ class SkillInstructionQualityTests(unittest.TestCase):
         A rule that names two acceptance points while three paths land changes
         is the same defect class it exists to close.
         """
-        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
-        self.assertIn(
-            "whichever skill confirms the change landed confirms the review "
-            "happened too — shipping-task Task 6 for a task it drives to "
-            "completion, boss-say Task 7 for a batch item, and "
-            "dispatching-work's own Wrap-up branch for a dispatch closed out "
-            "directly by neither",
-            graph,
-        )
-        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
-        self.assertIn(
-            "A batch item that landed an ordinary programming change carries the "
-            "same adversarial review beside its anchor as any other change",
-            boss_say,
-        )
-        self.assertIn(
-            "every item that landed a change has its completion reference "
-            "confirmed and its adversarial review discharged against that "
-            "reference and dispositioned, not assumed",
-            boss_say,
-        )
+        for path in (
+            ROOT / "skills" / "shipping-task" / "SKILL.md",
+            ROOT / "skills" / "boss-say" / "SKILL.md",
+            ROOT / "skills" / "dispatching-work" / "SKILL.md",
+        ):
+            source = normalized(path)
+            self.assertIn("completion reference", source, path.name)
+            self.assertIn("review disposition", source, path.name)
 
     def test_a_directly_closed_out_dispatch_dispositions_its_own_review(self) -> None:
         """The third acceptance point `choosing-graph` now names:
@@ -1003,23 +963,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
         carry the disposition itself, for whatever reaches it without either.
         """
         dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
-        self.assertIn(
-            "neither shipping-task Task 6 nor boss-say Task 7 already "
-            "dispositioned its review",
-            dispatching,
-        )
-        self.assertIn(
-            "confirm the adversarial review beside its anchor was discharged "
-            "against that reference",
-            dispatching,
-        )
-        self.assertIn(
-            "a landed change not already dispositioned by shipping-task Task "
-            "6 or boss-say Task 7 has its completion reference confirmed and "
-            "its adversarial review discharged and dispositioned before the "
-            "instruction is archived",
-            dispatching,
-        )
+        self.assertIn("choosing-graph's single review checkpoint", dispatching)
+        self.assertIn("one review disposition before archive", dispatching)
 
     def test_plan_auto_detach_dispositions_the_review_before_archiving(self) -> None:
         """A fourth real close-out path exists beside the three
@@ -1038,22 +983,10 @@ class SkillInstructionQualityTests(unittest.TestCase):
         plan_mechanics = normalized(
             ROOT / "skills" / "dispatching-work" / "references" / "plan-mechanics.md"
         )
-        self.assertIn(
-            "If this task landed an ordinary programming change and neither "
-            "shipping-task Task 6, boss-say Task 7, nor dispatching-work's "
-            "own Wrap-up branch already dispositioned its review",
-            plan_mechanics,
-        )
-        self.assertIn(
-            "confirm the task's own completion reference from its terminal "
-            "report, confirm the adversarial review beside its anchor was "
-            "discharged against that reference, and disposition what it "
-            "reports",
-            plan_mechanics,
-        )
+        self.assertIn("choosing-graph's single review checkpoint", plan_mechanics)
         wrap_up_index = plan_mechanics.index("Call wrap-up-task.py --app")
         disposition_index = plan_mechanics.index(
-            "If this task landed an ordinary programming change"
+            "For a landed programming change"
         )
         self.assertLess(
             disposition_index,
@@ -1072,11 +1005,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         defect class this whole file exists to catch.
         """
         graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
-        self.assertIn(
-            "A plan or batch task's own terminal event may instead reach "
-            "plan-mechanics.md's auto-detach procedure directly",
-            graph,
-        )
+        self.assertIn("The lifecycle owner records the review once", graph)
 
     def test_shipping_task_dispositions_a_work_on_plans_review_per_task(self) -> None:
         """Task 6 was written entirely in one-agent lifecycle language
@@ -1092,11 +1021,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
             "for the whole plan",
             shipping,
         )
-        self.assertIn(
-            "a work-on-produced plan's disposition runs once per task, not "
-            "once for the whole plan",
-            shipping,
-        )
+        self.assertIn("each plan task closes once", shipping)
 
     def test_boss_say_confirms_the_items_own_reference_before_dispositioning_it(
         self,
@@ -1108,11 +1033,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         status file's free-text `note`.
         """
         boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
-        self.assertIn(
-            "confirm the item's own completed merge or commit reference "
-            "from its terminal report",
-            boss_say,
-        )
+        self.assertIn("confirm its completion reference", boss_say)
 
     def test_shipping_task_dispositions_the_review_before_invoking_wrap_up(
         self,
@@ -1127,11 +1048,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
         Task 6's later paragraph then runs it again.
         """
         source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
-        invoke_index = source.index("invoking dispatching-work's wrap-up branch")
-        disposition_index = source.index(
-            "Disposition what it reports — closed here, or carried into a "
-            "named follow-up task"
-        )
+        invoke_index = source.index("invoke dispatching-work's wrap-up branch")
+        disposition_index = source.index("record the single review disposition")
         self.assertLess(
             disposition_index,
             invoke_index,
@@ -1154,12 +1072,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         redundantly re-attempts a disposition every batch item already got.
         """
         boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
-        self.assertIn(
-            "unless a direct close-out through dispatching-work's own Wrap-up "
-            "branch, or the item's own per-item auto-detach, already "
-            "dispositioned it",
-            boss_say,
-        )
+        self.assertIn("one review disposition", boss_say)
 
     def test_the_workers_own_coordination_graph_obligation_reaches_the_contract(
         self,
@@ -1300,6 +1213,17 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertEqual(len(block), 1)
         self.assertIn("single-loop", block[0])
         self.assertIn("sub-agent fan-out/fan-in", block[0])
+
+    def test_single_loop_and_review_have_bounded_process_cost(self) -> None:
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+
+        self.assertIn("current agent carries a bounded single-loop", boss_say)
+        self.assertIn("smallest sufficient execution tier", boss_say)
+        self.assertIn("one coherent change-set", graph)
+        self.assertIn("one adversarial review", graph)
+        self.assertIn("examines the finished change-set directly", graph)
+        self.assertIn("nits close with an explicit disposition", graph)
 
 
 if __name__ == "__main__":

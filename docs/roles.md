@@ -7,9 +7,7 @@ This is the single execution-time definition of who decides what.
 **User** — owns the requested outcome and authorization.
 The user is the actual "boss" in Straw Boss naming.
 
-**Main agent** — owns orchestration: pre-launch routing, dispatch mechanics,
-requirement assignment, already-known coordination context, dependency
-scheduling, shared resources, status-event handling, and cleanup.
+**Main agent** — owns routing and coordination. In a bounded single-loop it also owns the work; when it dispatches, it owns mechanics, scheduling, shared resources, status-event handling, and cleanup.
 
 **Dispatched agent** — an independent task owner once launched through Herdr. It
 works in the target app with that app's harness. The user and dispatched agent
@@ -31,14 +29,7 @@ for the coordinating session and "dispatched agent" for a launched task session.
 
 ## Authority boundary
 
-**Own the loop, not the work.** Before launch, the main agent chooses routing and
-dispatch mechanics and carries the user requirement, requested outcome,
-necessary hints, constraints, and verified coordination facts it already has.
-Target-app context discovery belongs to the dispatched agent; the main agent
-does not investigate the implementation to build a fuller brief. After launch,
-the user and dispatched agent own
-the task conversation and work definition; the main agent accepts their decision
-and keeps the orchestration loop moving.
+**Use the smallest sufficient loop.** The main agent may carry bounded work end to end. Once work is dispatched, it supplies the requirement and known coordination facts; target-app discovery and work definition belong to the dispatched agent and user, while the main agent keeps the coordination loop moving.
 
 **The coordination graph is coordination too.** The main agent states how the
 agents on a task are wired — single-loop, sub-agent fan-out/fan-in, or
@@ -54,10 +45,7 @@ unit tests at the smallest credible seam that can go red before the change,
 escalated to integration or E2E when the target project's own conventions call
 for it. Naming the anchor is not naming the tests.
 
-When coordination or integration needs target-app problem investigation or
-current-state research, the main agent dispatches that investigation instead of
-reading across managed app roots. It integrates the worker's evidence-backed
-conclusion and references, not a yes-or-no answer or a second inline inquiry.
+Once work is dispatched, target-app context discovery belongs to the dispatched agent. The main agent integrates its evidence-backed conclusion and references.
 
 Main-to-worker operations serve that boundary:
 

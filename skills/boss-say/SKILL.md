@@ -1,86 +1,32 @@
 ---
 name: boss-say
-description: The single entry point for handing any work to straw-boss — implementation, audit, research, diagnosis, or anything else this session already has an available skill for. Use whenever the user hands work over or asks for something to be looked into — one item, a handful, or a whole backlog — e.g. "boss say do this", "work on this", "implement X in app-name", "audit this module", "how does X work here", "X is failing", "work through this backlog". This skill judges the scale and, per item, the execution tier (a plain subagent, or a dispatched agent rooted in the app) and picks the dispatch shape (one item via a specialist skill or a better-fitting available skill, a capped batch in this turn, or a self-paced `/loop` batch).
+description: Route work through Straw Boss. Use for one task, a small independent batch, or a backlog; select the owning skill, the lightest sufficient execution tier, and the coordination graph.
 ---
 
 ## Overview
 
-See `docs/roles.md` for the cast of characters and the authority framework the main agent acts under — not redefined here.
+This skill owns routing and capped-batch scheduling. Domain work stays with its specialist: `shipping-task`, `inspecting-app`, `investigating-app`, or `troubleshooting-app`. `work-on` resolves the app; `dispatching-work` supplies mechanics only when a separate workroom is useful.
 
-**Everything comes through here — not just implementation.** The main agent decides dispatch shape and execution tier; once launched, the dispatched agent and user choose specification, design, implementation, and the verification method inside the reality anchor named here. `shipping-task` (implementation's git lifecycle), `inspecting-app`/`investigating-app`/`troubleshooting-app` (audit, research, diagnosis), `work-on` (app resolution), and `dispatching-work` (agent mechanics) are the machinery this skill drives; they're still invocable directly when the user names one — including right after the trigger phrase itself (see the branch below) — but they are not the front door.
-
-Three things this skill owns that nothing else does:
-
-1. **Scale triage** (Task 1) — one item, a batch that fits this turn, or a batch big enough to self-pace across turns.
-2. **Execution-tier triage** (Task 1) — per item, whether it needs the target app's own real working directory at all. If not, a plain subagent handles it — no app-dir rooting, `dispatching-work` never involved. If it does, it's a dispatched agent — `dispatching-work` picks the actual transport itself (herdr-pane whenever available, `claude-p` only as an environment fallback; see its own Task 1 — that choice is never made here).
-3. **Batch dispatch under a concurrency cap** (Tasks 4-6) — a batch is a `dispatching-work` plan where every task's `depends_on` is empty, so `dispatching-work`'s own rule ("dispatch every ready task at once") would fire the whole thing in one wave. Slicing that wave under a cap and refilling as items finish is this skill's reason to exist; everything else reuses `dispatching-work`'s per-task mechanics unmodified.
-
-No type of work is excluded here: an audit, open-ended research, or an unexplained failure comes through this skill exactly like implementation does, judged by the same scale and execution-tier questions. The specialist skills (`inspecting-app`, `investigating-app`, `troubleshooting-app`) still own their own domain methodology — what this skill decides is whether an item goes solo or gets dispatched, not how the work itself gets done.
+Choose the **smallest sufficient execution tier**. The process is light when its coordination cost stays below the work it coordinates. Once work is dispatched, the user and dispatched agent choose the specification, design, implementation, and the verification method inside the named reality anchor.
 
 ## Branch: A skill is named right after the trigger phrase
 
-`boss say <slug> <rest>` — when the token right after the trigger phrase plausibly names a skill available this session, the user has already made the routing call themselves. Resolve it the same way the main agent already picks any skill — by name, a recognizable abbreviation, or an unambiguous partial match against the current skill listing (this plugin's own specialist skills, any other project skill, a user-level skill, or a plugin skill) — never by requiring a literal, character-for-character match. `ttt:work-on` resolving to `team-toon-tack:ttt-work-on` (an informally-typed plugin-name abbreviation over the skill's own base name) is exactly the kind of match this is meant to catch, not reject on a technicality. Hand off directly — `Skill({skill: <resolved-name>, args: <rest>})` — with the remainder of the invocation as its input, and skip Task 1's classification for it. This is not limited to the four specialist skills this plugin owns; any named, available skill qualifies, and the hand-off is unconditional once a skill is genuinely picked — never re-litigate whether it was the "right" choice once you've committed to it.
-
-**Whether the dispatch machinery still applies depends on where the named skill's work actually lands, not on how it was invoked** — Task 1's execution-tier bullets below apply unchanged: work that stays outside any app's checkout runs solo, right here, exactly like this branch's hand-off; work that lands inside an app's checkout still needs Task 1's execution-tier call first (resolve the app via `work-on`, then decide solo-vs-dispatched) — naming the skill explicitly doesn't skip that gate.
-
-Three exceptions:
-
-- **No available skill is a plausible match.** Not "the token doesn't literally match a name" — only when, using genuine judgment (name, abbreviation, or the skill's own description), nothing in the current listing plausibly corresponds to what was named. Say so before falling through ("no skill matching `<slug>` here — treating it as part of the task") rather than silently absorbing it into the task text, then run Task 1 as normal.
-- **More than one skill is a plausible match.** State which one you picked and why, in one line, before handing off — don't silently guess between them. If the ambiguity is genuine (no clearly better fit), ask instead of picking.
-- **The named skill's work lands inside an app's checkout, but the input is actually a multi-item batch.** This branch is a single hand-off; a batch whose items land inside app checkouts still needs Task 1's scale triage and Tasks 4-6's dispatch-under-cap machinery, which no single skill owns on its own. Run Task 1 as normal, using the named skill as every item's type instead of judging it per item.
-
-**Verification:** an available skill named right after the trigger is always resolved via judgment, never demanding a literal string match; a hand-off whose work lands inside an app's checkout still goes through Task 1's execution-tier call; ambiguity between two or more plausible skills is stated, never silently guessed; a genuinely unresolvable reference is called out, not quietly absorbed into the task text; a genuine batch still gets Task 1-6's machinery even when a specialist skill was named.
+For `boss say <skill> <work>`, resolve a clear name, abbreviation, or partial match and invoke that skill with `<work>`. State a genuine ambiguity or missing match. A multi-item batch still follows the batch path below, using the named skill as each item's owner.
 
 ## Task 1: Triage scale and execution tier, then pick the dispatch shape
 
-First collect the work items: inline in the invocation, or from a file (checklist, tracker export) named in it. Then decide the shape — **this is the main agent's call, made and stated, not a question put to the user.** The user may override after hearing it; don't ask them to choose up front.
+Collect the items, select the owning skill, and state the shape with one reason.
 
-- **One logical item** — a single task, or one request that decomposes into phases or spans several apps but is still one unit of work → route it to whichever skill actually owns its domain, main agent's own pick, stated with the reason: the matching specialist skill (`shipping-task` for implementation, `inspecting-app`/`investigating-app`/`troubleshooting-app` for audit/research/diagnosis) by default, or a better-fitting available skill this session already has for it (a tracker-integration task, for instance) when one clearly exists — whether or not the user named it. Then stop here. The chosen skill owns its own domain methodology and the dispatch; when its work lands inside an app's checkout, that also includes `work-on` (with its own Plan mechanism for a multi-phase request) and the execution-tier call below — see the slug branch above for the same "where the work lands" rule. Do not write a batch plan for a single item.
-- **Several independent items, and the batch plausibly finishes inside this turn** — roughly the concurrency cap or a small multiple of it, each item short → **one-shot batch** (Task 6, status-watcher-driven).
-- **A batch clearly bigger or longer than one turn** — many items, or items long enough that in-flight slots will keep turning over for a while → **self-paced batch**: this skill starts the `/loop` itself (Task 6), it does not tell the user to type `/loop` and come back.
-- **Mixed input** — a backlog that also contains one item needing its own dependency graph: the batch items stay here, that item comes out and goes through the matching specialist skill separately. Say which item you pulled out and why.
+- **One bounded logical item:** the current agent carries a bounded single-loop end to end when it can load the target checkout's instructions. This includes implementation, inspection, investigation, and diagnosis.
+- **Clear independent branches inside one item:** use sub-agent fan-out/fan-in and integrate the branches here.
+- **A separate durable workroom is useful:** dispatch when the work benefits from its own interactive pane, long-lived checkpoint, continuation, or app ownership boundary.
+- **Several app-rooted workers:** use orchestrator-worker. A small batch runs in this turn; a long backlog uses the self-paced batch path.
 
-State the chosen shape and the reason in one line before doing anything else.
+A bounded investigation may use a confirmed lower-tier work route and returns an explanatory, evidence-backed result.
 
-**Then, per item, decide the execution tier — also the main agent's call, not the user's, and not a per-skill-type default:**
+Invoke `choosing-graph` and state the coordination graph and reality anchor. A capped batch is always orchestrator-worker. `single-loop` and `sub-agent fan-out/fan-in` create no `plan.json` and no repo-internal Straw Boss planning or spec document. When either uses a dispatched workroom, files under `~/.straw-boss/dispatch/` are the dispatch's lifecycle record, archived once the dispatch wraps up.
 
-- **Doesn't need the target app's own real working directory** — a self-contained question or external lookup that does not read anything under a managed app root → a plain subagent (this session's own `Agent` tool). No app-dir rooting, `dispatching-work` never invoked.
-- **Needs the app's real working directory** — real code changes, an audit against the app's real rule source, research into its actual current behavior, diagnosis using its own logs/tests → a dispatched agent via `dispatching-work`, which picks the transport itself (its own Task 1) and resolves the complete work route. Any item that must read under a managed app root uses a dispatched agent; the main agent does not load that app's files and agent system into its coordination context.
-
-Bounded investigation may use a confirmed lower-tier work route, such as Haiku
-or a lower-tier Codex model. Frame it around the current behavior, cause,
-mechanism, or impact to explain, and require evidence references.
-
-Self-contained and external tasks may stay with a plain subagent. Any item that
-needs managed-app files dispatches at that boundary so exactly one app's agent
-system loads in the worker. Every investigation route remains accountable for
-an explanatory, evidence-backed result.
-
-Then fix the **coordination graph** and the **reality anchor** for the work
-through `choosing-graph`, and state both. They travel with the dispatch. A
-capped batch is always orchestrator-worker — the plan plus the refill loop below
-is that shape. Naming the anchor is where this stops: the tests, cases, and
-tools inside it are the worker's and the user's.
-
-A single item's graph is `single-loop` when one worker carries it end to end,
-or `sub-agent fan-out/fan-in` when a branch of that item's own work runs in a
-subagent. Either way this skill writes no `plan.json` and no repo-internal
-Straw Boss planning or spec document for it — a capped batch's `plan.json` is
-`orchestrator-worker`'s alone. The dispatch instruction, contract, and status
-files `dispatching-work` still writes under `~/.straw-boss/dispatch/` for that
-one worker are the dispatch's lifecycle record, needed for every app-rooted
-dispatch regardless of graph and archived once the dispatch wraps up — not a
-work spec.
-
-**Verification:** the shape was decided here and stated out loud, with a reason;
-a single item was never turned into a batch plan; the user was not asked to pick
-the dispatch shape or execution tier; no main-agent or plain-subagent path reads
-inside a managed app root; every investigation asks for explanation plus
-evidence, not a binary answer; the coordination graph and reality anchor are
-named before anything is dispatched, and no brief prescribes the method inside
-the anchor; a single item invents no plan or spec document for itself, and its
-own dispatch instruction/contract/status files stay read as mechanics, never
-mistaken for one.
+**Complete when:** the owner, graph, anchor, and execution tier are stated; a single item has no batch plan; batch work continues below.
 
 ## Task 2: Resolve each item's app
 
@@ -142,9 +88,9 @@ Which of these applies was already decided in Task 1. The one thing to check her
 
 Once every task in the plan is terminal, report a summary: how many `done`, how many `failed` and why (from each failed task's status-file `note`), and how many `cancelled` and why (from each cancelled task's own note — the main agent's own reason for ending it). This is the same completion condition `dispatching-work`'s own plan branch uses — judged across all tasks, never on the first one finishing. Stop the status watcher (one-shot) or send the final `ScheduleWakeup({stop: true})` (self-paced) as the last step, not an afterthought.
 
-A batch item that landed an ordinary programming change carries the same adversarial review beside its anchor as any other change — batch items reach this task instead of `shipping-task` Task 6, so the disposition happens here unless a direct close-out through `dispatching-work`'s own Wrap-up branch, or the item's own per-item auto-detach, already dispositioned it (Task 5 step 4's per-item auto-detach runs `plan-mechanics.md`'s own guard well before this task ever sees the item, so it is the common case, not the exception): confirm the item's own completed merge or commit reference from its terminal report, then confirm the review was discharged against that confirmed reference, and close what it reports or carry it into a named follow-up.
+For each item that landed a programming change, confirm its completion reference and record the single review disposition defined by `choosing-graph`.
 
-**Verification:** the batch is reported complete only once every task's status is `done`, `failed`, or `cancelled`, never earlier; a `cancelled` task is counted and explained in the summary, not silently dropped from both the `done` and `failed` tallies; every item that landed a change has its completion reference confirmed and its adversarial review discharged against that reference and dispositioned, not assumed.
+**Verification:** every task is terminal and summarized; each changed item has one confirmed completion reference and one review disposition.
 
 ## Branch: Status query, or closing out one dispatch
 

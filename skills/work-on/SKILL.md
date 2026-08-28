@@ -7,9 +7,9 @@ description: Determines which of the project's managed apps a request belongs to
 
 See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
 
-App resolution and dispatch: figure out which app a request belongs to, then hand the actual work to a session rooted in that app's own directory instead of working on it here. Does not develop the fix or feature itself.
+App resolution: identify the checkout and return it to the caller. The caller's chosen coordination graph decides whether the current agent works there or opens a separate app-rooted workroom.
 
-Apps' own `.claude/rules/*.md`, `.claude/skills/`, and `.claude/settings.json` hooks only load fully for a session actually rooted in that app's directory — a session working from the project root never sees an app's own skills or hooks, even though path-scoped rules and nested `CLAUDE.md` do reach it reactively. Dispatching to a session that lives in the target app closes that gap instead of working around it with a hand-maintained summary.
+An agent working in the app loads its own instructions before acting. A separate workroom is useful when the caller needs the app's full session harness or a durable interactive lifecycle.
 
 Locate the config with `git rev-parse --show-toplevel` from the current working directory, then read `<repo-root>/.claude/straw-boss/apps.json` — never assume the current directory is the repo root, and never search upward by hand.
 
@@ -59,21 +59,11 @@ Invoke `grilling` (or this project's equivalent decomposition-confirmation skill
 
 **Verification:** a multi-task request has a confirmed-with-the-user dependency graph before `plan.json` is written; a single-task request never creates a plan.
 
-## Task 5: Hand off
+## Task 5: Return the resolution
 
-This task's job ends at naming the resolved app(s) (and, if Task 4 ran, the
-plan); it does not call `dispatching-work` itself. Needing managed-app files makes
-dispatch mandatory, whether the work is implementation, audit, research, or
-diagnosis. A plain subagent remains valid only for self-contained or external
-work that reads no managed app. The caller assembles the actual task description
-and invokes `dispatching-work` with the plan when Task 4 produced one, or a
-single instruction otherwise. The dispatched instruction carries the user's
-intent and tells the agent to follow the target app's own development route
-after entering it; Straw Boss does not select or run that route itself.
+This skill returns the resolved app to its caller, including its directory and any multi-task plan. The caller applies `choosing-graph`: a bounded single-loop may continue in the current agent, while work that benefits from an independent app-rooted session continues through `dispatching-work`. Either route loads the target app's instructions before doing target-app work.
 
-**Verification:** this task ends with the resolved app(s) (and plan, if any)
-named and control returned to the caller, not with target-app files read or
-`dispatching-work` already invoked here.
+**Verification:** this task returns the resolved app(s) and plan, if any, without choosing the caller's execution tier.
 
 ## Out of scope
 

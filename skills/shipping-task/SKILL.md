@@ -9,17 +9,17 @@ See `docs/roles.md` for the cast of characters and the authority framework (incl
 
 straw-boss standardizes two lifecycle shapes across every managed app: **team-mode** (worktree → develop → MR → merge → archive) and **solo-mode** (develop directly in the app's primary checkout, commit straight to the base branch). Which one applies is how the user regards this piece of work, so Task 2 asks them — except where the resolved app's `apps.json` entry sets `forbidDirectCommit: true`, in which case only team-mode is offered. Scoping the task happens before this skill. Picking the app happens as this skill's own first step, via `work-on`.
 
-The work itself happens in a session dispatched into the target app (`dispatching-work`), not in this session. An app may already have its own worktree/release tooling — check its `apps.json` entry's `gitWorkflowSkill` field. When it's set, the worker follows it for delivery and this skill only confirms the outcome. Where an app has none, this skill's fallback lifecycle below applies.
+The execution tier comes from `boss-say`: a bounded single-loop stays with the current agent; work needing a separate durable workroom uses `dispatching-work`. An app may already own its git lifecycle through `apps.json.gitWorkflowSkill`; otherwise the fallback below applies.
 
 **Commit needs no authorization — the agent commits on its own as it goes. Neither does pushing the task's own feature branch** (opening or updating an MR/PR against it) — the branch was already implicitly authorized when the main agent created it; the agent reports with `send-dispatch-message.py --to main --intent inform` and continues, or records progress when no live route exists. **Merge is the mutation the agent cannot self-authorize** — as is any push that lands on another tracked branch: the agent stops and persists `awaiting-authorization` instead.
 
 ## Task Initialization
 
-This spans many turns — dispatch now, develop over an unknown number of turns inside the agent, authorize the mutation possibly much later. Track it with TaskCreate, one task per stage, so progress survives context compaction or a session resume. In solo-mode, there's no authorization checkpoint at all — the agent commits straight to the base branch and reports completion directly; don't create a placeholder task for a stop that never happens.
+Create durable task tracking when the selected execution tier spans turns or checkpoints. A bounded single-loop needs no extra lifecycle bookkeeping.
 
 ## Task 1: Resolve the app
 
-Invoke the `work-on` skill now if the target app isn't already established in this conversation — do not guess an app here, and do not treat resolution as something that already happened elsewhere. `boss-say` triages scale, not apps; this skill owns making sure resolution actually ran. `work-on` ends at naming the resolved app(s) for implementation work — it does not dispatch itself; that happens in Task 4 below, once this skill has assembled the full instruction.
+Invoke `work-on` when the target app is not established. It returns the app and directory; the execution tier remains the one selected by `boss-say`.
 
 **Verification:** you can name the app and its directory, sourced from `work-on`.
 
@@ -32,49 +32,43 @@ Ask the user how they regard this piece of work — solo work they are carrying 
 
 If `forbidDirectCommit` is `true`, say so and only offer team-mode — do not ask the user to pick something the app itself blocks.
 
-**Verification:** the user explicitly picked a mode, or the app forced one and you said so, and you can name the base branch, before assembling the dispatch instruction.
+**Verification:** the user explicitly picked a mode, or the app forced one and you said so, and you can name the base branch before work starts.
 
 ## Task 3: Determine git-lifecycle ownership
 
-**Worktree creation itself is never delegated, regardless of what the app owns.** In team-mode, this skill (via `dispatching-work`) has the main agent create the worktree with plain `git worktree add` (never `herdr worktree create`) before dispatch. See `dispatching-work`'s `references/plan-mechanics.md` "Worktree ownership" section, including its mandatory verify-and-repair and `localFiles` copy steps. The launcher uses the verified worktree as cwd while splitting a worker pane into the coordinator's current tab. In solo-mode there is no worktree.
+**Worktree creation itself is never delegated, regardless of what the app owns.** In team-mode, the current agent creates and verifies the worktree with plain `git worktree add` (never `herdr worktree create`). See `dispatching-work`'s `references/plan-mechanics.md` "Worktree ownership" section for the verify-and-repair and `localFiles` copy steps. If a separate workroom was selected, its launcher uses that verified worktree as cwd. In solo-mode there is no worktree.
 
-For everything **after** the worktree exists (or in solo-mode, from the start): check the resolved app's `gitWorkflowSkill` field. This git-lifecycle choice is independent from the target app's own development and SDD route, which runs inside the dispatched session after it enters the app. If `gitWorkflowSkill` is set, the worker runs that skill's remaining steps (commit, and push/MR for the task's own feature branch) to completion on its own, inside the worktree the main agent already created — no authorization needed for any of that — but stops before merge, and before any push that skill's release mechanics might perform against a branch other than the task's own feature branch (a version-bump or release-tag push to a protected/base branch). If it's unset, this skill's own fallback steps apply:
+For everything **after** the worktree exists (or in solo-mode, from the start), check the resolved app's `gitWorkflowSkill` field. This git-lifecycle choice is independent from the target app's development and SDD route. If `gitWorkflowSkill` is set, the execution owner runs that skill's remaining steps (commit, and push/MR for the task's own feature branch) to completion — no authorization is needed for those steps — but stops before merge or any push to another tracked branch. If it is unset, this skill's fallback steps apply:
 
-- **team-mode fallback**: develop inside the main-agent-created worktree, committing to the feature branch freely, then push the branch and open an MR/PR on its own. Report the branch + MR/PR reference through the instruction-keyed message script, or `report-progress.py` when no live route exists. Continue; only stop before merge or another-branch push.
+- **team-mode fallback**: develop inside the current-agent-created worktree, commit to the feature branch, then push the branch and open an MR/PR. The current agent reports directly; a separate workroom uses its instruction-keyed message or progress route. Continue until merge or another-branch push needs authorization.
 - **solo-mode fallback**: develop directly in the primary checkout, then commit straight to the base branch — no authorization needed, no Task 5 stop in solo-mode; report completion once committed.
 
 **Verification:** you can state whether the target app owns its post-worktree git lifecycle or is getting the fallback steps, before Task 4 assembles the instruction; in team-mode, worktree creation itself was never left to the agent's own skill.
 
-## Task 4: Assemble and dispatch
+## Task 4: Execute in the selected tier
 
-Build an outcome-oriented brief for `dispatching-work`:
+For a current-agent single-loop, load the target checkout's instructions and carry the task through implementation, its reality anchor, and the selected git lifecycle here.
 
-- Follow `dispatching-work` Task 3's brief boundary; target-app context discovery
-  belongs to the worker.
+For a separate workroom, build an outcome-oriented brief for `dispatching-work`:
+
+- Follow `dispatching-work` Task 3's brief boundary; target-app context discovery belongs to the worker.
 - Carry forward the **user requirement and requested outcome** and why it matters.
 - Add only already-known coordination facts, exact artifact references supplied
   by the workflow, and material task-specific constraints.
-- The worker and user choose the **specification, design, implementation, and
-  the verification method inside the reality anchor the brief names** in the
-  dispatched session.
-- Every ordinary programming change carries an independent adversarial review of
-  the finished result beside its anchor (`choosing-graph`). The worker runs it in
-  its own session by default, so say so in the brief only when this skill will
-  dispatch it against the committed result instead.
+- The worker and user choose the **specification, design, implementation, and the verification method inside the reality anchor the brief names** in the dispatched session.
+- Carry the review checkpoint selected by `choosing-graph`; the completed change-set is reviewed once by its lifecycle owner.
 - Include a constraint only when it is verified, task-specific, and materially changes the acceptable result. Prefer a positive statement with its reason over a preventive list of things not to do.
 - Omit **generic lifecycle prose**, reporting commands, provider routing, checkpoint mechanics, tracker policy, and defensive reminders already supplied by the generated contract, this skill, or the target app's own instructions.
 
 The generated contract supplies exact progress, message, checkpoint, and terminal-status mechanics for every provider. Pass the concise task brief, both provider kinds, and the validated main pane/provider-fingerprint pair to `dispatch-task.py write`.
 
-**Verification:** the brief is understandable without the main agent's private
-context; every paragraph carries the user requirement, requested outcome,
-an already-known coordination fact, or a material task-specific constraint.
+**Verification:** the current agent is working from the resolved checkout with its instructions loaded, or the dispatched brief is understandable without private context and contains only the requirement, outcome, known coordination facts, and material constraints.
 
 ## Task 5: Authorize merge, relay push notifications, resume through to completion
 
 Applies to team-mode only — solo-mode's commit needs no authorization and reaches no checkpoint here (Task 2/Task 3).
 
-For an interactive task, authorization happens directly in the dispatched agent's session: point the user to its pane and leave the conversation there. For a headless task, relay the user's answer through its recorded continuation. The main agent never decides for the user.
+For a current-agent single-loop, ask the user here. For an interactive task, authorization happens directly in the dispatched agent's session. For a headless task, relay the user's answer through its recorded continuation.
 
 `awaiting-authorization` remains non-terminal until the user answers. Plan tasks expose it through `watch-plan-status.py`; a standalone task persists the checkpoint to its own `.status.json` sibling and notifies this session from the same call, and the answer arrives as its next status event.
 
@@ -82,9 +76,7 @@ For an interactive task, authorization happens directly in the dispatched agent'
 
 `awaiting-user-input` follows the same direct-user or headless-relay route, but grants no mutation authorization.
 
-`awaiting-main-agent` is reserved for integrated context or a coordinator-owned
-action result. Resolve it with `reply-to-worker.py`; a work-content decision
-returns to the user in the dispatched agent's session.
+`awaiting-main-agent` is reserved for integrated context or a coordinator-owned action result. Resolve it with `reply-to-worker.py`; a work-content decision returns to the user in the dispatched agent's session.
 
 If the target app is itself a submodule of a monorepo root and a pointer-bump push at the root is also needed once its commit lands, that's a separate mutation, gated the same way merge is — ask about it separately, don't fold it into the feature-branch push's no-authorization exemption.
 
@@ -92,29 +84,15 @@ If the target app is itself a submodule of a monorepo root and a pointer-bump pu
 
 ## Task 6: Confirm and wrap up
 
-For a `work-on`-produced plan (Task 1), this task runs once per plan task, as
-each one's own lifecycle completes — not once for the whole plan.
+For a `work-on`-produced plan (Task 1), this task runs once per plan task, as each one's own lifecycle completes — not once for the whole plan.
 
-Once the agent reports the lifecycle is complete (merged in team-mode,
-committed in solo-mode), confirm the merge or commit reference. The
-adversarial review this change carries beside its anchor is discharged against
-that confirmed reference: the worker's own, reported with the lifecycle, or one
-dispatched from here on the committed result. Disposition what it reports —
-closed here, or carried into a named follow-up task — before invoking
-`dispatching-work`'s wrap-up branch, which closes the worker pane and
-instruction and releases any shared-resource lock still held on it; in
-team-mode, remove the worktree with plain git. The coordinator's shared tab
-remains open.
+Confirm the merge or commit reference, then record the single review disposition required by `choosing-graph` against that reference. For a dispatched task, invoke `dispatching-work`'s wrap-up branch to close its pane, instruction, and shared-resource locks. In team-mode, remove the worktree with plain git.
 
-If the primary checkout tracks the merged base, is clean, and is intended for
-subsequent direct work, fast-forward it after removing the team-mode worktree.
-Use the app's established remote/tracking configuration. When those conditions
-do not hold, report the merged reference and leave checkout synchronization to
-the owning workflow.
+If the primary checkout tracks the merged base, is clean, and is intended for subsequent direct work, fast-forward it after removing the team-mode worktree. Use the app's established remote/tracking configuration. When those conditions do not hold, report the merged reference and leave checkout synchronization to the owning workflow.
 
 If the task originated from a tracker ticket, this skill (not the agent) updates it now that the lifecycle is actually complete.
 
-**Verification:** the completion reference is confirmed, not assumed; the adversarial review beside the anchor is discharged against the confirmed reference and its findings are dispositioned, not assumed; a work-on-produced plan's disposition runs once per task, not once for the whole plan; the dispatch instruction is wrapped up, not left `in-progress`; in team-mode, the worktree is removed by this skill; any originating ticket is updated by this skill, not the agent.
+**Verification:** the completion reference and one review disposition are confirmed; each plan task closes once; any dispatch is wrapped up; a team-mode worktree is removed; any originating ticket is updated.
 
 ## References
 

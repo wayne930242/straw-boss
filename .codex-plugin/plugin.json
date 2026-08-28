@@ -1,7 +1,7 @@
 {
   "name": "straw-boss",
-  "version": "0.18.20",
-  "description": "Herdr-backed dispatch for Claude Code and Codex: route work into app-rooted agents, track provider-neutral plans, and enforce a coordinated git lifecycle.",
+  "version": "0.18.21",
+  "description": "Route work through the smallest sufficient loop, from direct bounded tasks to durable app-rooted coordination.",
   "author": {
     "name": "Wei Hung",
     "url": "https://github.com/wayne930242"
@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "straw-boss",
     "shortDescription": "Dispatch and coordinate app-rooted agents",
-    "longDescription": "Route implementation, audit, research, and diagnosis work into the right app-rooted Claude or Codex agent, with durable status and lifecycle coordination.",
+    "longDescription": "Handle bounded work directly, fan out clear branches, or coordinate durable app-rooted Claude and Codex workrooms with provider-neutral status and git lifecycle tracking.",
     "developerName": "Wei Hung",
     "category": "Productivity",
     "capabilities": [

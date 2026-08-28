@@ -328,8 +328,8 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
 
         normalize = lambda source: " ".join(source.replace("`", "").split())
         self.assertIn(
-            "Target-app context discovery belongs to the dispatched agent",
-            normalize(roles),
+            "target-app context discovery belongs to the dispatched agent",
+            normalize(roles).lower(),
         )
         self.assertIn(
             "Target-app implementation, precedent, and local-context discovery stays with the worker",
@@ -346,7 +346,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             normalize(contract_source),
         )
 
-    def test_target_app_research_dispatches_for_explanatory_evidence(self) -> None:
+    def test_target_app_work_uses_the_smallest_sufficient_execution_tier(self) -> None:
         roles = (ROOT / "docs" / "roles.md").read_text()
         context = (ROOT / "CONTEXT.md").read_text()
         orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
@@ -357,29 +357,24 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         troubleshooting = (ROOT / "skills" / "troubleshooting-app" / "SKILL.md").read_text()
 
         normalize = lambda source: " ".join(source.replace("`", "").split())
-        for source in (roles, context, orchestrator):
-            self.assertIn(
-                "dispatches that investigation instead of reading across managed app roots",
-                normalize(source),
-            )
-        self.assertIn(
+        self.assertIn("smallest sufficient execution tier", normalize(boss_say))
+        self.assertIn("current agent carries a bounded single-loop", normalize(boss_say))
+        self.assertNotIn(
             "Any item that must read under a managed app root uses a dispatched agent",
             normalize(boss_say),
         )
         self.assertIn(
-            "Bounded investigation may use a confirmed lower-tier work route",
-            normalize(boss_say),
+            "bounded investigation may use a confirmed lower-tier work route",
+            normalize(boss_say).lower(),
         )
-        self.assertIn(
-            "managed-app files makes dispatch mandatory",
-            normalize(work_on),
-        )
+        self.assertIn("returns the resolved app to its caller", normalize(work_on))
+        self.assertNotIn("managed-app files makes dispatch mandatory", normalize(work_on))
         self.assertNotIn("Reads/explanations that don't change code — answer inline", work_on)
         for source in (investigating, inspecting):
             normalized = normalize(source)
-            self.assertIn("always dispatches", normalized)
+            self.assertIn("smallest sufficient loop", normalized)
             self.assertIn("evidence references", normalized)
-            self.assertIn("explanatory", normalized)
+            self.assertIn("evidence-backed", normalized)
             self.assertNotIn("- **Solo:**", source)
 
         normalized_troubleshooting = normalize(troubleshooting)
@@ -390,6 +385,9 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("explanatory", normalized_troubleshooting)
         self.assertNotIn("- **Solo:**", troubleshooting)
 
+        for source in (roles, context, orchestrator):
+            self.assertIn("once work is dispatched", normalize(source).lower())
+
     def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:
         roles = (ROOT / "docs" / "roles.md").read_text()
         context = (ROOT / "CONTEXT.md").read_text()
@@ -399,7 +397,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         contract_source = (ROOT / "scripts" / "dispatch_state.py").read_text()
 
         for source in (roles, context, orchestrator):
-            self.assertIn("own the loop, not the work", source.lower())
+            self.assertIn("smallest sufficient loop", source.lower())
             self.assertNotIn("adjust an item's spec", source)
         self.assertIn("accept", roles.lower())
         self.assertIn("user and dispatched agent", roles)
@@ -655,10 +653,10 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
 
         normalized = " ".join(injected.replace("`", "").split())
         for boundary in (
-            "Own the loop, not the work",
+            "Use the smallest sufficient loop",
             "specification, design, implementation, and the verification method",
             "inside that anchor",
-            "dispatches that investigation instead of reading across managed app roots",
+            "Once work is dispatched",
             "Keep the lifecycle event-driven",
             "A dispatch reports itself",
             "spend the time between events on other coordination or on the user's conversation",

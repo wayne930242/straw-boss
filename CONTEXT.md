@@ -4,20 +4,9 @@ Canonical actor names and authority live in `docs/roles.md`.
 
 ## Working model
 
-**Own the loop, not the work.** The main agent selects dispatch mechanics,
-schedules dependencies, supplies the user requirement, necessary hints, and
-already-known coordination facts, names the reality anchor and arranges its
-checkpoint, acts on status events, and cleans up. The worker discovers
-target-app implementation context itself. A Herdr-launched session is an
-independent dispatched agent: it and the user decide the specification, design,
-implementation, and the verification method inside the reality anchor the
-dispatch names. The main agent accepts those decisions.
+**Use the smallest sufficient loop.** The main agent carries bounded work directly. When a separate workroom is useful, it selects dispatch mechanics, schedules dependencies, names the reality anchor, acts on status events, and cleans up. Once work is dispatched, that agent discovers target-app context and owns the specification, design, implementation, and the verification method inside the reality anchor with the user.
 
-When coordination or integration needs target-app investigation or current-state
-research, the main agent dispatches that investigation instead of reading across
-managed app roots. The worker returns an explanatory conclusion with evidence
-references; a confirmed lower-tier work route is appropriate for bounded fact
-gathering.
+Once work is dispatched, target-app investigation stays in that workroom and returns an explanatory conclusion with evidence references. A confirmed lower-tier work route is appropriate for bounded fact gathering.
 
 Main-to-worker communication carries explicit user direction, verified
 cross-task facts, or coordinator-owned action results. A conflict returns to the

@@ -7,10 +7,7 @@ description: Use when the user wants to understand how something currently works
 
 See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
 
-Resolve the app, then dispatch the actual research into it. Managed-app
-current-state research always dispatches so the app's agent system loads only in
-the worker session, not the main agent's coordination context. This skill does
-not reimplement investigation methodology.
+Resolve the app, choose the smallest sufficient loop through `choosing-graph`, and produce an evidence-backed explanation. This skill supplies the app boundary; the selected research skill supplies the method.
 
 ## Task 1: Resolve the app
 
@@ -21,26 +18,10 @@ Invoke `work-on` now. Do not proceed without the target app.
 
 **Verification:** the target app(s) are established before Task 2, or you've surfaced `work-on`'s clarifying question / out-of-scope result instead of proceeding.
 
-## Task 2: Dispatch an evidence-bearing investigation
+## Task 2: Run an evidence-bearing investigation
 
-Send each resolved app through `dispatching-work` as a worker rooted in that
-app's directory. A bounded investigation may resolve to a confirmed lower-tier
-work route, such as Haiku or a lower-tier Codex model; do not override the
-project's confirmed route with an invented model choice.
+For a bounded single-loop, continue in the current agent with the app's instructions loaded. Use fan-out for clear independent branches, or `dispatching-work` when the research benefits from a separate durable workroom. A confirmed lower-tier work route may carry bounded fact gathering.
 
-Frame the task around what current behavior, structure, mechanism, cause, or
-impact the worker must explain. Require evidence references such as file and
-line locations, tests, logs, commands, or generated artifacts. The deliverable
-is an explanatory, evidence-backed account of the finding, and those references
-are what this work's anchor attacks: research has nothing to operate, so
-`choosing-graph` anchors it on an independent agent's adversarial review of the
-report. The worker decides whether to run an app-local research skill or global
-`investigating`; the generated contract supplies instruction-keyed status and
-communication commands.
+Frame the work around the behavior, structure, mechanism, cause, or impact to explain. Require file/line, test, log, command, or artifact evidence references. These references are what this work's anchor attacks; with no operable artifact, adversarial-review is the reality anchor for the finished account.
 
-Target-app file access stays inside the worker. The main agent integrates the
-worker's conclusion and evidence references when it returns.
-
-**Verification:** the research ran inside the app's dispatched worker; its report
-explains the finding and carries evidence references; the main agent did not load
-the target app's files.
+**Verification:** the report explains the finding, cites evidence, and records its anchor disposition.

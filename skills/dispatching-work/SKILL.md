@@ -5,10 +5,7 @@ description: Internal machinery that starts, tracks, lists, and closes out the a
 
 ## Overview
 
-See `docs/roles.md` for the **own the loop, not the work** boundary. This skill
-implements dispatch mechanics; a launched Herdr agent and the user choose its
-specification, design, implementation, and the verification method inside the
-reality anchor the brief names.
+See `docs/roles.md` for the **smallest sufficient loop** boundary. This skill implements dispatch mechanics once a separate workroom is selected; a launched Herdr agent and the user choose its specification, design, implementation, and the verification method inside the reality anchor the brief names.
 
 **The unit this skill manages is the agent, not the app.** An app (`.claude/straw-boss/apps.json`, resolved upstream by `work-on`) is only *where* an agent is rooted — this skill starts the agent there, tracks it, and closes it out; it never itself decides which app a request belongs to. Every dispatched task is one agent, tracked as one instruction file under `~/.straw-boss/dispatch/` — the user's home directory, not the target project checkout (see `init`). This skill covers: **dispatch** a single agent (Tasks 1-5), **dispatch a plan** (Branch below, when `work-on` produced a multi-task dependency graph — one agent per task), **list**, and **wrap up**. Exact CLI/JSON syntax lives in `references/` — `dispatch-mechanics.md` (single-agent dispatch + permission-mode detection), `plan-mechanics.md` (plan/status schemas, worktree repair heredoc, and the provider-neutral status watcher), `cross-session-coordination.md` (making the main agent addressable — herdr pane id primary, with provider-specific fast channels — plus mid-task interrupt syntax), `shared-resource-coordination.md` (a worktree isolates files, not a fixed port or a shared DB another *main agent's* task might collide on — one command per case: `claim-port` for a flexible port, `wait` for a fixed port or DB migration) — read the relevant one for the exact command before running it. Every requirement below is real, not a pointer to go read something else first. For a specific agent's actual live content or progress — not just its status — invoke `peeking-work` instead of reading a pane/transcript inline here.
 
@@ -154,15 +151,7 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
    from the pane being closed alone — state `done` or `failed` and why, from
    evidence you can point to. A read-only dispatch, or one whose status record
    is already terminal, skips this step.
-5. If this instruction landed an ordinary programming change and neither `shipping-task` Task 6 nor `boss-say` Task 7 already dispositioned its review, confirm the instruction's own completion reference from its terminal report, confirm the adversarial review beside its anchor was discharged against that reference, and disposition what it reports — closed here, or carried into a named follow-up — before archiving it. A read-only dispatch carries no change and skips this step.
+5. For a landed programming change whose review is not recorded yet, confirm the completion reference and apply `choosing-graph`'s single review checkpoint before archiving.
 6. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
 
-**Verification:** the worker pane is closed only once its own status record already
-reports a terminal status, before the file is archived; every shared-resource lock
-on this instruction is released before `wrap-up-task.py` runs; a recovered terminal
-status (Step 4) names an explicit status value and a traceable note, never inferred
-from the pane being closed, and only follows a confirmed-unreachable worker pane; a
-landed change not already dispositioned by `shipping-task` Task 6 or `boss-say`
-Task 7 has its completion reference confirmed and its adversarial review discharged
-and dispositioned before the instruction is archived; the coordinator pane and
-shared tab remain open.
+**Verification:** the worker pane closes after terminal status; every shared-resource lock on this instruction is released before `wrap-up-task.py` runs; any recovered status carries traceable evidence; a landed change has one confirmed completion reference and one review disposition before archive; the coordinator pane and shared tab remain open.

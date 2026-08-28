@@ -7,10 +7,7 @@ description: Use when the user wants to check or audit something against existin
 
 See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
 
-Resolve the app, then dispatch the actual audit into it. A managed-app audit
-always dispatches so the app's rules and agent system load only in the worker
-session, not the main agent's coordination context. This skill does not
-reimplement audit methodology.
+Resolve the app, choose the smallest sufficient loop through `choosing-graph`, and assess it against real rule sources. This skill supplies the app boundary; the selected audit skill supplies the method.
 
 ## Task 1: Resolve the app
 
@@ -21,25 +18,10 @@ Invoke `work-on` now. Do not proceed without the target app.
 
 **Verification:** the target app(s) are established before Task 2, or you've surfaced `work-on`'s clarifying question / out-of-scope result instead of proceeding.
 
-## Task 2: Dispatch an evidence-bearing audit
+## Task 2: Run an evidence-bearing audit
 
-Send each resolved app through `dispatching-work` as a worker rooted in that
-app's directory. A bounded audit may resolve to a confirmed lower-tier work
-route, but do not invent a model choice outside the configured route.
+For a bounded single-loop, continue in the current agent with the app's instructions loaded. Use fan-out for clear independent branches, or `dispatching-work` when the audit benefits from a separate durable workroom. A confirmed lower-tier work route may carry a bounded audit.
 
-Frame the audit around which rules apply, how the target behaves against them,
-and what consequence follows. Require evidence references to the exact rule
-source and observed implementation, test, log, or artifact. The deliverable is
-an explanatory, evidence-backed assessment, and those references are what this
-work's anchor attacks: an audit has nothing to operate, so `choosing-graph`
-anchors it on an independent agent's adversarial review of the report. The
-worker decides whether to run the app's local audit skill or global
-`inspecting`; the generated contract supplies instruction-keyed status and
-communication commands.
+Frame the audit around the applicable rule, observed behavior, and consequence. Require evidence references to the exact rule and implementation, test, log, or artifact. These references are what this work's anchor attacks; with no operable artifact, adversarial-review is the reality anchor for the finished assessment.
 
-Target-app rule and file access stays inside the worker. The main agent
-integrates the worker's assessment and evidence references when it returns.
-
-**Verification:** the audit ran inside the app's dispatched worker against its
-real rule sources; its report explains the assessment and carries evidence
-references; the main agent did not load the target app's files.
+**Verification:** the evidence-backed assessment explains the result, cites both rule and observed evidence, and records its anchor disposition.

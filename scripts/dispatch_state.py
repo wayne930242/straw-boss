@@ -157,9 +157,7 @@ This contract is mandatory for this dispatched session.
 - State your own coordination graph for this task before you start, through
   `choosing-graph`; the main agent already stated its own when it dispatched
   you.
-- An ordinary programming change carries an independent adversarial review of
-  the finished result beside its anchor. Run it yourself before reporting
-  done — {review_route} — unless this dispatch says the main agent runs it.
+- Group related edits into one coherent change-set. After primary verification, run one fresh-context adversarial review of that finished change-set — {review_route} — and report its disposition with the terminal result. The brief states when the main agent owns this review instead.
 - Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or
   agent names for cross-session communication.
 - Report progress with:
