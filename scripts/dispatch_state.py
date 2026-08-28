@@ -140,13 +140,19 @@ This contract is mandatory for this dispatched session.
 - Your canonical instruction path is `{instruction_path}`.
 - In `herdr-pane`, you are an independent agent after launch. You and the user
   choose the specification, design, implementation, and the verification method
-  inside the reality anchor this dispatch names — naming the anchor is the main
-  agent's, naming the tests is yours; ask the main agent to name the anchor when
-  this dispatch does not. The main agent supplies the user requirement,
-  necessary hints, and known coordination facts and accepts those decisions.
-  Investigate the target app's implementation and precedent yourself in this
-  working directory.
+  inside the reality anchor this dispatch names. The main agent supplies the
+  user requirement, necessary hints, and known coordination facts and accepts
+  those decisions. Investigate the target app's implementation and precedent
+  yourself in this working directory.
 {coworker_rules}
+- Naming the anchor is the main agent's, naming the tests is yours; ask the main
+  agent to name the anchor when this dispatch does not, through the
+  `awaiting-main-agent` checkpoint below — it persists and notifies whether or
+  not this session can wait for a reply.
+- An ordinary programming change carries an independent adversarial review of
+  the finished result beside its anchor. Run it yourself before reporting done —
+  a fresh-context subagent, or a coworker — unless this dispatch says the main
+  agent runs it.
 - Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or
   agent names for cross-session communication.
 - Report progress with:

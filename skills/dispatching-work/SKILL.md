@@ -56,14 +56,18 @@ Invoke `choosing-graph` when the graph and anchor are not fixed yet — every
 dispatch arrives here, whether a specialist skill routed it or the user named
 one directly. The brief then names the reality anchor it settled on, and the
 port number when a frontend human or pseudo-human anchor made the main agent
-claim one. It names the anchor only — the seam, cases, and tools inside it are
-the worker's and the user's.
+claim one. Inside the anchor the seam, cases, and tools are the worker's and the
+user's. The contract already tells every worker to run the adversarial review an
+ordinary programming change carries; the brief says so only when the main agent
+runs it instead.
 
 Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates Claude's session id and every provider's immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind, this session's provider, and the validated pane/provider-fingerprint pair from Task 1. Never hand-write the JSON, contract, or UUID.
 
-**Verification:** every brief statement traces to the user request, a necessary
-hint or constraint, or an already-known coordination state; the brief names the
-anchor it settled on without prescribing the method inside it; target-app
+**Verification:** every brief statement about the work traces to the user
+request, a necessary hint or constraint, or an already-known coordination state;
+the coordination this dispatch fixed is the brief's own — the brief names the
+anchor it settled on without prescribing the method inside it, and says so when
+the main agent runs the adversarial review instead of the worker; target-app
 discovery is assigned to the worker; instruction and hashed contract exist with
 `pending` status before any agent starts.
 
@@ -134,7 +138,8 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 3. Release any shared-resource lock still held on this instruction — the one the
    main agent claimed at dispatch, and any the worker reported claiming without
    confirming release. `references/shared-resource-coordination.md`'s "Releasing
-   a dispatch-time claim" covers both; every terminal status reaches here.
+   every lock on a wrapped-up instruction" covers both; every terminal status
+   reaches here.
 4. Call `wrap-up-task.py` — sets `wrapped-up`, archives the instruction file and, if present, its `.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts") together, and for a plan task syncs `plan.json` to the terminal status read from that task's own status file. Refuses if a status record exists and isn't yet terminal (`done`/`failed`/`cancelled`) — for a plan task from its `status/<task_id>.json`, for a standalone dispatch from its own `.status.json` if one was ever written (no record at all is not itself a refusal — an older dispatch, or a `claude-p` one confirmed done by process exit, may legitimately have none). Never `mv`/`Edit` this by hand.
 
 **Verification:** the worker pane is confirmed closed before the file is archived;

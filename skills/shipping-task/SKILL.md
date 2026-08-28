@@ -57,6 +57,10 @@ Build an outcome-oriented brief for `dispatching-work`:
 - The worker and user choose the **specification, design, implementation, and
   the verification method inside the reality anchor the brief names** in the
   dispatched session.
+- Every ordinary programming change carries an independent adversarial review of
+  the finished result beside its anchor (`choosing-graph`). The worker runs it in
+  its own session by default, so say so in the brief only when this skill will
+  dispatch it against the committed result instead.
 - Include a constraint only when it is verified, task-specific, and materially changes the acceptable result. Prefer a positive statement with its reason over a preventive list of things not to do.
 - Omit **generic lifecycle prose**, reporting commands, provider routing, checkpoint mechanics, tracker policy, and defensive reminders already supplied by the generated contract, this skill, or the target app's own instructions.
 
@@ -101,9 +105,15 @@ Use the app's established remote/tracking configuration. When those conditions
 do not hold, report the merged reference and leave checkout synchronization to
 the owning workflow.
 
+The adversarial review this change carries beside its anchor is discharged
+against that confirmed reference: the worker's own, reported with the lifecycle,
+or one dispatched from here on the committed result. Disposition what it reports
+— closed here, or carried into a named follow-up task — before the task counts
+as complete.
+
 If the task originated from a tracker ticket, this skill (not the agent) updates it now that the lifecycle is actually complete.
 
-**Verification:** the completion reference is confirmed, not assumed; the dispatch instruction is wrapped up, not left `in-progress`; in team-mode, the worktree is removed by this skill; any originating ticket is updated by this skill, not the agent.
+**Verification:** the completion reference is confirmed, not assumed; the adversarial review beside the anchor is discharged against the confirmed reference and its findings are dispositioned, not assumed; the dispatch instruction is wrapped up, not left `in-progress`; in team-mode, the worktree is removed by this skill; any originating ticket is updated by this skill, not the agent.
 
 ## References
 

@@ -40,7 +40,7 @@ on the same candidate; the actual bind remains the final availability check.
 
 **The worker binds that number and never re-runs the claim.** The lock is keyed on the port number alone and carries no holder identity, so a second `claim-port` from the very same holder reads its own live lock as contention and walks to the next free candidate — the worker would bind a number nobody was told about while the user watches the first one, and leak a second lock doing it. (The self-probe caveat above is a different failure and applies only once a server is already bound; at dispatch time nothing is listening yet.)
 
-**Releasing a dispatch-time claim — every terminal status, every path.** The worker never claimed the dispatch-time lock, so nothing it does releases it and it has nothing to report about it; a lock the worker claimed inside its own task and reported without confirming release is released here too. Whoever wraps the instruction up releases both: `dispatching-work`'s Wrap-up branch for a standalone dispatch, the same skill's plan auto-detach for a batch item or a plan task. `done` is not an exception.
+**Releasing every lock on a wrapped-up instruction — every terminal status, every path.** The worker never claimed the dispatch-time lock, so nothing it does releases it and it has nothing to report about it; a lock the worker claimed inside its own task and reported without confirming release is released here too. Whoever wraps the instruction up releases both: `dispatching-work`'s Wrap-up branch for a standalone dispatch, the same skill's plan auto-detach for a batch item or a plan task. `done` is not an exception.
 
 ## Shared DB migrations — always the lock
 

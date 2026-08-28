@@ -40,6 +40,11 @@ coordination loop, and by what mechanism.
   still settling. It is the only graph that writes
   `~/.straw-boss/plans/<slug>/plan.json`; the other two carry no dispatch plan.
 
+`orchestrator-worker` is settled ahead of the other two: more than one
+app-rooted worker under one coordination loop is that shape whatever else runs
+beside it, because it alone writes the dispatch plan. Subagents the coordinator
+runs alongside those workers do not move it.
+
 Between **single-loop** and **sub-agent fan-out/fan-in**, the deciding question
 is whether a branch of the work itself runs in a subagent: if one does, the
 shape is fan-out. The anchor's own check — including an independent review
@@ -61,8 +66,12 @@ agent — is not a branch of the work and never changes the graph.
   and the requirement, never your own reasoning about them. Every ordinary
   programming change carries adversarial-review beside whichever anchor above
   applies, and it can serve as the anchor itself when the other three have no
-  checkpoint to offer. The worker reaches for it through its own `Agent` tool or
-  `bringing-coworker`.
+  checkpoint to offer. Two routes discharge it: the worker reaches for it
+  through its own `Agent` tool or `bringing-coworker`, or the main agent
+  dispatches it against the committed result. The generated contract carries
+  that obligation to every worker, and the skill that confirms the change landed
+  confirms the review happened too — `shipping-task` Task 6, and `boss-say`
+  Task 7 for a batch item.
 
 Read-only work — an audit, research, a separate diagnosis — has no artifact to
 operate and no change to go red, so adversarial-review is its anchor. What that
@@ -83,4 +92,6 @@ re-claim, and the release step:
 **Verification:** the graph and the anchor are both named before work starts;
 `plan.json` exists only under orchestrator-worker; a frontend human or
 pseudo-human anchor carries an assigned port in the dispatch instruction; the
-brief names the anchor and leaves the method inside it to the worker.
+brief names the anchor and leaves the method inside it to the worker; an
+ordinary programming change has an adversarial review beside its anchor, run by
+the worker or dispatched by the main agent.

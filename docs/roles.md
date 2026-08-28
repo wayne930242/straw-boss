@@ -40,6 +40,11 @@ the user and dispatched agent own
 the task conversation and work definition; the main agent accepts their decision
 and keeps the orchestration loop moving.
 
+**The coordination graph is coordination too.** The main agent states how the
+agents on a task are wired — single-loop, sub-agent fan-out/fan-in, or
+orchestrator-worker — before it dispatches, and a dispatched agent states its own
+for its own task. `choosing-graph` holds the criterion.
+
 **The reality anchor is coordination; the method inside it is work.** The main
 agent names which anchor proves a task — testing, pseudo-human, human, or an
 independent agent's adversarial review — and arranges its checkpoint, including

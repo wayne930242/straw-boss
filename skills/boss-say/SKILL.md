@@ -130,7 +130,9 @@ Which of these applies was already decided in Task 1. The one thing to check her
 
 Once every task in the plan is terminal, report a summary: how many `done`, how many `failed` and why (from each failed task's status-file `note`), and how many `cancelled` and why (from each cancelled task's own note — the main agent's own reason for ending it). This is the same completion condition `dispatching-work`'s own plan branch uses — judged across all tasks, never on the first one finishing. Stop the status watcher (one-shot) or send the final `ScheduleWakeup({stop: true})` (self-paced) as the last step, not an afterthought.
 
-**Verification:** the batch is reported complete only once every task's status is `done`, `failed`, or `cancelled`, never earlier; a `cancelled` task is counted and explained in the summary, not silently dropped from both the `done` and `failed` tallies.
+A batch item that landed an ordinary programming change carries the same adversarial review beside its anchor as any other change — batch items reach this task instead of `shipping-task` Task 6, so the disposition happens here: confirm the review was discharged against the item's own commit reference, and close what it reports or carry it into a named follow-up.
+
+**Verification:** the batch is reported complete only once every task's status is `done`, `failed`, or `cancelled`, never earlier; a `cancelled` task is counted and explained in the summary, not silently dropped from both the `done` and `failed` tallies; every item that landed a change has its adversarial review discharged and dispositioned, not assumed.
 
 ## Branch: Status query, or closing out one dispatch
 

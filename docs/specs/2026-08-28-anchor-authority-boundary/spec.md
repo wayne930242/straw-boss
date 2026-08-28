@@ -38,6 +38,10 @@
   `investigating-app`, and `troubleshooting-app` already require; those
   references make the attack possible rather than being the anchor. Both
   read-only skills say so in their own deliverable paragraph.
+
+  Superseded on 2026-08-28 by `docs/specs/2026-08-28-close-rereview-findings/`:
+  the rule reaches `troubleshooting-app`'s integration preflight rather than the
+  whole skill, and that skill's other branch takes the testing anchor.
 - A frontend human/pseudo-human anchor has its port claimed by the main agent at
   dispatch, with `--ttl-seconds` set against the whole task's lifetime.
 - The worker binds that number and never re-runs the claim, because the lock is

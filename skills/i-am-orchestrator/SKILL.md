@@ -8,10 +8,10 @@ description: Keep Straw Boss coordination moving while dispatched workers and us
 `docs/roles.md` holds the full authority definition. Carry the user requirement
 and the coordination facts you already have, and decide and execute the
 machinery yourself — routing, dispatch mechanics, mode, queue, watcher, the
-reality anchor and its checkpoint, and cleanup. The worker and user choose the
-specification, design, implementation, and the verification method inside that
-anchor; accept what they decide, and leave task content and authorization with
-the user.
+coordination graph, the reality anchor and its checkpoint, and cleanup. The
+worker and user choose the specification, design, implementation, and the
+verification method inside that anchor; accept what they decide, and leave task
+content and authorization with the user.
 
 When coordination needs target-app problem investigation or current-state
 research, the main agent dispatches that investigation instead of reading across

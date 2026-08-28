@@ -63,6 +63,20 @@ def prose_surfaces(include_scripts: bool = False) -> list[Path]:
 
 
 
+def contract_bullets(contract: str) -> list[str]:
+    """The generated contract's top-level bullets, one string each.
+
+    A rule's scope in this file is positional: a sentence inside the bullet
+    that opens "In `herdr-pane`" is scoped to that mode, and the same sentence
+    in its own bullet is not.
+    """
+    return [
+        " ".join(block.replace("`", "").split())
+        for block in re.split(r"\n- ", contract)[1:]
+    ]
+
+
+
 class SkillInstructionQualityTests(unittest.TestCase):
     def test_skills_have_no_defensive_red_flags_sections(self) -> None:
         offenders = [
@@ -380,7 +394,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
             / "shared-resource-coordination.md"
         )
         self.assertIn(
-            "Releasing a dispatch-time claim -- every terminal status, every path",
+            "Releasing every lock on a wrapped-up instruction -- every terminal "
+            "status, every path",
             shared.replace("—", "--"),
         )
         self.assertIn("done is not an exception", shared)
@@ -397,7 +412,9 @@ class SkillInstructionQualityTests(unittest.TestCase):
                 ),
             ),
         ):
-            self.assertIn("Releasing a dispatch-time claim", source, name)
+            self.assertIn(
+                "Releasing every lock on a wrapped-up instruction", source, name
+            )
 
     def test_the_claim_port_command_is_written_out_exactly_once(self) -> None:
         """Single source of truth, checked by counting the real command."""
@@ -515,7 +532,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         allowed = [
             sentence
             for sentence in sentences(dispatching)
-            if "every brief statement traces to" in sentence
+            if "brief statement" in sentence and "traces to" in sentence
         ]
         self.assertEqual(len(allowed), 1, "one allowed-source list, in Task 3")
         self.assertNotIn("reality anchor", allowed[0])
@@ -570,7 +587,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         release = [
             block
             for block in paragraphs(shared.read_text())
-            if "Releasing a dispatch-time claim" in block
+            if "Releasing every lock on a wrapped-up instruction" in block
         ]
         self.assertEqual(len(release), 1, "the release rule lives in one paragraph")
         for case in (
@@ -593,10 +610,11 @@ class SkillInstructionQualityTests(unittest.TestCase):
 
         "subagent", "model", and "role" are each retired as the name of one
         concept and live as the name of another, so a blanket scan would be
-        wrong. The three coordination entries `969e0bd` added retire multi-word
-        coordination phrases instead, and those have to be dead in the skills --
-        otherwise the glossary retires a phrase the plugin is still using, in a
-        different sense, in the same task that states the concept.
+        wrong. The three coordination entries `969e0bd` added retire names for
+        the coordination concepts themselves, none of which carries a second
+        live sense, and those have to be dead in the skills -- otherwise the
+        glossary retires a name the plugin is still using, in a different sense,
+        in the same task that states the concept.
         """
         headwords: list[str] = []
         retired: dict[str, list[str]] = {}
@@ -693,6 +711,294 @@ class SkillInstructionQualityTests(unittest.TestCase):
             if stale.search(line)
         ]
         self.assertEqual(offenders, [])
+
+
+    def test_the_adversarial_review_obligation_reaches_every_worker(self) -> None:
+        """`choosing-graph` makes adversarial review unconditional for every
+        ordinary programming change and assigns the action to the worker.
+
+        The obligation never varies, so a per-dispatch free-text brief is the
+        wrong carrier: `shipping-task` -- the only path an ordinary programming
+        change takes -- never mentioned it, the generated contract never
+        mentioned it, and the brief carries the anchor beside which it runs,
+        not the review itself. The only delivery left was the worker choosing
+        to read a skill nothing told it to read.
+        """
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            import dispatch_state
+        finally:
+            sys.path.pop(0)
+
+        bullets = contract_bullets(
+            dispatch_state.render_dispatch_contract(
+                instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
+            )
+        )
+        carrying = [
+            bullet
+            for bullet in bullets
+            if "adversarial review" in bullet
+        ]
+        self.assertEqual(
+            len(carrying), 1, "the obligation is one standing contract bullet"
+        )
+        self.assertIn(
+            "An ordinary programming change carries an independent adversarial "
+            "review of the finished result beside its anchor",
+            carrying[0],
+        )
+        # Self-limiting: it says which dispatches it covers, and it names the
+        # route so a worker knows whether the action is its own.
+        self.assertIn("unless this dispatch says the main agent runs it", carrying[0])
+        # A standing rule cannot be scoped to one transport.
+        self.assertNotIn("herdr-pane", carrying[0])
+        self.assertNotIn("claude-p", carrying[0])
+
+    def test_both_routes_that_discharge_the_review_are_named(self) -> None:
+        """The rule assigned the action to the worker alone, while this repo's
+        own practice dispatches the review from the coordinator after the
+        change lands. A rule its own project does not follow is the defect
+        class this spec family exists to close, so both routes are named.
+        """
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn(
+            "the worker reaches for it through its own Agent tool or bringing-coworker",
+            graph,
+        )
+        self.assertIn(
+            "the main agent dispatches it against the committed result", graph
+        )
+        self.assertIn(
+            "an ordinary programming change has an adversarial review beside its "
+            "anchor, run by the worker or dispatched by the main agent",
+            graph,
+        )
+
+    def test_the_skill_that_carries_ordinary_changes_states_and_checks_the_review(
+        self,
+    ) -> None:
+        """H's original complaint, for the skill three rounds never named.
+
+        `shipping-task` carries every ordinary programming change and said
+        nothing about the review those changes are required to carry, and no
+        step anywhere confirmed one had happened.
+        """
+        shipping = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
+        self.assertIn(
+            "Every ordinary programming change carries an independent adversarial "
+            "review of the finished result beside its anchor",
+            shipping,
+        )
+        self.assertIn("Disposition what it reports", shipping)
+        self.assertIn(
+            "the adversarial review beside the anchor is discharged against the "
+            "confirmed reference and its findings are dispositioned, not assumed",
+            shipping,
+        )
+
+    def test_the_missing_anchor_fallback_applies_in_every_dispatch_mode(self) -> None:
+        """`cc690f3` put the fallback inside the bullet that opens "In
+        `herdr-pane`, you are an independent agent after launch."
+
+        `render_dispatch_contract` takes no mode, so a headless worker reads the
+        same text and reads the fallback as inapplicable to it. The rule is a
+        worker-to-main action that needs no user in the loop, so nothing about
+        it depends on the transport.
+        """
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            import dispatch_state
+        finally:
+            sys.path.pop(0)
+
+        bullets = contract_bullets(
+            dispatch_state.render_dispatch_contract(
+                instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
+            )
+        )
+        fallback = "ask the main agent to name the anchor when this dispatch does not"
+        carrying = [bullet for bullet in bullets if fallback in bullet]
+        self.assertEqual(len(carrying), 1, "the fallback is stated once")
+        self.assertNotIn("In herdr-pane", carrying[0])
+        self.assertNotIn("claude-p", carrying[0])
+        # And it stays executable where no reply can arrive mid-task.
+        self.assertIn("awaiting-main-agent", carrying[0])
+        mode_scoped = [bullet for bullet in bullets if "In herdr-pane" in bullet]
+        self.assertEqual(len(mode_scoped), 1)
+        self.assertNotIn(fallback, mode_scoped[0])
+
+    def test_the_brief_source_rule_governs_what_the_brief_says_about_the_work(
+        self,
+    ) -> None:
+        """Task 3's Verification opens with a universal over *every* brief
+        statement and then, in the next clause, requires a statement none of
+        the three listed sources can produce.
+
+        The anchor is a decision the dispatch makes, not a fact the main agent
+        already held, so the universal has to say what it actually governs
+        rather than gain a fourth source -- which would restore the deleted
+        exception under a new name.
+        """
+        dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
+        self.assertIn(
+            "every brief statement about the work traces to the user request, "
+            "a necessary hint or constraint, or an already-known coordination state",
+            dispatching,
+        )
+        self.assertIn(
+            "the coordination this dispatch fixed is the brief's own", dispatching
+        )
+        # The brief carries the review route too, since the contract's default
+        # is only overridden by what the brief says.
+        self.assertIn(
+            "the brief names the anchor it settled on without prescribing the "
+            "method inside it",
+            dispatching,
+        )
+        self.assertIn(
+            "says so when the main agent runs the adversarial review instead of "
+            "the worker",
+            dispatching,
+        )
+
+    def test_the_coordination_graph_is_named_where_authority_is_defined(self) -> None:
+        """`docs/roles.md` calls itself the single execution-time definition of
+        who decides what, and `choosing-graph` calls the graph and the anchor
+        both coordination -- but only the anchor was defined there, and the
+        stance the SessionStart hook injects listed only the anchor too.
+        """
+        roles = normalized(ROOT / "docs" / "roles.md")
+        self.assertIn(
+            "The coordination graph is coordination too", roles
+        )
+        self.assertIn("a dispatched agent states its own for its own task", roles)
+        orchestrator = normalized(ROOT / "skills" / "i-am-orchestrator" / "SKILL.md")
+        self.assertIn("the coordination graph", orchestrator)
+
+    def test_orchestrator_worker_is_settled_before_the_two_way_tie_break(self) -> None:
+        """The tie-break adjudicates `single-loop` against fan-out and stops
+        there, on purpose. That leaves the third overlap unstated: a
+        coordinator running more than one app-rooted worker while also running
+        its own subagents satisfies `orchestrator-worker` and fan-out at once,
+        and only one of them writes a plan.
+        """
+        source = (ROOT / "skills" / "choosing-graph" / "SKILL.md").read_text()
+        precedence = [
+            block
+            for block in paragraphs(source)
+            if "settled ahead of the other two" in block
+        ]
+        self.assertEqual(len(precedence), 1, "one precedence rule, stated once")
+        self.assertIn("orchestrator-worker", precedence[0])
+        self.assertIn("whatever else runs beside it", precedence[0])
+        # It is a separate rule from the pair tie-break, which stays scoped.
+        self.assertNotIn(
+            "whether a branch of the work itself runs in a subagent", precedence[0]
+        )
+
+    def test_the_release_rules_own_title_covers_both_locks_it_releases(self) -> None:
+        """`cc690f3` widened the paragraph to a second lock that is not a
+        dispatch-time claim and left the title reading "Releasing a
+        dispatch-time claim" -- which is also how both pointers locate it.
+        """
+        shared = normalized(
+            ROOT
+            / "skills"
+            / "dispatching-work"
+            / "references"
+            / "shared-resource-coordination.md"
+        ).replace("—", "--")
+        self.assertIn(
+            "Releasing every lock on a wrapped-up instruction -- every terminal "
+            "status, every path",
+            shared,
+        )
+        self.assertNotIn("Releasing a dispatch-time claim", shared)
+        for name, source in (
+            ("Wrap-up branch", normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")),
+            (
+                "plan auto-detach",
+                normalized(
+                    ROOT
+                    / "skills"
+                    / "dispatching-work"
+                    / "references"
+                    / "plan-mechanics.md"
+                ),
+            ),
+        ):
+            self.assertIn("Releasing every lock on a wrapped-up instruction", source, name)
+            self.assertNotIn("Releasing a dispatch-time claim", source, name)
+
+    def test_a_superseded_spec_bullet_carries_its_forward_marker(self) -> None:
+        """A later spec declares one earlier bullet superseded; the bullet
+        itself carried no marker, so a reader arriving at the earlier spec
+        reads a description the tree no longer matches.
+
+        The repo's own convention is a forward marker on the superseded record
+        -- inline for one bullet, per `docs/qa/discover-qa-2026-08-26-launcher.md`.
+        """
+        superseding = "2026-08-28-close-rereview-findings"
+        declaration = re.search(
+            r"This supersedes the ([0-9a-z-]+) bullet",
+            normalized(ROOT / "docs" / "specs" / superseding / "spec.md"),
+        )
+        self.assertIsNotNone(declaration, "the superseding claim is still stated")
+        superseded = ROOT / "docs" / "specs" / declaration.group(1) / "spec.md"
+        marked = [
+            line
+            for line in normalized(superseded).split(". ")
+            if "Superseded on" in line
+        ]
+        self.assertNotEqual(marked, [], f"{superseded.name} carries no forward marker")
+        self.assertIn(superseding, " ".join(marked))
+
+    def test_every_path_that_lands_a_change_checks_the_review(self) -> None:
+        """`shipping-task` is not the only path an ordinary programming change
+        takes: `boss-say`'s capped batch dispatches its items through
+        `dispatching-work` Tasks 1-5 directly and closes them out in its own
+        Task 7, never reaching `shipping-task` Task 6.
+
+        A rule that names one acceptance point while two paths land changes is
+        the same defect class it exists to close.
+        """
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn(
+            "the skill that confirms the change landed confirms the review "
+            "happened too — shipping-task Task 6, and boss-say Task 7 for a "
+            "batch item",
+            graph,
+        )
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        self.assertIn(
+            "A batch item that landed an ordinary programming change carries the "
+            "same adversarial review beside its anchor as any other change",
+            boss_say,
+        )
+        self.assertIn(
+            "every item that landed a change has its adversarial review "
+            "discharged and dispositioned, not assumed",
+            boss_say,
+        )
+
+    def test_the_superseded_marker_is_its_own_block(self) -> None:
+        """A marker appended to the end of the claim it retires reads as part
+        of that claim. It has to be separable from the sentence it marks."""
+        superseded = (
+            ROOT
+            / "docs"
+            / "specs"
+            / "2026-08-28-anchor-authority-boundary"
+            / "spec.md"
+        )
+        blocks = [
+            block
+            for block in paragraphs(superseded.read_text())
+            if block.startswith("Superseded on")
+        ]
+        self.assertEqual(len(blocks), 1, "the marker stands on its own")
+        self.assertIn("2026-08-28-close-rereview-findings", blocks[0])
 
 
 if __name__ == "__main__":

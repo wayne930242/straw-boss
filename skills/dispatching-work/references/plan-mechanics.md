@@ -167,7 +167,7 @@ still depends on the watcher plus persisted status.
 Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization`, `awaiting-user-input`, or `awaiting-main-agent`, none of which is terminal — all three need the session to stay alive: one to be resumed once authorized, one to be answered directly by the user, one to be resolved directly by the main agent via `reply-to-worker.py`.
 
 When the status watcher emits `done`/`failed`, or the main agent has just written `cancelled` itself (Cancel may also emit through the watcher, but the authoring main agent already knows synchronously):
-1. Close the worker pane only; its tab is shared with the coordinator. For a team-mode task, then remove the worktree with plain git. Release any shared-resource lock still held on this instruction, whatever the terminal status — `shared-resource-coordination.md`'s "Releasing a dispatch-time claim".
+1. Close the worker pane only; its tab is shared with the coordinator. For a team-mode task, then remove the worktree with plain git. Release any shared-resource lock still held on this instruction, whatever the terminal status — `shared-resource-coordination.md`'s "Releasing every lock on a wrapped-up instruction".
 2. Call `wrap-up-task.py --app <app> --slug <slug> --plan <slug> --task-id <task_id>` — it archives the instruction and syncs `plan.json`'s `tasks[].status` to the terminal status it reads from the status file, in one call. Do not `mv`/`Edit` these by hand.
 3. Do **not** touch `plan.json.status` here — that only becomes `done` once every task in the plan is terminal (check across all tasks, not per-event).
 
