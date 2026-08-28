@@ -43,6 +43,20 @@ class AgentNamingTests(unittest.TestCase):
             agent_naming.derive_agent_name("worker", "REST API v3"), "rest-api-v3-worker"
         )
 
+    def test_derives_a_valid_name_for_a_digit_leading_app_slug(self) -> None:
+        import agent_naming
+
+        name = agent_naming.derive_agent_name("worker", "3d-printer-app")
+        self.assertRegex(name, agent_naming.NAME_PATTERN.pattern)
+        self.assertTrue(name.endswith("-worker"))
+
+    def test_derives_a_valid_name_for_a_symbol_only_app_slug(self) -> None:
+        import agent_naming
+
+        name = agent_naming.derive_agent_name("worker", "---")
+        self.assertRegex(name, agent_naming.NAME_PATTERN.pattern)
+        self.assertTrue(name.endswith("-worker"))
+
     def test_truncates_a_long_app_name_from_the_tail_to_fit_the_cap(self) -> None:
         import agent_naming
 

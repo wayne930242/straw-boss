@@ -168,8 +168,9 @@ Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-a
 
 When the status watcher emits `done`/`failed`, or the main agent has just written `cancelled` itself (Cancel may also emit through the watcher, but the authoring main agent already knows synchronously):
 1. Close the worker pane only; its tab is shared with the coordinator. For a team-mode task, then remove the worktree with plain git. Release any shared-resource lock still held on this instruction, whatever the terminal status — `shared-resource-coordination.md`'s "Releasing every lock on a wrapped-up instruction".
-2. Call `wrap-up-task.py --app <app> --slug <slug> --plan <slug> --task-id <task_id>` — it archives the instruction and syncs `plan.json`'s `tasks[].status` to the terminal status it reads from the status file, in one call. Do not `mv`/`Edit` these by hand.
-3. Do **not** touch `plan.json.status` here — that only becomes `done` once every task in the plan is terminal (check across all tasks, not per-event).
+2. If this task landed an ordinary programming change and neither `shipping-task` Task 6, `boss-say` Task 7, nor `dispatching-work`'s own Wrap-up branch already dispositioned its review, confirm the task's own completion reference from its terminal report, confirm the adversarial review beside its anchor was discharged against that reference, and disposition what it reports — closed here, or carried into a named follow-up — before Step 3 below archives it. A read-only dispatch carries no change and skips this step.
+3. Call `wrap-up-task.py --app <app> --slug <slug> --plan <slug> --task-id <task_id>` — it archives the instruction and syncs `plan.json`'s `tasks[].status` to the terminal status it reads from the status file, in one call. Do not `mv`/`Edit` these by hand.
+4. Do **not** touch `plan.json.status` here — that only becomes `done` once every task in the plan is terminal (check across all tasks, not per-event).
 
 **Once every task is terminal and `plan.json.status` is set to `done`, stop the status watcher** (`TaskStop`/the harness equivalent on its background task) — it does not self-terminate. This is the last step of marking a Plan done.
 

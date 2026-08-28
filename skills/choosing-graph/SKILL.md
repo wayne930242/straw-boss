@@ -73,7 +73,10 @@ agent — is not a branch of the work and never changes the graph.
   landed confirms the review happened too — `shipping-task` Task 6 for a task
   it drives to completion, `boss-say` Task 7 for a batch item, and
   `dispatching-work`'s own Wrap-up branch for a dispatch closed out directly by
-  neither.
+  neither. A plan or batch task's own terminal event may instead reach
+  `plan-mechanics.md`'s auto-detach procedure directly; its own guard carries
+  the identical check, so whichever of the two reaches a given task first is
+  what discharges it.
 
 Read-only work — an audit, research, a separate diagnosis — has no artifact to
 operate and no change to go red, so adversarial-review is its anchor. What that

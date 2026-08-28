@@ -23,7 +23,10 @@ def live_names(agent_list_payload: dict[str, Any]) -> set[str]:
 
 
 def _slug(text: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_-]+", "-", text.strip().lower()).strip("-")
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", text.strip().lower()).strip("-")
+    if not slug or not slug[0].isalpha():
+        slug = f"a{slug}"
+    return slug
 
 
 def derive_agent_name(role: str, app: str) -> str:

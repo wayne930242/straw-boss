@@ -1021,6 +1021,63 @@ class SkillInstructionQualityTests(unittest.TestCase):
             dispatching,
         )
 
+    def test_plan_auto_detach_dispositions_the_review_before_archiving(self) -> None:
+        """A fourth real close-out path exists beside the three
+        `choosing-graph` names: `plan-mechanics.md`'s "Auto-detach on
+        terminal state" is a complete, self-contained mechanical procedure
+        -- invoked by `dispatching-work`'s own wave loop on every
+        `done`/`failed` event -- that goes straight from closing the pane to
+        `wrap-up-task.py`, which archives the instruction, with no
+        disposition gate of its own. Unlike `boss-say`'s batch flow (which
+        has a guaranteed later Task 7 pass), nothing else guarantees the
+        review gets confirmed for a `work-on`-produced plan task if this
+        procedure's own terminal-event reaction gets there first. The
+        auto-detach procedure must carry the same guard the other three
+        acceptance points do, so it is safe to follow on its own.
+        """
+        plan_mechanics = normalized(
+            ROOT / "skills" / "dispatching-work" / "references" / "plan-mechanics.md"
+        )
+        self.assertIn(
+            "If this task landed an ordinary programming change and neither "
+            "shipping-task Task 6, boss-say Task 7, nor dispatching-work's "
+            "own Wrap-up branch already dispositioned its review",
+            plan_mechanics,
+        )
+        self.assertIn(
+            "confirm the task's own completion reference from its terminal "
+            "report, confirm the adversarial review beside its anchor was "
+            "discharged against that reference, and disposition what it "
+            "reports",
+            plan_mechanics,
+        )
+        wrap_up_index = plan_mechanics.index("Call wrap-up-task.py --app")
+        disposition_index = plan_mechanics.index(
+            "If this task landed an ordinary programming change"
+        )
+        self.assertLess(
+            disposition_index,
+            wrap_up_index,
+            "the review must be dispositioned before wrap-up-task.py archives "
+            "the instruction, or the gate reads too late to matter",
+        )
+
+    def test_choosing_graph_names_the_plan_auto_detach_path_too(self) -> None:
+        """`choosing-graph`'s enumeration named exactly three acceptance
+        points (`shipping-task` Task 6, `boss-say` Task 7,
+        `dispatching-work`'s own Wrap-up branch) even after
+        `plan-mechanics.md`'s auto-detach gained its own guard -- a fourth
+        real textual location that now discharges the same obligation. An
+        authoritative list that omits a real discharge point is the same
+        defect class this whole file exists to catch.
+        """
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn(
+            "A plan or batch task's own terminal event may instead reach "
+            "plan-mechanics.md's auto-detach procedure directly",
+            graph,
+        )
+
     def test_shipping_task_dispositions_a_work_on_plans_review_per_task(self) -> None:
         """Task 6 was written entirely in one-agent lifecycle language
         ("Once the agent reports the lifecycle is complete") while
@@ -1082,7 +1139,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
             "invoked, or the branch's own guard still reads undispositioned",
         )
 
-    def test_boss_say_dispositions_the_review_only_when_no_direct_close_out_did(
+    def test_boss_say_dispositions_the_review_only_when_no_earlier_pass_did(
         self,
     ) -> None:
         """The reciprocal half of `dispatching-work`'s guard: that branch
@@ -1090,12 +1147,17 @@ class SkillInstructionQualityTests(unittest.TestCase):
         Task 7 got there first, but nothing stopped a batch item manually
         closed out mid-batch through the "close out `<task>`" passthrough
         (dispositioned once at the Wrap-up branch) from being dispositioned
-        again once the whole batch later reaches Task 7.
+        again once the whole batch later reaches Task 7. `plan-mechanics.md`'s
+        auto-detach Step 2 -- run by every batch item's own per-item
+        auto-detach (Task 5 step 4) before Task 7 ever runs -- is the same
+        kind of earlier pass and needs the identical exemption, or Task 7
+        redundantly re-attempts a disposition every batch item already got.
         """
         boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
         self.assertIn(
-            "unless a direct close-out through dispatching-work's own "
-            "Wrap-up branch already dispositioned it",
+            "unless a direct close-out through dispatching-work's own Wrap-up "
+            "branch, or the item's own per-item auto-detach, already "
+            "dispositioned it",
             boss_say,
         )
 
