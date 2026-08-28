@@ -56,11 +56,17 @@ needs managed-app files dispatches at that boundary so exactly one app's agent
 system loads in the worker. Every investigation route remains accountable for
 an explanatory, evidence-backed result.
 
+Then fix the **coordination graph** and the **reality anchor** for the work
+through `choosing-graph`, and state both. They travel with the dispatch. A
+capped batch is always orchestrator-worker — the plan plus the refill loop below
+is that shape.
+
 **Verification:** the shape was decided here and stated out loud, with a reason;
 a single item was never turned into a batch plan; the user was not asked to pick
 the dispatch shape or execution tier; no main-agent or plain-subagent path reads
 inside a managed app root; every investigation asks for explanation plus
-evidence, not a binary answer.
+evidence, not a binary answer; the coordination graph and reality anchor are
+named before anything is dispatched.
 
 ## Task 2: Resolve each item's app
 
@@ -72,17 +78,17 @@ For each item, extract a task description and, if the project has more than one 
 
 **Verification:** every item in the batch has a task description and a resolved app; anything that turned out to need decomposition was pulled out and flagged, not folded in.
 
-## Task 3: Decide the batch-wide flow default
+## Task 3: Decide the batch-wide mode default
 
-Per resolved app, `forbidDirectCommit: true` forces the full flow for that item automatically — no question. For everything else, ask **once** for the whole batch — light flow or full flow default — never per item; fifty identical prompts is a defect, not thoroughness. A mixed batch (some apps forced to full flow, others taking the batch default) is expected and fine. This single answer is the only human checkpoint a light-flow item in the batch ever gets — its commit itself needs no authorization, so Task 5 step 8's stalled-batch detection never fires for it.
+Per resolved app, `forbidDirectCommit: true` forces team-mode for that item automatically — no question. For everything else, ask **once** for the whole batch — solo-mode or team-mode default — never per item; fifty identical prompts is a defect, not thoroughness. A mixed batch (some apps forced to team-mode, others taking the batch default) is expected and fine. This single answer is the only human checkpoint a solo-mode item in the batch ever gets — its commit itself needs no authorization, so Task 5 step 8's stalled-batch detection never fires for it.
 
-**Verification:** the flow question was asked at most once per batch invocation, not once per item.
+**Verification:** the mode question was asked at most once per batch invocation, not once per item.
 
 ## Task 4: Write the batch as a plan
 
 Derive the batch slug: a name the user gave the batch, or a slug from the source file's name if one was used, kebab-cased. This slug is load-bearing — it's how a later `/loop` tick finds this same batch again, so state it plainly in the confirmation and every progress report from here on.
 
-Confirm the resolved item list, each one's app, the chosen flow default, and the batch slug with the user before writing anything — this commits to real dispatches next. Then write `~/.straw-boss/plans/<batch-slug>/plan.json` using `dispatching-work`'s own plan schema (`references/plan-mechanics.md`) exactly — every task's `depends_on: []`. Create the empty `status/` and `artifacts/` directories the same way `work-on`'s own Task 5 does. No `grilling` pass here — there's no dependency graph to confirm, only the flat item list from Task 2.
+Confirm the resolved item list, each one's app, the chosen mode default, and the batch slug with the user before writing anything — this commits to real dispatches next. Then write `~/.straw-boss/plans/<batch-slug>/plan.json` using `dispatching-work`'s own plan schema (`references/plan-mechanics.md`) exactly — every task's `depends_on: []`. Create the empty `status/` and `artifacts/` directories the same way `work-on`'s own Task 5 does. No `grilling` pass here — there's no dependency graph to confirm, only the flat item list from Task 2.
 
 **Verification:** `plan.json` exists with one task per batch item, every `depends_on` empty, before any dispatch happens; the batch slug has been stated to the user.
 
@@ -99,7 +105,7 @@ reduction to the user.
 4. On a `done`/`failed`/`cancelled` status event for any in-flight task: receive the Herdr notification, auto-detach it, then refill the queue. `cancelled` is coordinator-authored only for an explicit user request or an objectively invalid dispatch, per `docs/roles.md`.
 5. `awaiting-authorization`/`awaiting-user-input` are not terminal and do not free a slot — report them the same way `dispatching-work`'s plan branch does (name the task, point at where to authorize or answer it), then leave them alone.
 6. `awaiting-main-agent` is also not terminal and does not free a slot. Resolve it in the same tick only with integrated context or a coordinator-owned action result: `reply-to-worker.py --worker-instruction-path <path> --reply "<answer or action result>"`. If it asks for a work-content decision, direct it to the user instead.
-7. **A feature-branch push notification is not a plan-status event — it never appears in `read-plan-status.py` or `watch-plan-status.py`.** A full-flow task pushed its own feature branch and opened or updated an MR/PR on its own (`shipping-task`'s Task 3/Overview, unchanged for a batch item) — it needed no authorization and was never waiting. Relay the script-delivered FYI to the user; a task with no live route records it in the progress trail. Don't treat it as `awaiting-authorization`, obtain authorization, or change slot accounting.
+7. **A feature-branch push notification is not a plan-status event — it never appears in `read-plan-status.py` or `watch-plan-status.py`.** A team-mode task pushed its own feature branch and opened or updated an MR/PR on its own (`shipping-task`'s Task 3/Overview, unchanged for a batch item) — it needed no authorization and was never waiting. Relay the script-delivered FYI to the user; a task with no live route records it in the progress trail. Don't treat it as `awaiting-authorization`, obtain authorization, or change slot accounting.
 8. **Idle in-flight tasks — peek, don't just trust the note.** Whenever every currently in-flight task is `awaiting-authorization`/`awaiting-user-input` — not only once in-flight reaches the cap — proactively invoke `peeking-work` on each one rather than waiting for its status file's `note` to fall short first. A static note can't tell "genuinely still waiting on the user" apart from "went silent — pane died, connection dropped, whatever — without ever reporting failure"; `peeking-work`'s live read can. Report every one by name and what the peek found. This is not a quiet tick; always surface it (see Task 6's `/loop` handling). If in-flight also equals the cap, call that out too — a **fully stalled batch**: nothing can be dispatched and nothing will free a slot without the user. (`awaiting-main-agent` never appears in this idle set — step 6 resolves it immediately, so it never sits waiting the way the other two wait on the user.)
 
 **Don't re-peek a task that hasn't changed since its last peek.** Once a task has been peeked and reported, a later event carrying the exact same unchanged `awaiting-*` state and note is confirmation, not a fresh trigger — skip the peek and repeat the prior finding instead. Peek it again only when something about it actually changes (a new note, a status transition), or — self-paced batches only — on a later `/loop` tick; never tighten `ScheduleWakeup`'s own pacing just to check an idle task sooner. Within a single one-shot turn, this means each idle task gets peeked once per continuous stretch of idleness, not once per watcher event.

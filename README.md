@@ -77,7 +77,8 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `boss-say` | **The entry point for everything.** Judges scale, judges solo-vs-dispatch per item, hands off to the matching specialist skill or its own batch mechanics |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |
 | `dispatching-work` | Internal dispatch machinery — picks the transport and resolves a work route (provider/profile/model/effort, plus Claude-only native advisor), writes the instruction, dispatches, lists/wraps up existing dispatches |
-| `shipping-task` | Decide the git lifecycle (worktree → develop → MR → merge → archive, or a direct commit), dispatch, commit and push its own feature branch freely, get authorization before every merge (and any push outside that branch) |
+| `choosing-graph` | Pick the coordination graph (single-loop, sub-agent fan-out/fan-in, orchestrator-worker) and the reality anchor (testing, pseudo-human, human, adversarial review) before work starts |
+| `shipping-task` | Decide the git lifecycle from how you regard the work — team-mode (worktree → develop → MR → merge → archive) or solo-mode (direct commit) — dispatch, commit and push its own feature branch freely, get authorization before every merge (and any push outside that branch) |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `create-great-harness` | Bootstrap a minimal agent system for an app that has none — an evidence-grounded `CLAUDE.md`, plus optional hook or rule artifacts when confirmed scope or project evidence requires them |

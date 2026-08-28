@@ -81,11 +81,8 @@ Carry any hypothesis the user already eliminated and the reason, so the worker
 does not spend a cycle re-deriving it.
 
 Scope is unknown on the continuous branch — that is this skill's premise, not an
-oversight. State the full flow as the default when handing over, because an
-unsized change gets an isolated worktree, and let the user override to the light
-flow in one line when they already know the fix is small. Do not put
-`shipping-task` Task 2's sizing question to the user as though they could answer
-it before the cause is known.
+oversight. `shipping-task` Task 2 still asks its own question at handover: how
+the user regards this work, which they can answer before the cause is known.
 
 Everything else about either brief follows the same boundary: target-app context
 discovery and reproduction belong to the worker; implementation belongs to the

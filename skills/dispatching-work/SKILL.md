@@ -51,12 +51,16 @@ current behavior, mechanism, cause, or impact with evidence references. A
 bounded fact-gathering task may use a confirmed lower-tier work route; route
 resolution still comes from Task 1.
 
+The brief names the reality anchor `choosing-graph` settled on, and the port
+number when a frontend human or pseudo-human anchor made the main agent claim
+one.
+
 Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates Claude's session id and every provider's immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind, this session's provider, and the validated pane/provider-fingerprint pair from Task 1. Never hand-write the JSON, contract, or UUID.
 
 **Verification:** every brief statement traces to the user request, a necessary
-hint or constraint, or already-known coordination state; target-app discovery is
-assigned to the worker; instruction and hashed contract exist with `pending`
-status before any agent starts.
+hint or constraint, an already-known coordination state, or the reality anchor;
+target-app discovery is assigned to the worker; instruction and hashed contract
+exist with `pending` status before any agent starts.
 
 ## Task 4: Dispatch
 
@@ -80,7 +84,7 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 
 **Wave dispatch.** Compute the ready wave (`read-plan-status.py --ready`) and dispatch **every task in it at once** — never one at a time, never serialize an independent task through another task's session because it happens to be idle. Each task still goes through Tasks 1-5 individually (mode selection, instruction, dispatch, confirm), with `plan_id`/`task_id` added.
 
-**Worktree ownership (full-flow tasks).** The main agent creates every worktree itself, for every managed app uniformly, regardless of the app's own tooling — plain `git worktree add`, never `herdr worktree create` (see `plan-mechanics.md`'s "Worktree ownership" for why). Verify `git rev-parse --show-toplevel` inside it resolves to the worktree's own path — repos with `extensions.worktreeConfig = true` silently don't, regardless of creation method — and repair with a `config.worktree` file if not (exact steps in `plan-mechanics.md`). Never dispatch into an unverified worktree. Record that verified path as `repo_root`; the launcher opens its worker pane beside the coordinator in the same tab.
+**Worktree ownership (team-mode tasks).** The main agent creates every worktree itself, for every managed app uniformly, regardless of the app's own tooling — plain `git worktree add`, never `herdr worktree create` (see `plan-mechanics.md`'s "Worktree ownership" for why). Verify `git rev-parse --show-toplevel` inside it resolves to the worktree's own path — repos with `extensions.worktreeConfig = true` silently don't, regardless of creation method — and repair with a `config.worktree` file if not (exact steps in `plan-mechanics.md`). Never dispatch into an unverified worktree. Record that verified path as `repo_root`; the launcher opens its worker pane beside the coordinator in the same tab.
 
 **Agent naming.** Derive the herdr handle from `plan_id`/`task_id` for operator visibility. Communication scripts address the instruction, never this name.
 

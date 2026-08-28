@@ -36,6 +36,8 @@ on the same candidate; the actual bind remains the final availability check.
 
 **Fixed (the port value itself is externally constrained — hardcoded app config, or another service's CORS allowlist expects an exact origin/port, even if the dev-server tool itself could technically bind elsewhere).** There is no alternate candidate to try — incrementing would just break CORS again. This is the agent's actual **request** for that exact port: it uses `wait` on `port--<app>--<port-number>` exactly like the DB case below, and if it's taken, waits rather than substitutes.
 
+**A frontend check anchored on human or pseudo-human is claimed at dispatch instead.** The user, or the browser driving the pseudo-human check, needs a known address before the worker has produced anything to look at — so the main agent runs `claim-port` once at dispatch, `--key`ed on the dispatch instruction stem or the app's checkout path (both exist before any worktree does), and states the assigned number in the instruction. The worker binds that number and skips the claim step, since a second probe reads its own listener as an external occupant. `shipping-task` Task 6 releases it at wrap-up. Which anchor applies is `choosing-graph`'s call.
+
 ## Shared DB migrations — always the lock
 
 A shared, stateful database can't be isolated by a formula the way a port can. Any task that runs or verifies a migration against a database that isn't per-worktree (a shared staging/dev DB) uses the lock, `resource: "db-migration--<db-identity>"` — `<db-identity>` is whatever stably names the actual shared target (host+dbname, or the app+env pair the migration runs against).

@@ -201,6 +201,80 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertNotIn("once the worktree is removed, sync the app's primary checkout too", source)
         self.assertNotIn("This finding needs DB/infra access I don't have", source)
 
+    def test_dispatch_plan_belongs_to_the_orchestrator_worker_graph_alone(self) -> None:
+        source = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn("single-loop", source)
+        self.assertIn("sub-agent fan-out/fan-in", source)
+        self.assertIn("orchestrator-worker", source)
+        self.assertIn("the coordinator's shape alone", source)
+        self.assertIn(
+            "the graph that writes ~/.straw-boss/plans/<slug>/plan.json", source
+        )
+        self.assertIn("The other two carry no dispatch plan", source)
+        self.assertNotIn("supervisor-worker", source)
+
+    def test_choosing_graph_names_four_reality_anchors(self) -> None:
+        source = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn("**testing** — the default", source)
+        self.assertIn("escalates to integration or E2E", source)
+        self.assertIn("screenshot and measurement", source)
+        self.assertIn(
+            "ask the user whether their own risk judgment prefers pseudo-human",
+            source,
+        )
+        self.assertIn(
+            "Every ordinary programming change carries adversarial-review", source
+        )
+        self.assertIn("A human reading code or a document is review", source)
+
+    def test_frontend_anchor_port_is_claimed_at_dispatch(self) -> None:
+        source = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn("claims the port as part of the dispatch", source)
+        self.assertIn("binds that number without claiming again", source)
+
+    def test_lifecycle_mode_is_the_users_reading_of_the_work(self) -> None:
+        source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
+        self.assertIn("team-mode", source)
+        self.assertIn("solo-mode", source)
+        self.assertIn("how the user regards this piece of work", source)
+        self.assertNotIn("real size or risk", source)
+        self.assertNotIn("diff size", source)
+        self.assertNotIn("low-risk changes", source)
+
+    def test_dispatch_carries_the_graph_and_anchor_choice(self) -> None:
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        self.assertIn("choosing-graph", boss_say)
+        dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
+        self.assertIn("names the reality anchor", dispatching)
+
+    def test_shared_resource_reference_covers_the_dispatch_time_port(self) -> None:
+        source = normalized(
+            ROOT
+            / "skills"
+            / "dispatching-work"
+            / "references"
+            / "shared-resource-coordination.md"
+        )
+        self.assertIn("A frontend check anchored on human or pseudo-human", source)
+        self.assertIn("the main agent runs claim-port once at dispatch", source)
+        self.assertIn("worker resolves the target app's actual resource configuration", source)
+
+    def test_lifecycle_mode_names_are_consistent_across_every_live_surface(self) -> None:
+        stale = re.compile(r"full[ -]flow|light[ -]flow", re.IGNORECASE)
+        surfaces = [
+            *(ROOT / "skills").glob("**/*.md"),
+            ROOT / "docs" / "architecture.md",
+            ROOT / "docs" / "roles.md",
+            ROOT / "README.md",
+            ROOT / "README.zh-TW.md",
+        ]
+        offenders = [
+            path.relative_to(ROOT).as_posix()
+            for path in sorted(surfaces)
+            if stale.search(path.read_text())
+        ]
+        self.assertEqual(offenders, [])
+
 
 if __name__ == "__main__":
     unittest.main()

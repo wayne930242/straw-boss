@@ -47,7 +47,7 @@ or
 ```json
 {"status": "failed", "note": "what went wrong, and whether it looks like a permission denial", "timestamp": "..."}
 ```
-or, for a full-flow task that reached a merge or other-branch-push checkpoint (see "Authorization checkpoints" below):
+or, for a team-mode task that reached a merge or other-branch-push checkpoint (see "Authorization checkpoints" below):
 ```json
 {"status": "awaiting-authorization", "note": "what it's ready to do -- e.g. \"ready to merge branch fix-foo into main\"", "timestamp": "..."}
 ```
@@ -63,7 +63,7 @@ or, for a dispatch cancelled under `docs/roles.md`'s explicit user/objective-inv
 
 `awaiting-authorization`, `awaiting-user-input`, and `awaiting-main-agent` are all not terminal — the task's own `plan.json` entry stays `dispatched`, none joins or leaves the ready wave. All three exist so `watch-plan-status.py` can emit the checkpoint the same way it emits `done`/`failed`, instead of a task sitting silently idle with no signal that it's actually waiting on someone.
 
-## Authorization checkpoints (full flow only)
+## Authorization checkpoints (team-mode only)
 
 An agent must stop and report readiness rather than execute a merge, or a push landing outside its own feature branch. In an interactive pane the user answers directly; for a headless task the main agent relays the user's answer. Commit and a push of the task's own feature branch need no authorization. The generated contract supplies the checkpoint; task prose states only a material task-specific boundary absent from target-project instructions.
 
@@ -129,7 +129,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan
 
 1. Run `read-plan-status.py --plan <slug> --ready` to get the current ready wave.
 2. For every task in the wave: call `dispatch-task.py write --plan <slug> --task-id <task_id> ...` (per `dispatch-mechanics.md`), then dispatch — **all of them, not one at a time**. The script marks `plan.json`'s task `dispatched` as part of the same call, not a separate manual edit.
-3. Every full-flow task in the wave gets its worktree created first — see the worktree-ownership section below — before the `claude-p`/`herdr-pane` dispatch itself.
+3. Every team-mode task in the wave gets its worktree created first — see the worktree-ownership section below — before the `claude-p`/`herdr-pane` dispatch itself.
 4. The generated dispatch contract supplies the universal progress, communication, checkpoint, and terminal-report workflow. Author every brief within `dispatching-work` Task 3's brief boundary: carry the user requirement, requested outcome, necessary hints/constraints, and already-known coordination facts while leaving target-app context discovery to the worker. The worker and user choose the **specification, design, implementation, and verification method**. Parallel tasks need non-overlapping requirement scopes; otherwise add a dependency instead of sharing a wave. Generic lifecycle prose stays out.
 
 ## Monitoring Plan status (provider-neutral scheduling signal)
@@ -167,7 +167,7 @@ still depends on the watcher plus persisted status.
 Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization`, `awaiting-user-input`, or `awaiting-main-agent`, none of which is terminal — all three need the session to stay alive: one to be resumed once authorized, one to be answered directly by the user, one to be resolved directly by the main agent via `reply-to-worker.py`.
 
 When the status watcher emits `done`/`failed`, or the main agent has just written `cancelled` itself (Cancel may also emit through the watcher, but the authoring main agent already knows synchronously):
-1. Close the worker pane only; its tab is shared with the coordinator. For a full-flow task, then remove the worktree with plain git. If the instruction included a shared-resource lock and the task ended `failed`/`cancelled` before releasing it, release it now.
+1. Close the worker pane only; its tab is shared with the coordinator. For a team-mode task, then remove the worktree with plain git. If the instruction included a shared-resource lock and the task ended `failed`/`cancelled` before releasing it, release it now.
 2. Call `wrap-up-task.py --app <app> --slug <slug> --plan <slug> --task-id <task_id>` — it archives the instruction and syncs `plan.json`'s `tasks[].status` to the terminal status it reads from the status file, in one call. Do not `mv`/`Edit` these by hand.
 3. Do **not** touch `plan.json.status` here — that only becomes `done` once every task in the plan is terminal (check across all tasks, not per-event).
 
@@ -237,7 +237,7 @@ main pane and runs `herdr pane split <main-pane> --direction right --cwd
 the main pane. Every ready-wave worker therefore appears beside the coordinator
 inside one tab; no task owns a tab lifecycle.
 
-The launcher starts a full-flow task in the verified worktree, so the task brief does not narrate worktree creation or warn the worker not to repeat it. Everything after worktree creation (commit, MR/release mechanics) still follows the target app's own conventions where one exists — only the worktree-creation step moved.
+The launcher starts a team-mode task in the verified worktree, so the task brief does not narrate worktree creation or warn the worker not to repeat it. Everything after worktree creation (commit, MR/release mechanics) still follows the target app's own conventions where one exists — only the worktree-creation step moved.
 
 **Removal closes only the worker pane:**
 ```bash
@@ -249,9 +249,9 @@ workspace-level removal are outside this lifecycle; plain git owns the worktree.
 
 ## Rebase before push (parallel sibling tasks against the same base)
 
-A full-flow task's worktree is created once, at wave-dispatch time, from whatever the base branch's tip was then (`references/plan-mechanics.md`'s "Worktree ownership" `git worktree add ... "<base_branch>"` above). If other tasks in the same plan target the same base branch and merge into it while this task is still working — the common case for any wave with more than one full-flow task — this task's worktree silently falls behind. Pushing from a stale base risks a merge (or, worse, a fast-forward) that reintroduces already-merged sibling files as deletions.
+A team-mode task's worktree is created once, at wave-dispatch time, from whatever the base branch's tip was then (`references/plan-mechanics.md`'s "Worktree ownership" `git worktree add ... "<base_branch>"` above). If other tasks in the same plan target the same base branch and merge into it while this task is still working — the common case for any wave with more than one team-mode task — this task's worktree silently falls behind. Pushing from a stale base risks a merge (or, worse, a fast-forward) that reintroduces already-merged sibling files as deletions.
 
-**Confirmed live, twice in one plan round** (two different full-flow tasks, each caught only because the main agent independently diffed against the live remote branch before authorizing the push): `git diff --stat origin/<base_branch>..HEAD` showed a sibling task's already-merged files listed as deletions — the tell that this worktree's base predates that merge, not that this task's own change actually deletes anything.
+**Confirmed live, twice in one plan round** (two different team-mode tasks, each caught only because the main agent independently diffed against the live remote branch before authorizing the push): `git diff --stat origin/<base_branch>..HEAD` showed a sibling task's already-merged files listed as deletions — the tell that this worktree's base predates that merge, not that this task's own change actually deletes anything.
 
 When parallel tasks target the same moving base or the remote base advanced
 since worktree creation, the dispatch instruction tells the worker to refresh

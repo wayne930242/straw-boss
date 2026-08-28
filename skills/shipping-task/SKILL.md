@@ -7,7 +7,7 @@ description: Carries one task through a standardized git lifecycle in one of the
 
 See `docs/roles.md` for the cast of characters and the authority framework (including the merge/other-branch-push authorization gate below) this skill operates under — not redefined here.
 
-straw-boss standardizes two lifecycle shapes across every managed app: a **full flow** (worktree → develop → MR → merge → archive) for changes with real size or risk, and a **light flow** (develop directly in the app's primary checkout, commit straight to the base branch) for small, mechanical, low-risk changes — a one-line prop, a config value, a typo fix. Which shape applies is not this skill's call to make silently: Task 2 asks the user, except where the resolved app's `apps.json` entry sets `forbidDirectCommit: true`, in which case only the full flow is offered. Scoping the task happens before this skill. Picking the app happens as this skill's own first step, via `work-on`.
+straw-boss standardizes two lifecycle shapes across every managed app: **team-mode** (worktree → develop → MR → merge → archive) and **solo-mode** (develop directly in the app's primary checkout, commit straight to the base branch). Which one applies is how the user regards this piece of work, so Task 2 asks them — except where the resolved app's `apps.json` entry sets `forbidDirectCommit: true`, in which case only team-mode is offered. Scoping the task happens before this skill. Picking the app happens as this skill's own first step, via `work-on`.
 
 The work itself happens in a session dispatched into the target app (`dispatching-work`), not in this session. An app may already have its own worktree/release tooling — check its `apps.json` entry's `gitWorkflowSkill` field. When it's set, the worker follows it for delivery and this skill only confirms the outcome. Where an app has none, this skill's fallback lifecycle below applies.
 
@@ -15,7 +15,7 @@ The work itself happens in a session dispatched into the target app (`dispatchin
 
 ## Task Initialization
 
-This spans many turns — dispatch now, develop over an unknown number of turns inside the agent, authorize the mutation possibly much later. Track it with TaskCreate, one task per stage, so progress survives context compaction or a session resume. On the light flow, there's no authorization checkpoint at all — the agent commits straight to the base branch and reports completion directly; don't create a placeholder task for a stop that never happens.
+This spans many turns — dispatch now, develop over an unknown number of turns inside the agent, authorize the mutation possibly much later. Track it with TaskCreate, one task per stage, so progress survives context compaction or a session resume. In solo-mode, there's no authorization checkpoint at all — the agent commits straight to the base branch and reports completion directly; don't create a placeholder task for a stop that never happens.
 
 ## Task 1: Resolve the app
 
@@ -23,27 +23,27 @@ Invoke the `work-on` skill now if the target app isn't already established in th
 
 **Verification:** you can name the app and its directory, sourced from `work-on`.
 
-## Task 2: Decide the flow
+## Task 2: Ask which mode this work is
 
-Ask the user which lifecycle shape this task needs — do not infer it yourself from diff size or "it looks small." Determine the base/integration branch, and check the resolved app's `apps.json` entry for `forbidDirectCommit` while you're at it (if the field is absent, treat it as `false` — no direct-commit restriction — rather than asking the user to guess).
+Ask the user how they regard this piece of work — solo work they are carrying themselves, or team work that lands through review. Their reading of the work is the whole question. Determine the base/integration branch, and check the resolved app's `apps.json` entry for `forbidDirectCommit` while you're at it (if the field is absent, treat it as `false` — no direct-commit restriction — rather than asking the user to guess).
 
-- **Light flow**: no worktree, develop directly in the app's primary checkout, commit straight to the base branch — no authorization needed, no MR. `forbidDirectCommit` (below) is the only gate on this path; once a task is offered the light flow, its commit lands with no further check. The primary checkout is shared and unisolated — unlike a full-flow worktree, nothing keeps a light-flow task's in-progress changes from colliding with anything else that touches the same checkout. Before dispatching one, check it's clean (`git -C <app_dir> status --porcelain`); a dirty tree almost always means an earlier light-flow task's change is still mid-work or was abandoned — resolve that first rather than dispatching into contended state. Never have more than one light-flow task in flight against the same app at once, for the same reason.
-- **Full flow**: worktree → develop → MR → merge → archive.
+- **solo-mode**: no worktree, develop directly in the app's primary checkout, commit straight to the base branch — no authorization needed, no MR. `forbidDirectCommit` (below) is the only gate on this path; once a task is offered solo-mode, its commit lands with no further check. The primary checkout is shared and unisolated — unlike a team-mode worktree, nothing keeps a solo-mode task's in-progress changes from colliding with anything else that touches the same checkout. Before dispatching one, check it's clean (`git -C <app_dir> status --porcelain`); a dirty tree almost always means an earlier solo-mode task's change is still mid-work or was abandoned — resolve that first rather than dispatching into contended state. Never have more than one solo-mode task in flight against the same app at once, for the same reason.
+- **team-mode**: worktree → develop → MR → merge → archive.
 
-If `forbidDirectCommit` is `true`, say so and only offer the full flow — do not ask the user to pick something the app itself blocks.
+If `forbidDirectCommit` is `true`, say so and only offer team-mode — do not ask the user to pick something the app itself blocks.
 
-**Verification:** the user explicitly picked a flow, or the app forced one and you said so, and you can name the base branch, before assembling the dispatch instruction.
+**Verification:** the user explicitly picked a mode, or the app forced one and you said so, and you can name the base branch, before assembling the dispatch instruction.
 
 ## Task 3: Determine git-lifecycle ownership
 
-**Worktree creation itself is never delegated, regardless of what the app owns.** On the full flow, this skill (via `dispatching-work`) has the main agent create the worktree with plain `git worktree add` (never `herdr worktree create`) before dispatch. See `dispatching-work`'s `references/plan-mechanics.md` "Worktree ownership" section, including its mandatory verify-and-repair and `localFiles` copy steps. The launcher uses the verified worktree as cwd while splitting a worker pane into the coordinator's current tab. On the light flow there is no worktree.
+**Worktree creation itself is never delegated, regardless of what the app owns.** In team-mode, this skill (via `dispatching-work`) has the main agent create the worktree with plain `git worktree add` (never `herdr worktree create`) before dispatch. See `dispatching-work`'s `references/plan-mechanics.md` "Worktree ownership" section, including its mandatory verify-and-repair and `localFiles` copy steps. The launcher uses the verified worktree as cwd while splitting a worker pane into the coordinator's current tab. In solo-mode there is no worktree.
 
-For everything **after** the worktree exists (or on the light flow, from the start): check the resolved app's `gitWorkflowSkill` field. This git-lifecycle choice is independent from the target app's own development and SDD route, which runs inside the dispatched session after it enters the app. If `gitWorkflowSkill` is set, the worker runs that skill's remaining steps (commit, and push/MR for the task's own feature branch) to completion on its own, inside the worktree the main agent already created — no authorization needed for any of that — but stops before merge, and before any push that skill's release mechanics might perform against a branch other than the task's own feature branch (a version-bump or release-tag push to a protected/base branch). If it's unset, this skill's own fallback steps apply:
+For everything **after** the worktree exists (or in solo-mode, from the start): check the resolved app's `gitWorkflowSkill` field. This git-lifecycle choice is independent from the target app's own development and SDD route, which runs inside the dispatched session after it enters the app. If `gitWorkflowSkill` is set, the worker runs that skill's remaining steps (commit, and push/MR for the task's own feature branch) to completion on its own, inside the worktree the main agent already created — no authorization needed for any of that — but stops before merge, and before any push that skill's release mechanics might perform against a branch other than the task's own feature branch (a version-bump or release-tag push to a protected/base branch). If it's unset, this skill's own fallback steps apply:
 
-- **Full flow fallback**: develop inside the main-agent-created worktree, committing to the feature branch freely, then push the branch and open an MR/PR on its own. Report the branch + MR/PR reference through the instruction-keyed message script, or `report-progress.py` when no live route exists. Continue; only stop before merge or another-branch push.
-- **Light flow fallback**: develop directly in the primary checkout, then commit straight to the base branch — no authorization needed, no Task 5 stop for the light flow; report completion once committed.
+- **team-mode fallback**: develop inside the main-agent-created worktree, committing to the feature branch freely, then push the branch and open an MR/PR on its own. Report the branch + MR/PR reference through the instruction-keyed message script, or `report-progress.py` when no live route exists. Continue; only stop before merge or another-branch push.
+- **solo-mode fallback**: develop directly in the primary checkout, then commit straight to the base branch — no authorization needed, no Task 5 stop in solo-mode; report completion once committed.
 
-**Verification:** you can state whether the target app owns its post-worktree git lifecycle or is getting the fallback steps, before Task 4 assembles the instruction; on the full flow, worktree creation itself was never left to the agent's own skill.
+**Verification:** you can state whether the target app owns its post-worktree git lifecycle or is getting the fallback steps, before Task 4 assembles the instruction; in team-mode, worktree creation itself was never left to the agent's own skill.
 
 ## Task 4: Assemble and dispatch
 
@@ -67,7 +67,7 @@ an already-known coordination fact, or a material task-specific constraint.
 
 ## Task 5: Authorize merge, relay push notifications, resume through to completion
 
-Applies to the full flow only — the light flow's commit needs no authorization and reaches no checkpoint here (Task 2/Task 3).
+Applies to team-mode only — solo-mode's commit needs no authorization and reaches no checkpoint here (Task 2/Task 3).
 
 For an interactive task, authorization happens directly in the dispatched agent's session: point the user to its pane and leave the conversation there. For a headless task, relay the user's answer through its recorded continuation. The main agent never decides for the user.
 
@@ -87,22 +87,22 @@ If the target app is itself a submodule of a monorepo root and a pointer-bump pu
 
 ## Task 6: Confirm and wrap up
 
-Once the agent reports the lifecycle is complete (merged on the full flow,
-committed on the light flow), confirm the merge or commit reference. If the
+Once the agent reports the lifecycle is complete (merged in team-mode,
+committed in solo-mode), confirm the merge or commit reference. If the
 worker reports claiming a shared-resource lock without confirming release,
 check and release that claim. Then invoke `dispatching-work`'s wrap-up branch to
-close the worker pane and instruction; on the full flow, remove the worktree
+close the worker pane and instruction; in team-mode, remove the worktree
 with plain git. The coordinator's shared tab remains open.
 
 If the primary checkout tracks the merged base, is clean, and is intended for
-subsequent direct work, fast-forward it after removing the full-flow worktree.
+subsequent direct work, fast-forward it after removing the team-mode worktree.
 Use the app's established remote/tracking configuration. When those conditions
 do not hold, report the merged reference and leave checkout synchronization to
 the owning workflow.
 
 If the task originated from a tracker ticket, this skill (not the agent) updates it now that the lifecycle is actually complete.
 
-**Verification:** the completion reference is confirmed, not assumed; the dispatch instruction is wrapped up, not left `in-progress`; on the full flow, the worktree is removed by this skill; any originating ticket is updated by this skill, not the agent.
+**Verification:** the completion reference is confirmed, not assumed; the dispatch instruction is wrapped up, not left `in-progress`; in team-mode, the worktree is removed by this skill; any originating ticket is updated by this skill, not the agent.
 
 ## References
 
