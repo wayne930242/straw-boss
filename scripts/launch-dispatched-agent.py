@@ -299,11 +299,14 @@ def launch(
     is_coworker = bool(instruction.get("parent_instruction_path"))
     name_is_derived = name is None
     base_candidate_name = ""
+    known_taken_names: set[str] = set()
     if name_is_derived:
         agent_role = "coworker" if is_coworker else "worker"
         workroom = instruction.get("role") or instruction["app"]
         base_candidate_name = derive_agent_name(agent_role, str(workroom))
-        name = unique_agent_name(base_candidate_name, live_names(run_herdr(["agent", "list"])))
+        known_taken_names = live_names(run_herdr(["agent", "list"]))
+        name = unique_agent_name(base_candidate_name, known_taken_names)
+        known_taken_names.add(name)
 
     agent_kind = str(instruction.get("agent_kind"))
     base_provider_args = provider_profile_args(instruction, agent_args)
@@ -335,7 +338,7 @@ def launch(
     pane_id, tab_id = create_worker_pane(instruction)
     try:
         start_error: ValueError | None = None
-        attempted_names = {name}
+        collision_retries = 0
         while True:
             try:
                 start_agent_when_pane_ready(
@@ -356,12 +359,13 @@ def launch(
                 if (
                     not name_is_derived
                     or exc.error_code != "agent_name_taken"
-                    or len(attempted_names) >= MAX_NAME_COLLISION_ATTEMPTS
+                    or collision_retries >= MAX_NAME_COLLISION_ATTEMPTS
                 ):
                     start_error = exc
                     break
-                name = unique_agent_name(base_candidate_name, attempted_names)
-                attempted_names.add(name)
+                collision_retries += 1
+                name = unique_agent_name(base_candidate_name, known_taken_names)
+                known_taken_names.add(name)
                 provider_args = provider_args_for(name)
             except ValueError as exc:
                 start_error = exc

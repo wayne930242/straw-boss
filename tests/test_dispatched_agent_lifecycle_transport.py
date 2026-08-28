@@ -114,7 +114,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             "    print(json.dumps({'result': {'pane': {'pane_id': os.environ.get('HERDR_WORKER_PANE_ID', 'worker-pane'), 'tab_id': os.environ.get('HERDR_WORKER_TAB_ID', os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1'))}}}))\n"
             "elif args[:2] == ['agent', 'list']:\n"
             "    print(json.dumps({'result': {'agents': json.loads(os.environ.get('HERDR_AGENT_LIST', '[]'))}}))\n"
-            "elif args[:2] == ['agent', 'start'] and args[2] in json.loads(os.environ.get('HERDR_NAME_TAKEN', '[]')):\n"
+            "elif args[:2] == ['agent', 'start'] and (args[2] in json.loads(os.environ.get('HERDR_NAME_TAKEN', '[]')) or args[2] in {a.get('name') for a in json.loads(os.environ.get('HERDR_AGENT_LIST', '[]'))}):\n"
             "    print(json.dumps({'error': {'code': 'agent_name_taken', 'message': f'agent name {args[2]} is already used'}}), file=sys.stderr)\n"
             "    raise SystemExit(1)\n"
             "elif args[:2] == ['agent', 'start'] and sum(call[:2] == ['agent', 'start'] for call in captured) <= int(os.environ.get('HERDR_PANE_BUSY_ATTEMPTS', '0')):\n"
@@ -855,6 +855,36 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
             [call[2] for call in starts], ["api-worker", "api-worker-2", "api-worker-3"]
         )
 
+    def test_launcher_retries_forward_past_a_populated_snapshot_after_a_race(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_AGENT_LIST": json.dumps(
+                    [
+                        {"name": "api-worker"},
+                        {"name": "api-worker-2"},
+                        {"name": "api-worker-3"},
+                        {"name": "api-worker-4"},
+                    ]
+                ),
+                "HERDR_NAME_TAKEN": json.dumps(["api-worker-5"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        starts = [call for call in calls if call[:2] == ["agent", "start"]]
+        self.assertEqual([call[2] for call in starts], ["api-worker-5", "api-worker-6"])
+
     def test_launcher_does_not_retry_a_name_taken_error_for_an_explicit_name(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         instruction = json.loads(instruction_path.read_text())
@@ -1046,6 +1076,7 @@ class DispatchedAgentLifecycleTransportTests(unittest.TestCase):
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "HERDR_CAPTURE": str(capture),
                 "HERDR_WORKER_PANE_ID": "coworker-pane",
+                "HERDR_UNNAMED_PANES": json.dumps(["worker-pane"]),
             },
         )
 
