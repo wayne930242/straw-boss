@@ -437,6 +437,9 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
                 "HERDR_OMIT_AGENT_SESSION": "1",
                 "HERDR_TRANSCRIPT_DELIVER_AFTER_PROMPTS": "3",
                 "HERDR_TRANSCRIPT_NOISE": "MCP startup incomplete. Usage limits notice.",
+                # Pin the attempt schedule so this stays a test about delivery
+                # confirmation rather than about the production retry budget.
+                "STRAW_BOSS_PROMPT_RETRY_BACKOFF_SECONDS": "0,0",
             },
             timeout_seconds=30,
         )
@@ -447,7 +450,8 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
         self.assertEqual(len(prompts), 2)
-        self.assertIn(["pane", "close", "worker-pane"], calls)
+        self.assertNotIn(["pane", "close", "worker-pane"], calls)
+        self.assertIn("is left open", result.stderr)
 
     def test_launcher_refuses_receipt_when_task_prompt_only_reaches_the_composer(
         self,
@@ -475,6 +479,7 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
                 "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
                     {"worker-pane": "agent_prompt_stalled"}
                 ),
+                "STRAW_BOSS_PROMPT_RETRY_BACKOFF_SECONDS": "0,0",
             },
         )
 
@@ -488,7 +493,10 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         # The composer-only prompt is still captured (visible on screen);
         # only herdr's lifecycle gate, not transcript visibility, catches it.
         self.assertIn("sb256:", prompts[0][3])
-        self.assertIn(["pane", "close", "worker-pane"], calls)
+        # The agent booted fine and only the opening handoff missed, so the pane
+        # stays up for a retry instead of being torn down with the agent in it.
+        self.assertNotIn(["pane", "close", "worker-pane"], calls)
+        self.assertIn("is left open", result.stderr)
 
     def test_launcher_refuses_receipt_when_a_persistently_blocked_worker_only_reaches_the_composer(
         self,
@@ -518,6 +526,7 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
                 "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
                     {"worker-pane": "agent_prompt_stalled"}
                 ),
+                "STRAW_BOSS_PROMPT_RETRY_BACKOFF_SECONDS": "0,0",
             },
         )
 
@@ -528,7 +537,8 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
         self.assertEqual(len(prompts), 2)
         self.assertTrue(all("--wait" in call for call in prompts))
-        self.assertIn(["pane", "close", "worker-pane"], calls)
+        self.assertNotIn(["pane", "close", "worker-pane"], calls)
+        self.assertIn("is left open", result.stderr)
 
     def test_launcher_does_not_resend_on_an_ambiguous_prompt_wait_failure(
         self,

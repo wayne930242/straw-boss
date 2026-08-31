@@ -100,6 +100,30 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             (self.home / ".straw-boss" / "dispatch" / "api--codex-advisor.json").exists()
         )
 
+    def test_launcher_allows_every_script_a_dispatched_agent_is_told_to_run(self) -> None:
+        """The runner's allowlist must cover the skills' own instructions.
+
+        A worker can only reach these scripts through the launcher, so anything
+        a skill tells it to run and the allowlist omits is an instruction it
+        cannot follow. bringing-coworker's closing step is the case that bit:
+        without wrap-up-task.py here a finished coworker's instruction stays
+        live and blocks the next coworker on the same parent.
+        """
+        runner = (SCRIPTS / "run-straw-boss-script.py").read_text()
+        allowlist_block = runner[runner.index("ALLOWED_SCRIPTS = {"):]
+        allowlist_block = allowlist_block[: allowlist_block.index("}")]
+
+        for script in (
+            "dispatch-coworker.py",
+            "report-progress.py",
+            "report-task-status.py",
+            "send-dispatch-message.py",
+            "wrap-up-task.py",
+        ):
+            with self.subTest(script=script):
+                self.assertIn(f'"{script}"', allowlist_block)
+                self.assertTrue((SCRIPTS / script).is_file())
+
     def test_contract_uses_version_neutral_launcher_that_follows_plugin_updates(
         self,
     ) -> None:

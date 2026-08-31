@@ -12,7 +12,7 @@ import json
 import sys
 import uuid
 
-from dispatch_transport import send_instruction_message
+from dispatch_transport import EndpointUnavailableError, send_instruction_message
 
 
 INTENTS = ("question", "answer", "inform", "reply", "redirect", "control")
@@ -40,6 +40,18 @@ def main() -> int:
             message_id=message_id,
             references=args.ref,
         )
+    except EndpointUnavailableError as exc:
+        # The recipient is gone. Failing here would leave the sender with no
+        # channel and nothing written down; the body is already in the ledger,
+        # so report non-delivery plainly and let the sender carry on.
+        print(f"warning: {exc}", file=sys.stderr)
+        print(
+            json.dumps(
+                {"submitted": False, "recorded": True, "message_id": message_id},
+                indent=2,
+            )
+        )
+        return 0
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

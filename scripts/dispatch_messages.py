@@ -103,6 +103,7 @@ def append_delivery_record(
     message_id: str,
     in_reply_to: str | None,
     references: tuple[str, ...],
+    undeliverable_reason: str | None = None,
 ) -> None:
     record = {
         "direction": f"to-{endpoint.target}",
@@ -120,6 +121,15 @@ def append_delivery_record(
         ],
         "submitted_at": datetime.now(timezone.utc).isoformat(),
     }
+    if undeliverable_reason is not None:
+        # A delivered record only needs hashes: the body already reached the
+        # other side. An undelivered one is the opposite -- the body exists
+        # nowhere else, so storing only its hash would discard the very thing
+        # someone has to read to pick the conversation back up.
+        record["delivered"] = False
+        record["undeliverable_reason"] = undeliverable_reason
+        record["message"] = message
+        record["references"] = list(references)
     with delivery_ledger_path(instruction_path).open("a") as stream:
         stream.write(json.dumps(record) + "\n")
 

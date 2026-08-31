@@ -80,6 +80,82 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("at most two sentences", result.stderr)
         self.assertFalse(capture.exists())
 
+    def test_message_to_a_vanished_main_agent_is_recorded_instead_of_lost(self) -> None:
+        # A worker whose main agent has gone still needs somewhere to put the
+        # question it was told to ask. Failing the send outright leaves it with
+        # no channel and nothing written down, so the body goes to the delivery
+        # ledger and the command reports non-delivery rather than erroring.
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+        ledger_path = instruction_path.with_name("api--contract-claude.messages.jsonl")
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "question",
+            "--message",
+            "The coworker launch stalled. Should I retry it?",
+            "--ref",
+            "scripts/launch-dispatched-agent.py",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_MISSING_PANES": json.dumps(["main-pane"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("recorded undelivered", result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertFalse(payload["submitted"])
+        self.assertTrue(payload["recorded"])
+
+        records = [json.loads(line) for line in ledger_path.read_text().splitlines()]
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertFalse(record["delivered"])
+        self.assertIn("agent_not_found", record["undeliverable_reason"])
+        # The hash alone would be useless here: nothing else holds the text.
+        self.assertEqual(record["message"], "The coworker launch stalled. Should I retry it?")
+        self.assertEqual(record["references"], ["scripts/launch-dispatched-agent.py"])
+
+    def test_identity_mismatch_still_refuses_rather_than_recording_undelivered(self) -> None:
+        # Only an absent target earns the recorded-undelivered path. A pane that
+        # is live but now hosts a different session must still be refused --
+        # recording it as merely undelivered would blur a safety refusal into a
+        # transport hiccup.
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+        ledger_path = instruction_path.with_name("api--contract-claude.messages.jsonl")
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "question",
+            "--message",
+            "Is this still your pane?",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_LIVE_SESSION": "someone-elses-session",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(ledger_path.exists())
+
     def test_live_worker_cannot_write_another_workers_status(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         instruction = json.loads(instruction_path.read_text())

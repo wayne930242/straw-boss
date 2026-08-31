@@ -17,13 +17,20 @@ from pathlib import Path
 from typing import Any
 
 
-RUNTIME_LAUNCHER_PROTOCOL = 2
+RUNTIME_LAUNCHER_PROTOCOL = 3
 PLUGIN_ID = "straw-boss@straw-boss"
 ALLOWED_SCRIPTS = {
     "dispatch-coworker.py",
     "report-progress.py",
     "report-task-status.py",
     "send-dispatch-message.py",
+    # bringing-coworker's own closing step tells the worker to run this; without
+    # it here that instruction is unfollowable and a finished coworker's
+    # instruction stays live, blocking the next coworker on the same parent.
+    # Safe to expose: wrap-up refuses to archive an in-progress dispatch that has
+    # no status record, which is the guard that keeps one session from archiving
+    # another's live work.
+    "wrap-up-task.py",
 }
 
 

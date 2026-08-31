@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,18 @@ from dispatch_transport import (
 
 AGENT_START_PANE_READY_TIMEOUT_SECONDS = 5.0
 AGENT_START_PANE_READY_POLL_INTERVAL_SECONDS = 0.25
+# `agent start` returning only proves the process launched -- the agent's TUI is
+# not necessarily able to turn input into a turn yet. On a loaded machine a fresh
+# Claude session spends tens of seconds attaching MCP servers first, and a prompt
+# sent inside that window lands in the composer: herdr reports
+# agent_prompt_stalled, which reads like a delivery bug but is really "asked too
+# early". Two back-to-back attempts give that window ~16s to close, which is not
+# enough on a busy host, so back off between attempts instead.
+#
+# Gating on herdr's `interactive_ready` was considered and rejected: live agents
+# were observed working with the field absent entirely, so absence cannot be read
+# as "not ready" and the signal is not dependable as a gate.
+PROMPT_RETRY_BACKOFF_SECONDS = (0.0, 2.0, 5.0, 10.0)
 TASK_DELIVERY_MARKER_PREFIX = "sb256"
 MAX_NAME_COLLISION_ATTEMPTS = 5
 
@@ -251,6 +264,21 @@ def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str]:
     return pane_id, main_tab_id
 
 
+class PromptDeliveryError(ValueError):
+    """The agent started but its first prompt could not be confirmed as a turn.
+
+    Kept distinct from other launch failures because the failure surface is
+    different: the pane and the agent are both alive and healthy, only the
+    handoff of the opening prompt did not land. Destroying that pane discards a
+    booted agent and forces a full relaunch, so the caller leaves it standing
+    and reports where it is.
+    """
+
+    def __init__(self, message: str, pane_id: str) -> None:
+        super().__init__(message)
+        self.pane_id = pane_id
+
+
 def task_delivery_marker(task: str) -> str:
     digest = base64.urlsafe_b64encode(bytes.fromhex(sha256_text(task))).decode("ascii")
     return f"[{TASK_DELIVERY_MARKER_PREFIX}:{digest.rstrip('=')}]"
@@ -260,12 +288,29 @@ def task_start_prompt(task: str) -> str:
     return f"Begin contract task.\n{task_delivery_marker(task)}"
 
 
+def prompt_retry_backoff_seconds() -> tuple[float, ...]:
+    """Delay before each delivery attempt, overridable for tests.
+
+    Tests drive a fake herdr that answers instantly, so real backoff would only
+    buy wall-clock; production needs it because the thing being waited out is a
+    booting agent.
+    """
+    override = os.environ.get("STRAW_BOSS_PROMPT_RETRY_BACKOFF_SECONDS")
+    if not override:
+        return PROMPT_RETRY_BACKOFF_SECONDS
+    return tuple(float(part) for part in override.split(",") if part.strip())
+
+
 def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> None:
     marker = task_delivery_marker(task)
     prompt = task_start_prompt(task)
-    attempts_remaining = 2
+    backoff = prompt_retry_backoff_seconds()
+    attempts_remaining = len(backoff)
     while attempts_remaining:
+        delay = backoff[len(backoff) - attempts_remaining]
         attempts_remaining -= 1
+        if delay:
+            sleep(delay)
         pre_send_status = live_agent(pane_id).get("agent_status")
         pre_send_status = pre_send_status if isinstance(pre_send_status, str) else None
         try:
@@ -274,19 +319,21 @@ def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> N
             if exc.error_code != "agent_prompt_stalled":
                 raise
             if not attempts_remaining:
-                raise ValueError(
-                    f"sent the initial task to pane {pane_id!r} via herdr twice but herdr "
-                    "confirmed neither attempt started a turn (agent_prompt_stalled: the "
-                    "prompt likely reached only the composer, not a real turn); refusing "
-                    "to write a launch receipt"
+                raise PromptDeliveryError(
+                    f"sent the initial task to pane {pane_id!r} via herdr "
+                    f"{len(backoff)} times but herdr confirmed no attempt started a turn "
+                    "(agent_prompt_stalled: the prompt likely reached only the composer, "
+                    "not a real turn); refusing to write a launch receipt",
+                    pane_id,
                 ) from exc
             continue
         if confirm_transcript_contains(pane_id, marker, agent_kind):
             return
-    raise ValueError(
-        f"sent the initial task to pane {pane_id!r} via herdr twice but could not "
-        "confirm it landed in the transcript via its delivery marker; refusing "
-        "to write a launch receipt"
+    raise PromptDeliveryError(
+        f"sent the initial task to pane {pane_id!r} via herdr {len(backoff)} times but "
+        "could not confirm it landed in the transcript via its delivery marker; refusing "
+        "to write a launch receipt",
+        pane_id,
     )
 
 
@@ -422,6 +469,14 @@ def launch(
                     f"launched Claude session {session_id!r} does not match preassigned session "
                     f"{instruction.get('session_id')!r}"
                 )
+    except PromptDeliveryError as exc:
+        # The agent is up; only the opening prompt did not land. Closing the pane
+        # here would throw away a booted session whose sole defect is a missed
+        # handoff, so leave it standing and say where it is.
+        raise ValueError(
+            f"{exc}; the worker pane {exc.pane_id!r} is left open with its agent "
+            "running so the prompt can be retried without relaunching"
+        ) from exc
     except ValueError as exc:
         try:
             run_herdr(["pane", "close", pane_id])

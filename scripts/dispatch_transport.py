@@ -131,6 +131,21 @@ def prompt_delivery_args(pane_id: str, text: str, pre_send_status: str | None) -
     return args
 
 
+# herdr codes that mean "the target simply is not there any more", as opposed to
+# "the target is there but is not who this dispatch expects".
+ENDPOINT_MISSING_ERROR_CODES = frozenset({"agent_not_found", "pane_not_found"})
+
+
+class EndpointUnavailableError(ValueError):
+    """The recipient's live session is gone, so the message cannot be handed over.
+
+    Distinct from a malformed send because there is nothing the sender can fix:
+    the other agent no longer exists. The message body is written to the
+    delivery ledger before this is raised so the sender is not left holding an
+    unrecorded question with no channel to ask it on.
+    """
+
+
 def send_instruction_message(
     instruction_path: str | Path,
     target: Target,
@@ -193,8 +208,32 @@ def send_instruction_message(
     if sender_instruction is not None and intent == "answer":
         assert sender_path is not None and in_reply_to is not None
         validate_peer_reply(sender_path, source, endpoint, in_reply_to)
-    pre_send_status = validate_live_session(endpoint)
     delivery_id = message_id or str(uuid.uuid4())
+    try:
+        pre_send_status = validate_live_session(endpoint)
+    except HerdrCommandError as exc:
+        if exc.error_code not in ENDPOINT_MISSING_ERROR_CODES:
+            # Identity mismatches (a different provider, a replaced terminal, a
+            # reused coordinator pane) are refusals on purpose: the pane is live
+            # but belongs to someone else, and handing the message over would
+            # deliver it to the wrong agent. Only a genuinely absent target is
+            # eligible for the recorded-undelivered path below.
+            raise
+        append_delivery_record(
+            path,
+            source,
+            endpoint,
+            intent,
+            message,
+            delivery_id,
+            in_reply_to,
+            normalized_references,
+            undeliverable_reason=str(exc),
+        )
+        raise EndpointUnavailableError(
+            f"{endpoint.target} session is no longer live ({exc}); the message is "
+            f"recorded undelivered in the delivery ledger as {delivery_id}"
+        ) from exc
     if intent == "control":
         if target != "worker" or not message.startswith("/"):
             raise ValueError("control intent requires a worker target and a slash command")
