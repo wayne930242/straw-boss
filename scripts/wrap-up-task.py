@@ -64,6 +64,7 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
     src = instruction_path(app, slug)
     if not src.is_file():
         raise ValueError(f"no instruction file at {src}")
+    payload = load_json(src)
 
     plan_status: str | None = None
     if plan_slug is not None:
@@ -84,9 +85,10 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
     else:
         # A standalone dispatch's own report-task-status.py --instruction-path record
         # (see dispatch-mechanics.md's "Reporting scripts") -- same non-terminal guard
-        # as the plan-task case above, but only enforced if it was ever written; an
-        # older dispatch, or one confirmed done another way (e.g. claude-p process
-        # exit), may legitimately have none.
+        # as the plan-task case above. A missing record is legitimate for an older
+        # dispatch or a claude-p one confirmed done by process exit, but not for a
+        # confirmed herdr-pane worker: that one has a live pane and writes its own
+        # status, so silence means it never reported, not that it finished.
         standalone_status_path = sibling_paths(app, slug)[0]
         if standalone_status_path.is_file():
             standalone_status = str(load_json(standalone_status_path)["status"])
@@ -96,8 +98,21 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
                     f"to wrap up a dispatch that's still awaiting authorization, user input, "
                     f"or main-agent action"
                 )
+        elif payload.get("mode") == "herdr-pane" and payload.get("status") == "in-progress":
+            # This call cannot tell a running worker from a closed one, so it
+            # refuses rather than archiving the instruction out from under a live
+            # agent -- including one dispatched by a different main-agent session,
+            # the case the sibling-status check above cannot see at all. `pending`
+            # stays archivable: never confirmed, so nothing was launched to protect.
+            raise ValueError(
+                f"dispatch {app}--{slug} is still in-progress with no status record at "
+                f"{standalone_status_path} -- a live herdr-pane worker writes its own "
+                f"terminal status, so refusing to archive it out from under one. Reply to "
+                f"the agent and let it report; if its pane is confirmed closed, write an "
+                f"explicit terminal status with recover-task-status.py --instruction-path "
+                f"{src} first"
+            )
 
-    payload = load_json(src)
     payload["status"] = "wrapped-up"
     dest = archived_path(app, slug)
     dest.parent.mkdir(parents=True, exist_ok=True)

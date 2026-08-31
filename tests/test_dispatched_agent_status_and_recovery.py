@@ -1075,6 +1075,55 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("still live", result.stderr)
         self.assertFalse(status_path.exists())
 
+    def test_wrap_up_refuses_an_in_progress_herdr_pane_dispatch_with_no_status_record(
+        self,
+    ) -> None:
+        """No status record is not evidence of completion for a live worker.
+
+        wrap-up-task.py has no sender validation and no herdr dependency, so any
+        session can call it against any instruction. Without this guard a
+        confirmed herdr-pane dispatch that had not yet written a checkpoint was
+        archivable by a session that never dispatched it -- taking the live
+        worker's own instruction, contract, and reporting target with it.
+        """
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        self.assertFalse(instruction_path.with_name(f"{stem}.status.json").exists())
+
+        result = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "contract-claude")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("still in-progress with no status record", result.stderr)
+        self.assertIn("recover-task-status.py", result.stderr)
+        self.assertTrue(instruction_path.is_file())
+        archive = self.home / ".straw-boss" / "dispatch" / "archive"
+        self.assertFalse((archive / f"{stem}.json").exists())
+
+    def test_wrap_up_still_archives_a_pending_or_headless_dispatch_with_no_status_record(
+        self,
+    ) -> None:
+        """The guard covers a launched herdr-pane worker, nothing wider.
+
+        `pending` was never confirmed, so nothing was launched to protect, and a
+        `claude-p` dispatch has no live pane to talk to -- its process exit is its
+        own completion evidence. Both stay archivable with no status record.
+        """
+        pending_path, _ = self.write_dispatch("claude", slug="never-launched")
+        result = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "never-launched")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(pending_path.is_file())
+
+        headless_path, _ = self.write_dispatch("claude", slug="headless")
+        instruction = json.loads(headless_path.read_text())
+        instruction["mode"] = "claude-p"
+        instruction["status"] = "in-progress"
+        headless_path.write_text(json.dumps(instruction, indent=2) + "\n")
+
+        result = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "headless")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(headless_path.is_file())
+
     def test_recover_task_status_refuses_to_overwrite_an_existing_terminal_status(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         self.set_worker_endpoint(instruction_path)
