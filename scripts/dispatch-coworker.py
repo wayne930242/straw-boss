@@ -18,14 +18,24 @@ from dispatch_state import load_json
 
 
 SCRIPTS = Path(__file__).resolve().parent
+PUBLIC_SCRIPT_TIMEOUT_SECONDS = 45
+LIFECYCLE_OWNING_SCRIPTS = frozenset({"launch-dispatched-agent.py"})
 
 
 def run_public_script(script_name: str, args: list[str]) -> dict[str, Any]:
+    # The launcher owns bounded Herdr calls, retries, failure recording, and pane
+    # cleanup. Killing it from this facade can strand the pane it was about to
+    # close, so let that lifecycle finish under its own limits.
+    timeout = (
+        None
+        if script_name in LIFECYCLE_OWNING_SCRIPTS
+        else PUBLIC_SCRIPT_TIMEOUT_SECONDS
+    )
     result = subprocess.run(
         [sys.executable, str(SCRIPTS / script_name), *args],
         capture_output=True,
         text=True,
-        timeout=45,
+        timeout=timeout,
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
+import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -553,6 +556,37 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
         self.assertNotIn("session_id", output)
         instruction = json.loads(Path(output["instruction_path"]).read_text())
         self.assertEqual(instruction["status"], "in-progress")
+
+    def test_coworker_facade_does_not_cut_off_the_bounded_launcher(self) -> None:
+        scripts_dir = str(ROOT / "scripts")
+        with mock.patch.object(sys, "path", [scripts_dir, *sys.path]):
+            namespace = runpy.run_path(
+                str(ROOT / "scripts" / "dispatch-coworker.py")
+            )
+
+        def finish_only_without_outer_timeout(
+            command: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            timeout = kwargs.get("timeout")
+            if timeout is not None:
+                raise subprocess.TimeoutExpired(command, timeout)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"launched": true}\n',
+                stderr="",
+            )
+
+        with mock.patch.object(
+            namespace["subprocess"],
+            "run",
+            side_effect=finish_only_without_outer_timeout,
+        ):
+            result = namespace["run_public_script"](
+                "launch-dispatched-agent.py", []
+            )
+
+        self.assertTrue(result["launched"])
 
     def test_bringing_coworker_skill_stays_short_and_uses_the_facade(self) -> None:
         skill = (ROOT / "skills" / "bringing-coworker" / "SKILL.md").read_text()
