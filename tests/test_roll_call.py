@@ -189,6 +189,9 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         self.assertEqual(row["verdict"], "awaiting-startup-gate")
         self.assertIn("startup gate", row["note"])
         self.assertEqual(row["worker_pane"], "wF:p9")
+        # Saying "no live agent" here would deny the one thing the row exists
+        # to say: somebody is waiting in that pane.
+        self.assertEqual(row["worker_agent_status"], "blocked")
         self.assertNotIn(
             "wF:p9", {a["pane_id"] for a in report["agents_without_instruction"]}
         )

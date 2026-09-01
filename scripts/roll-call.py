@@ -45,6 +45,9 @@ from dispatch_transport import run_herdr
 
 
 TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled"})
+# A verdict note is a one-line summary; the launcher's full message lives in the
+# launch-failure record the row already points at.
+NOTE_REASON_MAX_CHARS = 120
 
 
 def instruction_paths() -> list[Path]:
@@ -145,8 +148,10 @@ def kept_launch_pane(instruction_path: Path) -> tuple[str, str] | None:
         if not isinstance(attempt, dict):
             continue
         if attempt.get("pane_left_open") and attempt.get("pane_id"):
-            error = str(attempt.get("error") or "no reason recorded")
-            return str(attempt["pane_id"]), error.splitlines()[0]
+            error = str(attempt.get("error") or "no reason recorded").splitlines()[0]
+            if len(error) > NOTE_REASON_MAX_CHARS:
+                error = f"{error[:NOTE_REASON_MAX_CHARS].rstrip()}..."
+            return str(attempt["pane_id"]), error
     return None
 
 
@@ -235,6 +240,7 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
         for agent in agents
         if isinstance(agent.get("terminal_id"), str) and agent["terminal_id"]
     }
+    by_pane = {str(agent.get("pane_id")): agent for agent in agents}
 
     rows: list[dict[str, Any]] = []
     claimed_panes: set[str] = set()
@@ -283,6 +289,10 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
                 note = failure
 
         live_pane = str(agent.get("pane_id")) if agent else (gate[0] if gate else None)
+        # A pane kept for a human holds a live agent that simply has no
+        # fingerprint yet; reporting it as "no live agent" would say the one
+        # thing this row exists to deny.
+        pane_holder = agent or (by_pane.get(gate[0]) if gate else None)
         if agent is not None and recorded_pane and live_pane != str(recorded_pane):
             note = f"{note}; worker moved to pane {live_pane} (instruction records {recorded_pane})"
         if main_session and str(main_session) not in by_session:
@@ -299,8 +309,10 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
                 "instruction_status": instruction.get("status"),
                 "reported_status": reported,
                 "worker_pane": live_pane or recorded_pane,
-                "worker_agent_status": agent.get("agent_status") if agent else None,
-                "worker_name": agent.get("name") if agent else None,
+                "worker_agent_status": (
+                    pane_holder.get("agent_status") if pane_holder else None
+                ),
+                "worker_name": pane_holder.get("name") if pane_holder else None,
                 "coordinator_pane": instruction.get("main_agent_herdr_pane_id"),
                 "coordinator_session": main_session,
                 "note": note,
