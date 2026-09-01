@@ -199,7 +199,11 @@ def classify(
                 "an agent carries this instruction's fingerprint but "
                 "dispatch-task.py confirm never recorded it",
             )
-        return "never-launched", "no agent was ever confirmed for this instruction"
+        return (
+            "never-launched",
+            "no live agent carries this dispatch's fingerprint, and no launch "
+            "receipt records one",
+        )
     if reported in TERMINAL_STATUSES:
         if agent is not None:
             return "awaiting-collection", f"reported {reported}; its pane is still open"
@@ -243,6 +247,7 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
     by_pane = {str(agent.get("pane_id")): agent for agent in agents}
 
     rows: list[dict[str, Any]] = []
+    repo_roots: dict[str, list[str]] = {}
     claimed_panes: set[str] = set()
     coordinator_sessions: set[str] = set()
 
@@ -267,6 +272,9 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
         main_session = instruction.get("main_agent_session_id")
         if main_session:
             coordinator_sessions.add(str(main_session))
+        repo_root = str(instruction.get("repo_root") or "")
+        if repo_root:
+            repo_roots.setdefault(repo_root, []).append(path.stem)
 
         receipt = read_record(launch_receipt_path(path))
         agent = worker_agent(instruction, receipt, by_session, by_terminal)
@@ -316,8 +324,34 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
                 "coordinator_pane": instruction.get("main_agent_herdr_pane_id"),
                 "coordinator_session": main_session,
                 "note": note,
+                "repo_root": repo_root or None,
                 "instruction_path": str(path),
             }
+        )
+
+    # cwd is not attribution -- a coworker shares its parent's worktree, and an
+    # agent started outside launch-dispatched-agent.py carries a session id no
+    # instruction ever recorded. It is still the one fact that stops a reader
+    # taking "nothing carries this fingerprint" for "nothing is running for
+    # this dispatch", so it is reported beside those rows as a caution.
+    for row in rows:
+        if row.get("worker_pane") or not row.get("repo_root"):
+            continue
+        neighbours = sorted(
+            str(agent.get("pane_id"))
+            for agent in agents
+            if str(agent.get("cwd")) == row["repo_root"]
+            and str(agent.get("pane_id")) not in claimed_panes
+        )
+        if not neighbours:
+            continue
+        row["unmatched_agents_in_repo_root"] = neighbours
+        single = len(neighbours) == 1
+        row["note"] = (
+            f"{row['note']}; but {', '.join(neighbours)} "
+            f"{'is' if single else 'are'} live in this dispatch's repo_root with no "
+            f"fingerprint tying {'it' if single else 'them'} to this dispatch -- "
+            "look before dispatching it again"
         )
 
     unattributed: list[dict[str, Any]] = []
@@ -340,6 +374,7 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
                 "name": agent.get("name"),
                 "session": value,
                 "cwd": agent.get("cwd"),
+                "in_repo_root_of": repo_roots.get(str(agent.get("cwd")), []),
             }
         )
 
@@ -380,6 +415,8 @@ def render(report: dict[str, Any]) -> str:
             f"  [{agent['role']}] {agent['pane_id']} ({agent['agent_status']})"
             f"  {agent.get('name') or '-'}  {agent.get('cwd') or '-'}"
         )
+        for dispatch in agent.get("in_repo_root_of", []):
+            lines.append(f"      sits in the repo_root of {dispatch}")
     return "\n".join(lines)
 
 

@@ -223,6 +223,15 @@ worker looks absent while it is not.
 Every row names the coordinator pane and session that dispatched it, and says
 when that coordinator's own session is no longer live.
 
+A dispatch nothing is matched to also reports any live agent sitting in its
+`repo_root`, and those agents carry the reverse pointer in the section below.
+That is a caution, never an attribution, and it never changes a verdict: a
+coworker shares its parent's worktree, and a worker started by hand outside
+`launch-dispatched-agent.py` carries a session id no instruction ever recorded.
+It is still the one fact that stops "nothing carries this fingerprint" being
+read as "nothing is running for this dispatch" — which is the duplicate
+dispatch again.
+
 A second section lists live agents with no instruction of their own, split into
 `coordinator` (its session appears as some instruction's
 `main_agent_session_id`) and `unattributed`. **`unattributed` means "not

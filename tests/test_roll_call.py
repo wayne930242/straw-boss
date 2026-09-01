@@ -263,6 +263,28 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
 
         self.assertEqual([r["dispatch"] for r in report["dispatches"]], ["api--codex-boss"])
 
+    def test_a_live_agent_in_a_dispatchs_repo_root_is_flagged_beside_it(self) -> None:
+        # A worker started by hand outside the launcher carries a session id no
+        # instruction ever recorded, so nothing durable ties it to the dispatch
+        # whose worktree it is working in. cwd is not attribution and must not
+        # change the verdict -- but reporting only "nothing carries this
+        # fingerprint" reads as "nothing is running for this", which is the
+        # duplicate dispatch all over again.
+        instruction_path, _ = self.write_dispatch(slug="hand-started")
+        repo_root = json.loads(instruction_path.read_text())["repo_root"]
+        stranger = agent("wF:p9", "a-session-no-instruction-knows")
+        stranger["cwd"] = repo_root
+
+        report = self.roll_call([stranger])
+
+        row = self.row(report, "api--hand-started")
+        self.assertEqual(row["verdict"], "never-launched")
+        self.assertEqual(row["unmatched_agents_in_repo_root"], ["wF:p9"])
+        self.assertIn("look before dispatching it again", row["note"])
+        listed = {a["pane_id"]: a for a in report["agents_without_instruction"]}
+        self.assertEqual(listed["wF:p9"]["role"], "unattributed")
+        self.assertEqual(listed["wF:p9"]["in_repo_root_of"], ["api--hand-started"])
+
     def test_a_dispatchs_own_sibling_files_are_never_read_as_instructions(self) -> None:
         instruction_path, _ = self.write_dispatch(slug="with-siblings")
         self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
