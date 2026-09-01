@@ -12,18 +12,27 @@ import base64
 import json
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
 from agent_naming import derive_agent_name, live_names, unique_agent_name
-from dispatch_state import dump_json, launch_receipt_path, load_json, sha256_text
+from dispatch_state import (
+    dump_json,
+    launch_failure_path,
+    launch_receipt_path,
+    load_json,
+    sha256_text,
+)
 from dispatch_transport import (
     HerdrCommandError,
     confirm_transcript_contains,
+    normalize_transcript_text,
     prompt_delivery_args,
     run_herdr,
+    run_herdr_raw,
 )
 
 
@@ -41,6 +50,38 @@ AGENT_START_PANE_READY_POLL_INTERVAL_SECONDS = 0.25
 # were observed working with the field absent entirely, so absence cannot be read
 # as "not ready" and the signal is not dependable as a gate.
 PROMPT_RETRY_BACKOFF_SECONDS = (0.0, 2.0, 5.0, 10.0)
+# `agent start` returns as soon as herdr can see the agent, which is not yet the
+# same as the agent being able to turn input into a turn: a Claude first-run
+# gate is reported idle/interactive_ready for about a second before herdr
+# reclassifies it blocked. herdr's own `agent wait --until idle --until
+# blocked` cannot express this -- it returns instantly on that same idle -- so
+# the reading is held open for a short window instead.
+AGENT_SETTLE_WINDOW_SECONDS = 4.0
+AGENT_SETTLE_POLL_INTERVAL_SECONDS = 0.5
+# The option a Claude Code startup gate preselects. Its presence on the pane is
+# the unambiguous sign that submitting anything there exits the worker,
+# whatever status herdr has settled on for the gate so far. Matched
+# whitespace-normalized, because a narrow worker pane wraps the surrounding
+# text.
+STARTUP_GATE_PANE_MARKER = "No, exit"
+# Whole-launch retries, so a transient trip does not become four hand-run
+# relaunches by the coordinator. Deliberately short and bounded: the failures
+# worth retrying are races, and everything else is reported instead.
+LAUNCH_RETRY_BACKOFF_SECONDS = (0.0, 3.0, 8.0)
+PANE_EXCERPT_LINES = 60
+PANE_EXCERPT_MAX_CHARS = 2000
+# herdr codes that mean the target went away or was momentarily unavailable --
+# the shapes a second attempt can actually clear. Everything else (a refused
+# start, a mismatched identity, a pane in the wrong tab) is a standing
+# condition of this cwd or configuration: retrying it only burns another pane
+# and delays the pane excerpt that says why.
+RETRYABLE_HERDR_ERROR_CODES = frozenset(
+    {"agent_not_running", "agent_not_found", "pane_not_found", "agent_pane_busy"}
+)
+# `claude --session-id` refuses an id it has already seen and exits before herdr
+# can report anything richer than a failed start, so this refusal only ever
+# exists on the pane. A retry mints a fresh id, which is exactly what clears it.
+SPENT_SESSION_PANE_MARKER = "is already in use"
 TASK_DELIVERY_MARKER_PREFIX = "sb256"
 MAX_NAME_COLLISION_ATTEMPTS = 5
 
@@ -264,6 +305,177 @@ def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str]:
     return pane_id, main_tab_id
 
 
+class LaunchAttemptError(ValueError):
+    """One failed launch attempt, classified for the retry decision above it.
+
+    `retryable` separates "something transient tripped this attempt" from "this
+    cwd or configuration cannot succeed as asked", where a fourth identical
+    attempt only burns another pane. `keep_pane` marks the attempts whose pane
+    still holds a live agent someone can act on -- closing that pane is how a
+    recoverable situation turns into a lost worker. `pane_excerpt` carries what
+    the pane was showing, because herdr's error code says the agent is gone and
+    never says why.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool,
+        pane_id: str | None = None,
+        keep_pane: bool = False,
+        pane_excerpt: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.pane_id = pane_id
+        self.keep_pane = keep_pane
+        self.pane_excerpt = pane_excerpt
+
+
+def is_retryable(error: ValueError, excerpt: str = "") -> bool:
+    if (
+        isinstance(error, HerdrCommandError)
+        and error.error_code in RETRYABLE_HERDR_ERROR_CODES
+    ):
+        return True
+    return SPENT_SESSION_PANE_MARKER in excerpt
+
+
+def pane_excerpt(pane_id: str) -> str:
+    """What the worker pane was showing when an attempt failed.
+
+    The agent's own last words -- a startup gate, a refused session id, a crash
+    -- exist only on that pane, and the failure path closes it, so read it
+    before deciding anything.
+    """
+    try:
+        text = run_herdr_raw(
+            [
+                "pane",
+                "read",
+                pane_id,
+                "--lines",
+                str(PANE_EXCERPT_LINES),
+                "--source",
+                "visible",
+            ]
+        )
+    except ValueError:
+        return ""
+    lines = [line.rstrip() for line in text.splitlines()]
+    while lines and not lines[-1]:
+        lines.pop()
+    return "\n".join(lines)[-PANE_EXCERPT_MAX_CHARS:].strip()
+
+
+def settle_window_seconds() -> float:
+    override = os.environ.get("STRAW_BOSS_AGENT_SETTLE_SECONDS")
+    return float(override) if override else AGENT_SETTLE_WINDOW_SECONDS
+
+
+def settled_agent(pane_id: str) -> dict[str, object]:
+    """Read the agent, holding the reading open long enough to catch a gate.
+
+    A single read straight after `agent start` catches a Claude worker still
+    reporting idle while its folder-trust gate is up; the task then goes to the
+    gate instead of a turn, and the gate's own preselected option exits the
+    worker. Returns as soon as a blocked state appears, so a healthy launch
+    pays this window only once.
+    """
+    deadline = monotonic() + settle_window_seconds()
+    agent = live_agent(pane_id)
+    while agent.get("agent_status") != "blocked":
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            break
+        sleep(min(AGENT_SETTLE_POLL_INTERVAL_SECONDS, remaining))
+        agent = live_agent(pane_id)
+    return agent
+
+
+def startup_gate_excerpt(pane_id: str, agent: dict[str, object]) -> str | None:
+    """The pane's text when a Claude worker is sitting on a startup gate.
+
+    Two independent signals, because either alone has been observed to miss:
+    herdr's own `blocked` classification, and the gate's preselected "No, exit"
+    on the pane itself.
+    """
+    excerpt = pane_excerpt(pane_id)
+    gated = agent.get("agent_status") == "blocked" or normalize_transcript_text(
+        STARTUP_GATE_PANE_MARKER
+    ) in normalize_transcript_text(excerpt)
+    return excerpt if gated else None
+
+
+def rotate_session_id(inst_path: Path, instruction: dict[str, Any]) -> str:
+    """Give the next attempt an unused Claude session id.
+
+    `claude --session-id` refuses an id it has already seen ("Session ID ... is
+    already in use") and exits at once, so any relaunch reusing the id a
+    previous attempt already handed to a booted agent is guaranteed to die at
+    startup. The instruction is still `pending` here -- nothing has been
+    confirmed against this id -- so it is updated in place and stays the single
+    record of the endpoint the worker will answer on.
+    """
+    instruction["session_id"] = str(uuid.uuid4())
+    dump_json(inst_path, instruction)
+    return str(instruction["session_id"])
+
+
+def spent_session_ids(inst_path: Path) -> set[str]:
+    """Session ids earlier runs already handed to `agent start` for this dispatch."""
+    path = launch_failure_path(inst_path)
+    if not path.is_file():
+        return set()
+    try:
+        record = load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return set()
+    attempts = record.get("attempts")
+    if not isinstance(attempts, list):
+        return set()
+    return {
+        str(attempt.get("session_id"))
+        for attempt in attempts
+        if isinstance(attempt, dict) and attempt.get("session_id")
+    }
+
+
+def record_launch_failure(inst_path: Path, attempts: list[dict[str, Any]]) -> Path:
+    """Leave the reason beside the instruction, not only on the caller's stderr.
+
+    A launch that never succeeds writes no receipt and leaves the instruction
+    `pending`, so without this an abandoned dispatch looks exactly like one
+    nobody ever started -- with no pane id to go and look at.
+    """
+    path = launch_failure_path(inst_path)
+    dump_json(
+        path,
+        {
+            "instruction_path": str(inst_path),
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "attempts": attempts,
+        },
+    )
+    return path
+
+
+def launch_failure_message(
+    error: LaunchAttemptError, attempts: list[dict[str, Any]], failure_path: Path
+) -> str:
+    lines = [f"launch failed after {len(attempts)} attempt(s): {error}"]
+    if error.keep_pane and error.pane_id:
+        lines.append(
+            f"worker pane {error.pane_id!r} is left open with its agent running; act on it "
+            "there rather than relaunching into a second pane"
+        )
+    if error.pane_excerpt:
+        lines.append(f"pane {error.pane_id} was showing:\n{error.pane_excerpt}")
+    lines.append(f"attempt trail recorded at {failure_path}")
+    return "\n".join(lines)
+
+
 class PromptDeliveryError(ValueError):
     """The agent started but its first prompt could not be confirmed as a turn.
 
@@ -288,17 +500,29 @@ def task_start_prompt(task: str) -> str:
     return f"Begin contract task.\n{task_delivery_marker(task)}"
 
 
-def prompt_retry_backoff_seconds() -> tuple[float, ...]:
-    """Delay before each delivery attempt, overridable for tests.
+def _backoff_seconds(variable: str, default: tuple[float, ...]) -> tuple[float, ...]:
+    """Delay before each attempt, overridable for tests.
 
     Tests drive a fake herdr that answers instantly, so real backoff would only
     buy wall-clock; production needs it because the thing being waited out is a
     booting agent.
     """
-    override = os.environ.get("STRAW_BOSS_PROMPT_RETRY_BACKOFF_SECONDS")
+    override = os.environ.get(variable)
     if not override:
-        return PROMPT_RETRY_BACKOFF_SECONDS
+        return default
     return tuple(float(part) for part in override.split(",") if part.strip())
+
+
+def prompt_retry_backoff_seconds() -> tuple[float, ...]:
+    return _backoff_seconds(
+        "STRAW_BOSS_PROMPT_RETRY_BACKOFF_SECONDS", PROMPT_RETRY_BACKOFF_SECONDS
+    )
+
+
+def launch_retry_backoff_seconds() -> tuple[float, ...]:
+    return _backoff_seconds(
+        "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS", LAUNCH_RETRY_BACKOFF_SECONDS
+    )
 
 
 def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> None:
@@ -395,108 +619,191 @@ def launch(
             ]
         raise ValueError(f"unsupported agent kind {agent_kind!r}")
 
-    provider_args = provider_args_for(name)
-
-    pane_id, tab_id = create_worker_pane(instruction)
-    try:
-        start_error: ValueError | None = None
-        collision_retries = 0
-        while True:
-            try:
-                start_agent_when_pane_ready(
-                    [
-                        "agent",
-                        "start",
-                        name,
-                        "--kind",
-                        agent_kind,
-                        "--pane",
-                        pane_id,
-                        "--",
-                        *provider_args,
-                    ]
-                )
-                break
-            except HerdrCommandError as exc:
-                if (
-                    not name_is_derived
-                    or exc.error_code != "agent_name_taken"
-                    or collision_retries >= MAX_NAME_COLLISION_ATTEMPTS
-                ):
+    def attempt() -> dict[str, Any]:
+        nonlocal name
+        provider_args = provider_args_for(str(name))
+        try:
+            pane_id, tab_id = create_worker_pane(instruction)
+        except ValueError as exc:
+            # No pane survived this, including the tab-mismatch case that closes
+            # its own; there is nothing to keep and nothing to read.
+            raise LaunchAttemptError(str(exc), retryable=is_retryable(exc)) from exc
+        try:
+            start_error: ValueError | None = None
+            collision_retries = 0
+            while True:
+                try:
+                    start_agent_when_pane_ready(
+                        [
+                            "agent",
+                            "start",
+                            str(name),
+                            "--kind",
+                            agent_kind,
+                            "--pane",
+                            pane_id,
+                            "--",
+                            *provider_args,
+                        ]
+                    )
+                    break
+                except HerdrCommandError as exc:
+                    if (
+                        not name_is_derived
+                        or exc.error_code != "agent_name_taken"
+                        or collision_retries >= MAX_NAME_COLLISION_ATTEMPTS
+                    ):
+                        start_error = exc
+                        break
+                    collision_retries += 1
+                    name = unique_agent_name(base_candidate_name, known_taken_names)
+                    known_taken_names.add(name)
+                    provider_args = provider_args_for(str(name))
+                except ValueError as exc:
                     start_error = exc
                     break
-                collision_retries += 1
-                name = unique_agent_name(base_candidate_name, known_taken_names)
-                known_taken_names.add(name)
-                provider_args = provider_args_for(name)
-            except ValueError as exc:
-                start_error = exc
-                break
 
-        try:
-            agent = live_agent(pane_id)
-        except ValueError:
-            if start_error is not None:
+            try:
+                agent = settled_agent(pane_id)
+            except ValueError:
+                if start_error is not None:
+                    raise start_error
+                raise
+            if start_error is not None and agent.get("agent_status") != "blocked":
                 raise start_error
-            raise
-        if start_error is not None and agent.get("agent_status") != "blocked":
-            raise start_error
-        if agent.get("agent_status") == "blocked":
-            run_herdr(["agent", "send-keys", pane_id, "enter"])
-            run_herdr(
-                [
-                    "agent",
-                    "wait",
-                    pane_id,
-                    "--until",
-                    "idle",
-                    "--until",
-                    "blocked",
-                    "--timeout",
-                    "15000",
-                ]
+            gate_excerpt = (
+                startup_gate_excerpt(pane_id, agent) if agent_kind == "claude" else None
             )
-
-        prompt_task_with_confirmation(
-            pane_id, str(instruction["task"]), agent_kind
-        )
-        terminal_id = live_agent_terminal_id(pane_id, agent_kind)
-        session_id: str | None = None
-        if agent_kind == "claude":
-            session_id = wait_for_agent_session(pane_id)
-            if session_id != instruction.get("session_id"):
-                raise ValueError(
-                    f"launched Claude session {session_id!r} does not match preassigned session "
-                    f"{instruction.get('session_id')!r}"
+            if gate_excerpt is not None or agent.get("agent_status") == "blocked":
+                if agent_kind == "claude":
+                    # Claude Code's startup gates -- folder trust first among
+                    # them -- render as a select list whose highlighted option
+                    # is "No, exit". Enter, or the task itself which ends in
+                    # one, picks that option and exits a worker that had
+                    # already booted. No retry can answer this; a human can,
+                    # in this pane, and answering it also records the decision
+                    # so the next launch into this directory runs clean.
+                    raise LaunchAttemptError(
+                        f"the worker in pane {pane_id!r} is blocked on a Claude Code "
+                        "startup gate before its first turn, so the task cannot be "
+                        'submitted: the gate preselects "No, exit" and anything sent '
+                        "there would exit the worker. Answer it in the Herdr tab (or "
+                        f"`herdr agent send-keys {pane_id} down enter` to take the "
+                        "second option), then close that pane and run this launch "
+                        "again",
+                        retryable=False,
+                        pane_id=pane_id,
+                        keep_pane=True,
+                        pane_excerpt=gate_excerpt or pane_excerpt(pane_id),
+                    )
+                run_herdr(["agent", "send-keys", pane_id, "enter"])
+                run_herdr(
+                    [
+                        "agent",
+                        "wait",
+                        pane_id,
+                        "--until",
+                        "idle",
+                        "--until",
+                        "blocked",
+                        "--timeout",
+                        "15000",
+                    ]
                 )
-    except PromptDeliveryError as exc:
-        # The agent is up; only the opening prompt did not land. Closing the pane
-        # here would throw away a booted session whose sole defect is a missed
-        # handoff, so leave it standing and say where it is.
-        raise ValueError(
-            f"{exc}; the worker pane {exc.pane_id!r} is left open with its agent "
-            "running so the prompt can be retried without relaunching"
-        ) from exc
-    except ValueError as exc:
-        try:
-            run_herdr(["pane", "close", pane_id])
-        except ValueError as close_error:
-            raise ValueError(f"{exc}; worker-pane cleanup also failed: {close_error}") from exc
-        raise
 
+            prompt_task_with_confirmation(
+                pane_id, str(instruction["task"]), agent_kind
+            )
+            terminal_id = live_agent_terminal_id(pane_id, agent_kind)
+            session_id: str | None = None
+            if agent_kind == "claude":
+                session_id = wait_for_agent_session(pane_id)
+                if session_id != instruction.get("session_id"):
+                    raise ValueError(
+                        f"launched Claude session {session_id!r} does not match preassigned session "
+                        f"{instruction.get('session_id')!r}"
+                    )
+        except LaunchAttemptError:
+            raise
+        except PromptDeliveryError as exc:
+            # The agent is up; only the opening prompt did not land. Closing the
+            # pane here would throw away a booted session whose sole defect is a
+            # missed handoff, so leave it standing and say where it is.
+            raise LaunchAttemptError(
+                str(exc),
+                retryable=False,
+                pane_id=exc.pane_id,
+                keep_pane=True,
+                pane_excerpt=pane_excerpt(exc.pane_id),
+            ) from exc
+        except ValueError as exc:
+            excerpt = pane_excerpt(pane_id)
+            raise LaunchAttemptError(
+                str(exc),
+                retryable=is_retryable(exc, excerpt),
+                pane_id=pane_id,
+                pane_excerpt=excerpt,
+            ) from exc
+
+        return {
+            "name": str(name),
+            "pane_id": pane_id,
+            "tab_id": tab_id,
+            "session_id": session_id,
+            "herdr_terminal_id": terminal_id,
+        }
+
+    if agent_kind == "claude" and str(instruction["session_id"]) in spent_session_ids(
+        inst_path
+    ):
+        # An earlier run of this launcher already handed that id to a booted
+        # agent, so reusing it now would only reproduce its startup refusal.
+        rotate_session_id(inst_path, instruction)
+
+    backoff = launch_retry_backoff_seconds()
+    attempts: list[dict[str, Any]] = []
+    landed: dict[str, Any] | None = None
+    for index, delay in enumerate(backoff):
+        if delay:
+            sleep(delay)
+        if index and agent_kind == "claude":
+            rotate_session_id(inst_path, instruction)
+        try:
+            landed = attempt()
+        except LaunchAttemptError as exc:
+            record: dict[str, Any] = {
+                "attempt": index + 1,
+                "pane_id": exc.pane_id,
+                "session_id": instruction.get("session_id"),
+                "retryable": exc.retryable,
+                "pane_left_open": exc.keep_pane,
+                "error": str(exc),
+                "pane_excerpt": exc.pane_excerpt or None,
+                "failed_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if exc.pane_id and not exc.keep_pane:
+                try:
+                    run_herdr(["pane", "close", exc.pane_id])
+                except ValueError as close_error:
+                    record["pane_close_error"] = str(close_error)
+            attempts.append(record)
+            if exc.retryable and index < len(backoff) - 1:
+                continue
+            failure_path = record_launch_failure(inst_path, attempts)
+            raise ValueError(launch_failure_message(exc, attempts, failure_path)) from exc
+        break
+
+    assert landed is not None
     receipt = {
         "instruction_path": str(inst_path),
         "contract_sha256": instruction["contract_sha256"],
         "agent_kind": agent_kind,
-        "name": name,
-        "pane_id": pane_id,
-        "tab_id": tab_id,
-        "session_id": session_id,
-        "herdr_terminal_id": terminal_id,
+        **landed,
         "launched_at": datetime.now(timezone.utc).isoformat(),
     }
     receipt_path = launch_receipt_path(inst_path)
     dump_json(receipt_path, receipt)
+    launch_failure_path(inst_path).unlink(missing_ok=True)
 
     if not is_coworker:
         try:

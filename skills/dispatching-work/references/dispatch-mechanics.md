@@ -96,23 +96,34 @@ The launcher derives provider arguments from the recorded worker setup, then:
 3. injects Claude with `--append-system-prompt-file`, or Codex with
    `developer_instructions`;
 4. resolves the main pane and splits a worker pane in the same tab;
-5. starts the provider through herdr and handles an initial trust prompt;
-6. submits the recorded task; when the pane was idle, already done, or
+5. starts the provider through herdr, then settles on herdr's own state wait
+   before reading the agent — a single read straight after `agent start`
+   catches a Claude worker still reporting `idle`/`interactive_ready` while a
+   first-run gate is mid-render;
+6. handles a startup gate by provider. Codex's own startup trust prompt is
+   confirmed with `enter`. **A blocked Claude worker is never answered
+   blindly**: Claude Code's startup gates — folder trust first among them —
+   render as a select list whose highlighted option is `No, exit`, so `enter`,
+   or the task itself which ends in one, exits the worker herdr had just
+   reported healthy. The launcher reports the gate with what the pane is
+   showing and leaves the pane standing for whoever answers it;
+7. submits the recorded task; when the pane was idle, already done, or
    blocked (not yet already working) just before sending, also requires
    herdr's own `--wait`/`agent_prompt_stalled` lifecycle gate to confirm a
    turn actually started, not merely that the text reached the composer;
    either way polls until its whitespace-normalized text appears in the
-   provider-appropriate transcript view; retries once only after a
-   herdr-confirmed stall or a complete transcript miss; two failures of
-   either kind fail launch and remove the worker pane;
-7. records the live provider fingerprint: Claude waits for
+   provider-appropriate transcript view; retries a herdr-confirmed stall or a
+   complete transcript miss on a backoff, and a booted worker whose prompt
+   still never lands keeps its pane;
+8. records the live provider fingerprint: Claude waits for
    `agent_session.value` and cross-checks its preassigned id; Codex records
    `terminal_id` without waiting for a session field;
-8. writes `<app>--<slug>.launch.json` with the worker pane and shared tab;
-9. on a top-level dispatch (never a coworker's), best-effort-names the
-   coordinator's own still-unnamed pane `<app>-coordinator` — an already-named
-   coordinator pane is left alone, and a failure here never fails the launch
-   that already succeeded.
+9. writes `<app>--<slug>.launch.json` with the worker pane and shared tab, and
+   clears any `<app>--<slug>.launch-failure.json` an earlier run left;
+10. on a top-level dispatch (never a coworker's), best-effort-names the
+    coordinator's own still-unnamed pane `<app>-coordinator` — an already-named
+    coordinator pane is left alone, and a failure here never fails the launch
+    that already succeeded.
 
 Provider profile/model/effort are instruction-owned. Claude receives
 `--agent`/`--model`/`--effort`; Codex receives
@@ -130,6 +141,82 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" confirm \
 Confirmation consumes the receipt and refuses any instruction, contract,
 provider, pane, or provider-fingerprint mismatch. It records the receipt values
 and moves the instruction to `in-progress`.
+
+### When a launch fails
+
+The launcher retries the whole sequence itself, bounded and backed off, so a
+transient trip never becomes four hand-run relaunches. It retries only what a
+second attempt can clear — herdr reporting the agent or pane gone
+(`agent_not_running`, `agent_not_found`, `pane_not_found`, `agent_pane_busy`).
+A refused start, a mismatched identity, a pane in the wrong tab, or a startup
+gate is a standing condition of this cwd or configuration: those are reported
+at once, because a fourth identical attempt only burns another pane and delays
+the answer.
+
+Every failure carries the worker pane's own visible output. herdr's error code
+says the agent is gone and never says why; the agent's last words — a trust
+gate, a refused session id, a crash — exist only on that pane, and the cleanup
+closes it. A failing attempt reads the pane first and reports the excerpt.
+
+A pane is closed on failure unless its agent is still alive and someone can act
+on it there: a startup gate awaiting an answer, or a booted worker whose
+opening prompt never landed. Those two keep their pane and the error says so.
+
+Every failed launch writes `<app>--<slug>.launch-failure.json` beside the
+instruction: one entry per attempt with its pane, session id, classification,
+error, and pane excerpt. Without it a failed launch leaves the instruction
+`pending` with no receipt and no pane id — indistinguishable from a dispatch
+nobody ever started. `wrap-up-task.py` archives this file with the instruction,
+and `roll-call.py` reads it to say why a `never-launched` row is stuck.
+
+`claude --session-id` refuses an id it has already seen and exits at once, so
+each retry — and any rerun whose recorded attempt trail shows the id already
+spent — mints a fresh session id into the still-`pending` instruction before
+starting. Reusing a spent id guarantees a startup death, so relaunching a
+dispatch whose first attempt booted an agent would otherwise be impossible.
+
+## Roll call
+
+`roll-call.py` is the read-only reconciliation of live herdr state against
+`~/.straw-boss/dispatch/`. It starts nothing, closes nothing, writes nothing.
+
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/roll-call.py" [--mine] [--json]
+```
+
+**Liveness is decided by `agent_session.value` (Claude) or `terminal_id`
+(Codex) together with `agent_status` — never by a pane's terminal title.** A
+title only reflects whatever the foreground program last set, so an idle
+worker's pane reads back as a plain shell prompt while the agent is perfectly
+alive. Reading that as death is what let one coordinator declare another's live
+worker an orphan and dispatch the same task a second time. The same rule makes
+the recorded pane id secondary: a closed pane's id can be reissued to somebody
+else's agent later, so matching on it would report a stranger as this
+dispatch's worker.
+
+Per-dispatch verdicts: `running`, `checkpoint` (waiting at an `awaiting-*`
+status), `awaiting-collection` (its own status record is terminal),
+`orphaned` (no live agent carries this worker's fingerprint), `never-launched`
+(still `pending`, with the launch-failure reason when one was recorded), and
+`launched-unconfirmed` (an agent carries the instruction's fingerprint but
+`dispatch-task.py confirm` never recorded it — a half-landed launch, never a
+free slot to dispatch into again).
+Every row names the coordinator pane and session that dispatched it, and says
+when that coordinator's own session is no longer live.
+
+A second section lists live agents with no instruction of their own, split into
+`coordinator` (its session appears as some instruction's
+`main_agent_session_id`) and `unattributed`. **`unattributed` means "not
+attributable from this data", never "ownerless".** A coordinator pane has no
+instruction by design, and a freshly split worker pane has none until its
+dispatch reaches `dispatch-task.py write` — closing one of those on the "no
+instruction" reading is the second half of the same incident.
+
+`--mine` narrows the dispatch list to the ones this pane's session dispatched,
+for a machine running several coordinators at once. It never narrows
+attribution: every instruction is still read, or filtering would manufacture
+exactly the ownerless-looking agent this script exists to prevent anyone acting
+on.
 
 Herdr accepting `agent prompt` is not delivery proof -- text can land in an
 agent's composer without ever starting a turn. The launcher writes the

@@ -124,7 +124,13 @@ afterward.
 
 ## Branch: List outstanding instructions
 
-Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only — excluding `archive/`, and excluding a standalone dispatch's own `<app>--<slug>.status.json`/`.progress.jsonl` siblings (per `dispatch-mechanics.md`'s "Reporting scripts"), which match a naive `*.json`/`*.jsonl` glob but are not instructions themselves — reading one as if it were would report a phantom, already-terminal entry that never actually gets wrapped up (`wrap-up-task.py` archives them alongside their real instruction, not standalone). Report grouped by status. Pure read.
+Run `roll-call.py` (`references/dispatch-mechanics.md`'s "Roll call") — it reconciles live herdr agents against `~/.straw-boss/dispatch/` and is a pure read. Never answer this from the instruction files alone: a dispatch record says what was started, not what is still alive, and the reverse is worse — a live pane with no instruction is not evidence of anything.
+
+**Liveness is `agent_session.value` (Claude) or `terminal_id` (Codex) plus `agent_status`, never a pane's terminal title.** An idle agent's title falls back to looking like a plain shell prompt; reading that as death is what got one coordinator's live worker declared an orphan and its task dispatched a second time.
+
+**A live agent with no instruction is never proof of an ownerless pane.** A coordinator pane has none by design, and a freshly split worker pane has none until its dispatch reaches `dispatch-task.py write` — the roll call reports both as `unattributed`, meaning "not attributable from this data". Closing one on that reading is how somebody else's just-opened pane gets destroyed.
+
+`--mine` narrows the list to this session's own dispatches when several coordinators share the machine; it never narrows attribution.
 
 ## Branch: Wrap up an instruction
 
@@ -143,7 +149,8 @@ Scan `~/.straw-boss/dispatch/` for `<app>--<slug>.json` instruction files only �
 4. If the instruction's own status record is missing or stuck on a non-terminal
    checkpoint (`awaiting-user-input`, `awaiting-main-agent`,
    `awaiting-authorization`) and its `herdr-pane` worker is confirmed already
-   closed — not merely believed closed — run `recover-task-status.py` to write
+   closed — `roll-call.py` reporting it `orphaned`, not a terminal title that
+   looks like a shell — run `recover-task-status.py` to write
    an explicit terminal status (`done`/`failed`) and a traceable note yourself.
    This is allowed recovery for exactly this situation, not a shortcut: always
    prefer replying to the agent and letting it call `report-task-status.py` on

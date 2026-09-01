@@ -507,10 +507,9 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         # herdr's --wait gate must still apply there, since blocked is a
         # non-working state, not fall back to composer-only-vulnerable
         # plain submission just because it isn't idle.
-        instruction_path, _ = self.write_dispatch("claude")
-        instruction = json.loads(instruction_path.read_text())
+        instruction_path, _ = self.write_dispatch("codex")
         fake_bin, capture = self.install_fake_herdr()
-        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+        receipt_path = instruction_path.with_name("api--contract-codex.launch.json")
 
         result = self.run_script(
             "launch-dispatched-agent.py",
@@ -521,7 +520,6 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
             extra_env={
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "HERDR_CAPTURE": str(capture),
-                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
                 "HERDR_AGENT_STATUSES": json.dumps({"worker-pane": "blocked"}),
                 "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
                     {"worker-pane": "agent_prompt_stalled"}
@@ -539,6 +537,169 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertTrue(all("--wait" in call for call in prompts))
         self.assertNotIn(["pane", "close", "worker-pane"], calls)
         self.assertIn("is left open", result.stderr)
+
+    def test_launcher_reports_a_claude_startup_gate_instead_of_submitting_into_it(
+        self,
+    ) -> None:
+        # The failure this exists for: a first-run gate (folder trust) leaves a
+        # Claude worker blocked before its first turn with "No, exit"
+        # preselected, so the opening prompt -- or a blind enter -- exits the
+        # worker herdr had just reported healthy. The gate is named, the pane
+        # is kept for whoever answers it, and nothing is retried into it.
+        instruction_path, _ = self.write_dispatch("claude")
+        fake_bin, capture = self.install_fake_herdr()
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+        failure_path = instruction_path.with_name(
+            "api--contract-claude.launch-failure.json"
+        )
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "trust-gated-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_AGENT_STATUSES": json.dumps({"worker-pane": "blocked"}),
+                "HERDR_PANE_TEXT": "Is this a project you created or one you trust?\n"
+                " > No, exit\n   Yes, I trust this folder",
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("startup gate", result.stderr)
+        self.assertIn("Yes, I trust this folder", result.stderr)
+        self.assertFalse(receipt_path.exists())
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse([call for call in calls if call[:2] == ["agent", "prompt"]])
+        self.assertFalse([call for call in calls if call[:2] == ["agent", "send-keys"]])
+        self.assertNotIn(["pane", "close", "worker-pane"], calls)
+        self.assertEqual(len([c for c in calls if c[:2] == ["agent", "start"]]), 1)
+        recorded = json.loads(failure_path.read_text())
+        self.assertEqual(len(recorded["attempts"]), 1)
+        self.assertFalse(recorded["attempts"][0]["retryable"])
+        self.assertTrue(recorded["attempts"][0]["pane_left_open"])
+        self.assertIn("No, exit", recorded["attempts"][0]["pane_excerpt"])
+
+    def test_launcher_reads_a_startup_gate_off_the_pane_when_herdr_still_says_idle(
+        self,
+    ) -> None:
+        # herdr classifies a fresh trust gate as blocked about a second after
+        # `agent start` returns, so a launch that trusts the status alone can
+        # still submit into a gate herdr is calling idle. The gate's own
+        # preselected option on the pane is the second, independent signal.
+        instruction_path, _ = self.write_dispatch("claude")
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "idle-looking-gated-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_AGENT_STATUSES": json.dumps({"worker-pane": "idle"}),
+                # As a narrow worker pane renders it: the option wraps away
+                # from its own bullet.
+                "HERDR_PANE_TEXT": " Security guide\n\n \u276f No,\n exit\n   Yes, I trust\n   this folder",
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("startup gate", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse([call for call in calls if call[:2] == ["agent", "prompt"]])
+        self.assertNotIn(["pane", "close", "worker-pane"], calls)
+
+    def test_launcher_retries_a_worker_that_vanishes_and_records_why_when_it_gives_up(
+        self,
+    ) -> None:
+        # An agent that goes away mid-launch is the one shape a second attempt
+        # can clear, so it is retried with a fresh session id rather than
+        # handed back for the coordinator to rerun by hand -- and when the
+        # bounded retries run out the reason lands beside the instruction
+        # instead of only on stderr.
+        instruction_path, _ = self.write_dispatch("claude")
+        first_session = json.loads(instruction_path.read_text())["session_id"]
+        fake_bin, capture = self.install_fake_herdr()
+        failure_path = instruction_path.with_name(
+            "api--contract-claude.launch-failure.json"
+        )
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "vanishing-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_TEXT": "Error: Session ID is already in use.",
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
+                    {"worker-pane": "agent_not_running"}
+                ),
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("launch failed after 3 attempt(s)", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        starts = [call for call in calls if call[:2] == ["agent", "start"]]
+        self.assertEqual(len(starts), 3)
+        self.assertEqual(
+            len([call for call in calls if call[:2] == ["pane", "close"]]), 3
+        )
+        recorded = json.loads(failure_path.read_text())
+        self.assertEqual(len(recorded["attempts"]), 3)
+        self.assertTrue(all(a["retryable"] for a in recorded["attempts"]))
+        self.assertIn("Session ID is already in use", recorded["attempts"][0]["pane_excerpt"])
+        session_ids = [a["session_id"] for a in recorded["attempts"]]
+        self.assertEqual(session_ids[0], first_session)
+        self.assertEqual(len(set(session_ids)), 3)
+
+    def test_launcher_starts_a_rerun_on_a_session_id_no_earlier_attempt_spent(
+        self,
+    ) -> None:
+        # `claude --session-id` refuses an id it has already seen, so a rerun
+        # that reuses the id an earlier run already handed to a booted agent
+        # would die at startup every time. The recorded attempt trail is what
+        # makes that knowable across processes.
+        instruction_path, _ = self.write_dispatch("claude")
+        spent = json.loads(instruction_path.read_text())["session_id"]
+        instruction_path.with_name("api--contract-claude.launch-failure.json").write_text(
+            json.dumps({"attempts": [{"attempt": 1, "session_id": spent}]})
+        )
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "rerun-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_SESSION_FROM_START": "1",
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        rotated = json.loads(instruction_path.read_text())["session_id"]
+        self.assertNotEqual(rotated, spent)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        starts = [call for call in calls if call[:2] == ["agent", "start"]]
+        self.assertEqual(len(starts), 1)
+        self.assertEqual(starts[0][starts[0].index("--session-id") + 1], rotated)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_launcher_does_not_resend_on_an_ambiguous_prompt_wait_failure(
         self,

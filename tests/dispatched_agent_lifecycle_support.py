@@ -27,7 +27,14 @@ class DispatchedAgentLifecycleFixture:
         extra_env: dict[str, str] | None = None,
         timeout_seconds: float = 10,
     ) -> subprocess.CompletedProcess[str]:
-        env = {**os.environ, "HOME": str(self.home)}
+        env = {
+            **os.environ,
+            "HOME": str(self.home),
+            # The launcher holds its post-start reading open for a few seconds
+            # to catch a startup gate herdr has not classified yet; the fake
+            # herdr answers instantly, so that window would only buy wall-clock.
+            "STRAW_BOSS_AGENT_SETTLE_SECONDS": "0",
+        }
         if extra_env:
             env.update(extra_env)
         return subprocess.run(
@@ -107,6 +114,8 @@ class DispatchedAgentLifecycleFixture:
             "    print(json.dumps({'result': {'pane': {'pane_id': target, 'tab_id': os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1')}}}))\n"
             "elif args[:2] == ['pane', 'split']:\n"
             "    print(json.dumps({'result': {'pane': {'pane_id': os.environ.get('HERDR_WORKER_PANE_ID', 'worker-pane'), 'tab_id': os.environ.get('HERDR_WORKER_TAB_ID', os.environ.get('HERDR_MAIN_TAB_ID', 'tab-1'))}}}))\n"
+            "elif args[:2] == ['pane', 'list']:\n"
+            "    print(json.dumps({'result': {'panes': json.loads(os.environ.get('HERDR_PANE_LIST', '[]'))}}))\n"
             "elif args[:2] == ['agent', 'list']:\n"
             "    print(json.dumps({'result': {'agents': json.loads(os.environ.get('HERDR_AGENT_LIST', '[]'))}}))\n"
             "elif args[:2] == ['agent', 'start'] and (args[2] in json.loads(os.environ.get('HERDR_NAME_TAKEN', '[]')) or args[2] in {a.get('name') for a in json.loads(os.environ.get('HERDR_AGENT_LIST', '[]'))}):\n"
@@ -144,6 +153,8 @@ class DispatchedAgentLifecycleFixture:
             "    delay = int(os.environ.get('HERDR_SESSION_DELAY_GETS', '0'))\n"
             "    starts = [call for call in captured if call[:2] == ['agent', 'start'] and call[call.index('--pane') + 1] == target]\n"
             "    started_kind = starts[-1][starts[-1].index('--kind') + 1] if starts else 'claude'\n"
+            "    if os.environ.get('HERDR_SESSION_FROM_START') == '1' and starts and '--session-id' in starts[-1]:\n"
+            "        session = starts[-1][starts[-1].index('--session-id') + 1]\n"
             "    agent_kinds = json.loads(os.environ.get('HERDR_AGENT_KINDS', '{}'))\n"
             "    terminal_ids = json.loads(os.environ.get('HERDR_TERMINAL_IDS', '{}'))\n"
             "    statuses = json.loads(os.environ.get('HERDR_AGENT_STATUSES', '{}'))\n"
@@ -162,6 +173,8 @@ class DispatchedAgentLifecycleFixture:
             "    target = args[3]\n"
             "    process_infos = json.loads(os.environ.get('HERDR_PROCESS_INFOS', '{}'))\n"
             "    print(json.dumps({'result': {'process_info': process_infos.get(target, {'pane_id': target, 'foreground_processes': []})}}))\n"
+            "elif args[:2] == ['pane', 'read']:\n"
+            "    print(os.environ.get('HERDR_PANE_TEXT', ''))\n"
             "elif args[:2] == ['agent', 'read']:\n"
             "    target = args[2]\n"
             "    prompts = [call for call in captured if call[:3] == ['agent', 'prompt', target]]\n"

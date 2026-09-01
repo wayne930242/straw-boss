@@ -35,6 +35,18 @@ def launch_receipt_path(instruction_path: Path) -> Path:
     )
 
 
+def launch_failure_path(instruction_path: Path) -> Path:
+    """Where a failed launch leaves its reason.
+
+    A launch that never succeeds writes no receipt and leaves the instruction
+    `pending`, so without this file an abandoned dispatch is indistinguishable
+    from one nobody started -- with no pane id to go and look at either.
+    """
+    return instruction_path.with_name(
+        f"{instruction_path.name.removesuffix('.json')}.launch-failure.json"
+    )
+
+
 def standalone_status_path(instruction_path: Path) -> Path:
     return instruction_path.with_name(
         f"{instruction_path.name.removesuffix('.json')}.status.json"

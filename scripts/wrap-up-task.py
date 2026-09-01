@@ -45,6 +45,7 @@ def sibling_paths(app: str, slug: str) -> list[Path]:
         base / f"{stem}.progress.jsonl",
         base / f"{stem}.contract.md",
         base / f"{stem}.launch.json",
+        base / f"{stem}.launch-failure.json",
         base / f"{stem}.messages.jsonl",
     ]
 
