@@ -159,8 +159,17 @@ gate, a refused session id, a crash — exist only on that pane, and the cleanup
 closes it. A failing attempt reads the pane first and reports the excerpt.
 
 A pane is closed on failure unless its agent is still alive and someone can act
-on it there: a startup gate awaiting an answer, or a booted worker whose
-opening prompt never landed. Those two keep their pane and the error says so.
+on it there: a startup gate awaiting an answer, a booted worker whose opening
+prompt never landed, or one whose task was already confirmed delivered and only
+this launcher's own identity bookkeeping then failed. Those keep their pane and
+the error says so — the worker in the last case is doing the task while its
+instruction stays `pending`, which is the `launched-unconfirmed` row the roll
+call reports.
+
+A Claude startup gate is only described as a trust dialog when the pane
+actually shows its preselected option; a worker that is merely `blocked` before
+its first turn is reported as that, with the pane's contents and no prescribed
+keystrokes for a dialog the launcher has not recognised.
 
 Every failed launch writes `<app>--<slug>.launch-failure.json` beside the
 instruction: one entry per attempt with its pane, session id, classification,
@@ -197,10 +206,20 @@ dispatch's worker.
 Per-dispatch verdicts: `running`, `checkpoint` (waiting at an `awaiting-*`
 status), `awaiting-collection` (its own status record is terminal),
 `orphaned` (no live agent carries this worker's fingerprint), `never-launched`
-(still `pending`, with the launch-failure reason when one was recorded), and
-`launched-unconfirmed` (an agent carries the instruction's fingerprint but
+(still `pending`, with the launch-failure reason when one was recorded),
+`launched-unconfirmed` (an agent carries the dispatch's fingerprint but
 `dispatch-task.py confirm` never recorded it — a half-landed launch, never a
-free slot to dispatch into again).
+free slot to dispatch into again), and `awaiting-startup-gate` (a failed launch
+deliberately kept its pane and it is still open, waiting on a human).
+
+The worker fingerprint is read from the instruction **and its launch receipt**,
+because the instruction carries no usable one until `confirm` runs — for Codex
+none at all (`herdr_terminal_id` is written only at confirm), for Claude only
+the preassigned id. A pane a launch kept on purpose is matched through the
+launch-failure record instead: that worker has not taken its first turn, so
+herdr exposes no `agent_session` for it yet, and the record is the only thing
+tying the pane back to its dispatch. Both windows exist precisely where a
+worker looks absent while it is not.
 Every row names the coordinator pane and session that dispatched it, and says
 when that coordinator's own session is no longer live.
 
@@ -212,11 +231,14 @@ instruction by design, and a freshly split worker pane has none until its
 dispatch reaches `dispatch-task.py write` — closing one of those on the "no
 instruction" reading is the second half of the same incident.
 
-`--mine` narrows the dispatch list to the ones this pane's session dispatched,
-for a machine running several coordinators at once. It never narrows
-attribution: every instruction is still read, or filtering would manufacture
-exactly the ownerless-looking agent this script exists to prevent anyone acting
-on.
+`--mine` narrows the dispatch list to the ones this pane dispatched, for a
+machine running several coordinators at once, matching on this pane's own
+session value or terminal id (a Codex coordinator has only the latter). It
+refuses when neither resolves rather than falling back to "everything is
+mine" — that fallback would answer the one question `--mine` exists to answer,
+wrongly and silently. It never narrows attribution either: every instruction is
+still read, or filtering would manufacture exactly the ownerless-looking agent
+this script exists to prevent anyone acting on.
 
 Herdr accepting `agent prompt` is not delivery proof -- text can land in an
 agent's composer without ever starting a turn. The launcher writes the

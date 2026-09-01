@@ -665,6 +665,81 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertEqual(session_ids[0], first_session)
         self.assertEqual(len(set(session_ids)), 3)
 
+    def test_launcher_keeps_the_pane_when_bookkeeping_fails_after_confirmed_delivery(
+        self,
+    ) -> None:
+        # Once the task is confirmed in the worker's transcript the worker is
+        # doing the job, and the remaining identity checks are this launcher's
+        # own bookkeeping. Closing that pane destroys a working agent for a
+        # reason that has nothing to do with it -- the same principle the
+        # missed-handoff path already follows.
+        instruction_path, _ = self.write_dispatch("claude")
+        fake_bin, capture = self.install_fake_herdr()
+        failure_path = instruction_path.with_name(
+            "api--contract-claude.launch-failure.json"
+        )
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "delivered-but-unrecorded-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": "somebody-elses-session",
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("already confirmed delivered", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertNotIn(["pane", "close", "worker-pane"], calls)
+        self.assertEqual(len([c for c in calls if c[:2] == ["agent", "start"]]), 1)
+        recorded = json.loads(failure_path.read_text())
+        self.assertEqual(len(recorded["attempts"]), 1)
+        self.assertTrue(recorded["attempts"][0]["pane_left_open"])
+
+    def test_launcher_records_the_trail_after_each_failed_attempt_not_only_at_the_end(
+        self,
+    ) -> None:
+        # A run killed mid-retry must still leave the trail this file exists to
+        # guarantee, and the spent session ids accumulate across runs even
+        # though each run rewrites the attempt list.
+        instruction_path, _ = self.write_dispatch("claude")
+        first_session = json.loads(instruction_path.read_text())["session_id"]
+        failure_path = instruction_path.with_name(
+            "api--contract-claude.launch-failure.json"
+        )
+        failure_path.write_text(
+            json.dumps({"spent_session_ids": ["an-id-from-a-much-earlier-run"]})
+        )
+        fake_bin, capture = self.install_fake_herdr()
+
+        self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "trail-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
+                    {"worker-pane": "agent_not_running"}
+                ),
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        recorded = json.loads(failure_path.read_text())
+        self.assertEqual(len(recorded["attempts"]), 3)
+        self.assertIn("an-id-from-a-much-earlier-run", recorded["spent_session_ids"])
+        self.assertIn(first_session, recorded["spent_session_ids"])
+        self.assertEqual(len(recorded["spent_session_ids"]), 4)
+
     def test_launcher_starts_a_rerun_on_a_session_id_no_earlier_attempt_spent(
         self,
     ) -> None:

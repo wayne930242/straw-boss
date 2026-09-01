@@ -25,7 +25,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dispatch_state import dump_json, load_json, straw_boss_root
+from dispatch_state import (
+    dump_json,
+    instruction_sibling_paths,
+    load_json,
+    standalone_status_path,
+    straw_boss_root,
+)
 
 
 def instruction_path(app: str, slug: str) -> Path:
@@ -34,20 +40,6 @@ def instruction_path(app: str, slug: str) -> Path:
 
 def archived_path(app: str, slug: str) -> Path:
     return straw_boss_root() / "dispatch" / "archive" / f"{app}--{slug}.json"
-
-
-def sibling_paths(app: str, slug: str) -> list[Path]:
-    """Artifacts owned by one instruction and archived with it."""
-    base = straw_boss_root() / "dispatch"
-    stem = f"{app}--{slug}"
-    return [
-        base / f"{stem}.status.json",
-        base / f"{stem}.progress.jsonl",
-        base / f"{stem}.contract.md",
-        base / f"{stem}.launch.json",
-        base / f"{stem}.launch-failure.json",
-        base / f"{stem}.messages.jsonl",
-    ]
 
 
 def plan_path(plan_slug: str) -> Path:
@@ -90,9 +82,9 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
         # dispatch or a claude-p one confirmed done by process exit, but not for a
         # confirmed herdr-pane worker: that one has a live pane and writes its own
         # status, so silence means it never reported, not that it finished.
-        standalone_status_path = sibling_paths(app, slug)[0]
-        if standalone_status_path.is_file():
-            standalone_status = str(load_json(standalone_status_path)["status"])
+        status_record = standalone_status_path(src)
+        if status_record.is_file():
+            standalone_status = str(load_json(status_record)["status"])
             if standalone_status not in ("done", "failed", "cancelled"):
                 raise ValueError(
                     f"dispatch {app}--{slug} status is {standalone_status!r}, not terminal -- refusing "
@@ -107,7 +99,7 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
             # stays archivable: never confirmed, so nothing was launched to protect.
             raise ValueError(
                 f"dispatch {app}--{slug} is still in-progress with no status record at "
-                f"{standalone_status_path} -- a live herdr-pane worker writes its own "
+                f"{status_record} -- a live herdr-pane worker writes its own "
                 f"terminal status, so refusing to archive it out from under one. Reply to "
                 f"the agent and let it report; if its pane is confirmed closed, write an "
                 f"explicit terminal status with recover-task-status.py --instruction-path "
@@ -120,7 +112,7 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
     dump_json(dest, payload)
     src.unlink()
 
-    for sibling in sibling_paths(app, slug):
+    for sibling in instruction_sibling_paths(src):
         if sibling.is_file():
             sibling.rename(dest.parent / sibling.name)
 

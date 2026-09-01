@@ -136,6 +136,130 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         self.assertEqual(row["verdict"], "launched-unconfirmed")
         self.assertEqual(row["worker_pane"], "wF:p9")
 
+    def test_a_launched_codex_worker_is_found_through_its_receipt_before_confirm(
+        self,
+    ) -> None:
+        # A Codex instruction carries no usable fingerprint until confirm runs:
+        # session_id is None at write and herdr_terminal_id is filled only at
+        # confirm. Without the receipt this live worker reads as
+        # never-launched AND unattributed -- both halves of the incident this
+        # script exists to prevent, at once.
+        instruction_path, _ = self.write_dispatch("codex", slug="codex-preconfirm")
+        instruction_path.with_name("api--codex-preconfirm.launch.json").write_text(
+            json.dumps({"pane_id": "wF:p9", "herdr_terminal_id": "terminal-wF:p9"})
+        )
+        worker = agent("wF:p9", "unused-for-codex")
+        worker["agent"] = "codex"
+
+        report = self.roll_call([worker])
+
+        row = self.row(report, "api--codex-preconfirm")
+        self.assertEqual(row["verdict"], "launched-unconfirmed")
+        self.assertEqual(row["worker_pane"], "wF:p9")
+        self.assertNotIn(
+            "wF:p9", {a["pane_id"] for a in report["agents_without_instruction"]}
+        )
+
+    def test_a_pane_a_failed_launch_kept_is_attributed_to_its_dispatch(self) -> None:
+        # The launcher keeps a startup-gate pane on purpose. That worker has no
+        # fingerprint yet -- herdr exposes no agent_session before the first
+        # turn -- so the launch-failure record is the only thing tying the pane
+        # back to its dispatch.
+        instruction_path, _ = self.write_dispatch(slug="gated")
+        instruction_path.with_name("api--gated.launch-failure.json").write_text(
+            json.dumps(
+                {
+                    "attempts": [
+                        {
+                            "attempt": 1,
+                            "pane_id": "wF:p9",
+                            "pane_left_open": True,
+                            "error": "stopped on a Claude Code startup gate\nmore detail",
+                        }
+                    ]
+                }
+            )
+        )
+        gated = agent("wF:p9", "no-session-yet", status="blocked")
+        del gated["agent_session"]
+
+        report = self.roll_call([gated])
+
+        row = self.row(report, "api--gated")
+        self.assertEqual(row["verdict"], "awaiting-startup-gate")
+        self.assertIn("startup gate", row["note"])
+        self.assertEqual(row["worker_pane"], "wF:p9")
+        self.assertNotIn(
+            "wF:p9", {a["pane_id"] for a in report["agents_without_instruction"]}
+        )
+
+    def test_a_kept_pane_that_is_already_gone_is_not_reported_as_still_waiting(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch(slug="gate-closed")
+        instruction_path.with_name("api--gate-closed.launch-failure.json").write_text(
+            json.dumps(
+                {
+                    "attempts": [
+                        {
+                            "attempt": 1,
+                            "pane_id": "wF:p9",
+                            "pane_left_open": True,
+                            "error": "stopped on a Claude Code startup gate",
+                        }
+                    ]
+                }
+            )
+        )
+
+        report = self.roll_call([], panes=[])
+
+        row = self.row(report, "api--gate-closed")
+        self.assertEqual(row["verdict"], "never-launched")
+
+    def test_mine_refuses_rather_than_silently_reporting_everything(self) -> None:
+        # Falling back to "all dispatches" answers the only question --mine
+        # exists to answer, wrongly, and says nothing about having done so.
+        self.write_dispatch(slug="somebody-elses")
+        fake_bin, capture = self.install_fake_herdr()
+        fingerprintless = agent("lonely-pane", "")
+        del fingerprintless["agent_session"]
+        fingerprintless["terminal_id"] = ""
+
+        result = self.run_script(
+            "roll-call.py",
+            "--json",
+            "--mine",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_AGENT_LIST": json.dumps([fingerprintless]),
+                "HERDR_PANE_LIST": json.dumps([{"pane_id": "lonely-pane"}]),
+                "HERDR_PANE_ID": "lonely-pane",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot tell this session's dispatches apart", result.stderr)
+
+    def test_mine_matches_a_codex_coordinator_on_its_terminal_fingerprint(self) -> None:
+        mine, _ = self.write_dispatch(main_agent_kind="codex", slug="codex-boss")
+        self.set_worker_endpoint(mine, pane="wF:p9", session="my-worker-session")
+        theirs, _ = self.write_dispatch(slug="claude-boss")
+        self.set_worker_endpoint(theirs, pane="wF:p12", session="their-worker-session")
+
+        report = self.roll_call(
+            [
+                agent("main-pane", "", name="codex-coordinator"),
+                agent("wF:p9", "my-worker-session"),
+                agent("wF:p12", "their-worker-session"),
+            ],
+            "--mine",
+            pane_id="main-pane",
+        )
+
+        self.assertEqual([r["dispatch"] for r in report["dispatches"]], ["api--codex-boss"])
+
     def test_a_dispatchs_own_sibling_files_are_never_read_as_instructions(self) -> None:
         instruction_path, _ = self.write_dispatch(slug="with-siblings")
         self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")

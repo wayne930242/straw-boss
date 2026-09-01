@@ -47,6 +47,28 @@ def launch_failure_path(instruction_path: Path) -> Path:
     )
 
 
+# Files that share an instruction's <app>--<slug> stem, are owned by it, and are
+# archived with it. Kept in one place because two readers depend on the exact
+# set: wrap-up moves them, and any *.json scan has to skip the ones that would
+# otherwise be read as instructions in their own right.
+INSTRUCTION_SIBLING_SUFFIXES = (
+    ".contract.md",
+    ".launch.json",
+    ".launch-failure.json",
+    ".messages.jsonl",
+    ".progress.jsonl",
+    ".status.json",
+)
+
+
+def instruction_sibling_paths(instruction_path: Path) -> list[Path]:
+    stem = instruction_path.name.removesuffix(".json")
+    return [
+        instruction_path.with_name(f"{stem}{suffix}")
+        for suffix in INSTRUCTION_SIBLING_SUFFIXES
+    ]
+
+
 def standalone_status_path(instruction_path: Path) -> Path:
     return instruction_path.with_name(
         f"{instruction_path.name.removesuffix('.json')}.status.json"

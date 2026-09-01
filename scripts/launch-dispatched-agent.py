@@ -394,18 +394,23 @@ def settled_agent(pane_id: str) -> dict[str, object]:
     return agent
 
 
-def startup_gate_excerpt(pane_id: str, agent: dict[str, object]) -> str | None:
-    """The pane's text when a Claude worker is sitting on a startup gate.
+def startup_gate(pane_id: str, agent: dict[str, object]) -> tuple[str, bool] | None:
+    """The pane's text when a Claude worker is stopped before its first turn.
 
     Two independent signals, because either alone has been observed to miss:
     herdr's own `blocked` classification, and the gate's preselected "No, exit"
-    on the pane itself.
+    on the pane itself. The second flag says which fired -- only the pane
+    marker identifies the gate specifically enough to name its options, so a
+    blocked-only reading reports what it actually knows instead of prescribing
+    keystrokes for a dialog it has not recognised.
     """
     excerpt = pane_excerpt(pane_id)
-    gated = agent.get("agent_status") == "blocked" or normalize_transcript_text(
+    marker_seen = normalize_transcript_text(
         STARTUP_GATE_PANE_MARKER
     ) in normalize_transcript_text(excerpt)
-    return excerpt if gated else None
+    if marker_seen or agent.get("agent_status") == "blocked":
+        return excerpt, marker_seen
+    return None
 
 
 def rotate_session_id(inst_path: Path, instruction: dict[str, Any]) -> str:
@@ -424,7 +429,12 @@ def rotate_session_id(inst_path: Path, instruction: dict[str, Any]) -> str:
 
 
 def spent_session_ids(inst_path: Path) -> set[str]:
-    """Session ids earlier runs already handed to `agent start` for this dispatch."""
+    """Every session id any earlier run of this dispatch already started with.
+
+    Accumulated across runs rather than derived from the current attempt list,
+    because each run rewrites that list -- an id spent two runs ago is still
+    spent.
+    """
     path = launch_failure_path(inst_path)
     if not path.is_file():
         return set()
@@ -432,22 +442,31 @@ def spent_session_ids(inst_path: Path) -> set[str]:
         record = load_json(path)
     except (OSError, json.JSONDecodeError):
         return set()
-    attempts = record.get("attempts")
-    if not isinstance(attempts, list):
-        return set()
-    return {
-        str(attempt.get("session_id"))
-        for attempt in attempts
-        if isinstance(attempt, dict) and attempt.get("session_id")
+    spent = {
+        str(value)
+        for value in record.get("spent_session_ids", [])
+        if isinstance(value, str) and value
     }
+    attempts = record.get("attempts")
+    if isinstance(attempts, list):
+        spent.update(
+            str(attempt.get("session_id"))
+            for attempt in attempts
+            if isinstance(attempt, dict) and attempt.get("session_id")
+        )
+    return spent
 
 
-def record_launch_failure(inst_path: Path, attempts: list[dict[str, Any]]) -> Path:
+def record_launch_failure(
+    inst_path: Path, attempts: list[dict[str, Any]], spent: set[str]
+) -> Path:
     """Leave the reason beside the instruction, not only on the caller's stderr.
 
     A launch that never succeeds writes no receipt and leaves the instruction
     `pending`, so without this an abandoned dispatch looks exactly like one
-    nobody ever started -- with no pane id to go and look at.
+    nobody ever started -- with no pane id to go and look at. Rewritten after
+    every failed attempt, not only at the end, so a run killed mid-retry still
+    leaves the trail this file exists to guarantee.
     """
     path = launch_failure_path(inst_path)
     dump_json(
@@ -455,6 +474,7 @@ def record_launch_failure(inst_path: Path, attempts: list[dict[str, Any]]) -> Pa
         {
             "instruction_path": str(inst_path),
             "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "spent_session_ids": sorted(spent),
             "attempts": attempts,
         },
     )
@@ -621,6 +641,11 @@ def launch(
 
     def attempt() -> dict[str, Any]:
         nonlocal name
+        # Set once the worker is confirmed to be holding the task: from there
+        # on nothing in this launch may close its pane, for the same reason a
+        # missed prompt handoff does not -- the agent is booted and working,
+        # and only this launcher's own bookkeeping is unfinished.
+        delivered = False
         provider_args = provider_args_for(str(name))
         try:
             pane_id, tab_id = create_worker_pane(instruction)
@@ -671,26 +696,32 @@ def launch(
                 raise
             if start_error is not None and agent.get("agent_status") != "blocked":
                 raise start_error
-            gate_excerpt = (
-                startup_gate_excerpt(pane_id, agent) if agent_kind == "claude" else None
-            )
-            if gate_excerpt is not None or agent.get("agent_status") == "blocked":
+            gate = startup_gate(pane_id, agent) if agent_kind == "claude" else None
+            if gate is not None or agent.get("agent_status") == "blocked":
                 if agent_kind == "claude":
                     # Claude Code's startup gates -- folder trust first among
                     # them -- render as a select list whose highlighted option
                     # is "No, exit". Enter, or the task itself which ends in
                     # one, picks that option and exits a worker that had
-                    # already booted. No retry can answer this; a human can,
-                    # in this pane, and answering it also records the decision
-                    # so the next launch into this directory runs clean.
-                    raise LaunchAttemptError(
-                        f"the worker in pane {pane_id!r} is blocked on a Claude Code "
-                        "startup gate before its first turn, so the task cannot be "
-                        'submitted: the gate preselects "No, exit" and anything sent '
-                        "there would exit the worker. Answer it in the Herdr tab (or "
+                    # already booted. No retry can answer this; a human can, in
+                    # this pane, and answering it also records the decision so
+                    # the next launch into this directory runs clean.
+                    gate_excerpt, marker_seen = gate if gate else ("", False)
+                    recovery = (
+                        'the gate preselects "No, exit" and anything sent there would '
+                        "exit the worker. Answer it in the Herdr tab (or "
                         f"`herdr agent send-keys {pane_id} down enter` to take the "
-                        "second option), then close that pane and run this launch "
-                        "again",
+                        "second option), then close that pane and run this launch again"
+                        if marker_seen
+                        else "only a human can answer what it is waiting on, and a "
+                        "blind keystroke risks picking a decline option that exits "
+                        "the worker. Answer it in the Herdr tab from what the pane "
+                        "shows below, then close that pane and run this launch again"
+                    )
+                    raise LaunchAttemptError(
+                        f"the worker in pane {pane_id!r} stopped on a Claude Code "
+                        "startup gate before its first turn, so the task cannot be "
+                        f"submitted: {recovery}",
                         retryable=False,
                         pane_id=pane_id,
                         keep_pane=True,
@@ -714,6 +745,7 @@ def launch(
             prompt_task_with_confirmation(
                 pane_id, str(instruction["task"]), agent_kind
             )
+            delivered = True
             terminal_id = live_agent_terminal_id(pane_id, agent_kind)
             session_id: str | None = None
             if agent_kind == "claude":
@@ -738,6 +770,17 @@ def launch(
             ) from exc
         except ValueError as exc:
             excerpt = pane_excerpt(pane_id)
+            if delivered:
+                raise LaunchAttemptError(
+                    f"{exc}; the task was already confirmed delivered, so the worker in "
+                    f"pane {pane_id!r} is running it and only this launch's own "
+                    "bookkeeping failed -- no receipt is written, so the instruction "
+                    "stays pending until someone reconciles it",
+                    retryable=False,
+                    pane_id=pane_id,
+                    keep_pane=True,
+                    pane_excerpt=excerpt,
+                ) from exc
             raise LaunchAttemptError(
                 str(exc),
                 retryable=is_retryable(exc, excerpt),
@@ -753,28 +796,33 @@ def launch(
             "herdr_terminal_id": terminal_id,
         }
 
-    if agent_kind == "claude" and str(instruction["session_id"]) in spent_session_ids(
-        inst_path
-    ):
-        # An earlier run of this launcher already handed that id to a booted
+    spent = spent_session_ids(inst_path)
+    if agent_kind == "claude" and str(instruction["session_id"]) in spent:
+        # An earlier run of this launcher already handed that id to a started
         # agent, so reusing it now would only reproduce its startup refusal.
         rotate_session_id(inst_path, instruction)
 
     backoff = launch_retry_backoff_seconds()
     attempts: list[dict[str, Any]] = []
     landed: dict[str, Any] | None = None
+    failure_path: Path | None = None
     for index, delay in enumerate(backoff):
         if delay:
             sleep(delay)
-        if index and agent_kind == "claude":
+        if index and agent_kind == "claude" and attempts[-1]["pane_id"]:
+            # Only an attempt that got as far as a pane can have started an
+            # agent on the current id; one that never did leaves it unspent.
             rotate_session_id(inst_path, instruction)
+        session_id_used = instruction.get("session_id")
+        if session_id_used:
+            spent.add(str(session_id_used))
         try:
             landed = attempt()
         except LaunchAttemptError as exc:
             record: dict[str, Any] = {
                 "attempt": index + 1,
                 "pane_id": exc.pane_id,
-                "session_id": instruction.get("session_id"),
+                "session_id": session_id_used,
                 "retryable": exc.retryable,
                 "pane_left_open": exc.keep_pane,
                 "error": str(exc),
@@ -787,9 +835,9 @@ def launch(
                 except ValueError as close_error:
                     record["pane_close_error"] = str(close_error)
             attempts.append(record)
+            failure_path = record_launch_failure(inst_path, attempts, spent)
             if exc.retryable and index < len(backoff) - 1:
                 continue
-            failure_path = record_launch_failure(inst_path, attempts)
             raise ValueError(launch_failure_message(exc, attempts, failure_path)) from exc
         break
 
