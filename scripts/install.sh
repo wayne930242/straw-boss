@@ -26,9 +26,24 @@ claude_plugin_version() {
 import json, sys
 payload = json.load(sys.stdin)
 for item in payload:
-    if item.get("id") == "straw-boss@straw-boss":
+    if (
+        item.get("id") == "straw-boss@straw-boss"
+        and item.get("scope") == "user"
+    ):
         print(item.get("version") or "")
         break
+'
+}
+
+claude_plugin_state() {
+  claude plugin list --json | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+print("present" if any(
+    item.get("id") == "straw-boss@straw-boss"
+    and item.get("scope") == "user"
+    for item in payload
+) else "absent")
 '
 }
 
@@ -54,6 +69,17 @@ for item in payload.get("installed", []):
 '
 }
 
+codex_plugin_state() {
+  codex plugin list --json | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+print("present" if any(
+    item.get("pluginId") == "straw-boss@straw-boss"
+    for item in payload.get("installed", [])
+) else "absent")
+'
+}
+
 install_claude() {
   if claude_marketplace_present; then
     claude plugin marketplace update "${MARKETPLACE_NAME}"
@@ -61,13 +87,21 @@ install_claude() {
     claude plugin marketplace add "${REPO_ROOT}" --scope user
   fi
 
-  local installed_version
-  installed_version="$(claude_plugin_version)"
-  if [[ -n "${installed_version}" ]]; then
-    claude plugin update "${PLUGIN_ID}" --scope user
-  else
-    claude plugin install "${PLUGIN_ID}" --scope user
-  fi
+  local installed_version plugin_state
+  plugin_state="$(claude_plugin_state)"
+  case "${plugin_state}" in
+    present)
+      claude plugin uninstall "${PLUGIN_ID}" --scope user --keep-data
+      claude plugin install "${PLUGIN_ID}" --scope user
+      ;;
+    absent)
+      claude plugin install "${PLUGIN_ID}" --scope user
+      ;;
+    *)
+      echo "error: unexpected Claude plugin state: ${plugin_state}" >&2
+      return 1
+      ;;
+  esac
 
   installed_version="$(claude_plugin_version)"
   if [[ "${installed_version}" != "${VERSION}" ]]; then
@@ -78,7 +112,7 @@ install_claude() {
 }
 
 install_codex() {
-  local marketplace_kind installed_version
+  local marketplace_kind installed_version plugin_state
   marketplace_kind="$(codex_marketplace_kind)"
   if [[ -z "${marketplace_kind}" ]]; then
     codex plugin marketplace add "${REPO_ROOT}" --json
@@ -86,13 +120,20 @@ install_codex() {
     codex plugin marketplace upgrade "${MARKETPLACE_NAME}" --json
   fi
 
-  installed_version="$(codex_plugin_version)"
-  if [[ -z "${installed_version}" ]]; then
-    codex plugin add "${PLUGIN_ID}" --json
-  elif [[ "${installed_version}" != "${VERSION}" ]]; then
-    codex plugin remove "${PLUGIN_ID}" --json
-    codex plugin add "${PLUGIN_ID}" --json
-  fi
+  plugin_state="$(codex_plugin_state)"
+  case "${plugin_state}" in
+    present)
+      codex plugin remove "${PLUGIN_ID}" --json
+      codex plugin add "${PLUGIN_ID}" --json
+      ;;
+    absent)
+      codex plugin add "${PLUGIN_ID}" --json
+      ;;
+    *)
+      echo "error: unexpected Codex plugin state: ${plugin_state}" >&2
+      return 1
+      ;;
+  esac
 
   installed_version="$(codex_plugin_version)"
   if [[ "${installed_version}" != "${VERSION}" ]]; then
