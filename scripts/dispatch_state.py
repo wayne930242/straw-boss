@@ -20,7 +20,12 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def dump_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2) + "\n")
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, indent=2) + "\n")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def contract_path(instruction_path: Path) -> Path:
@@ -55,6 +60,7 @@ INSTRUCTION_SIBLING_SUFFIXES = (
     ".contract.md",
     ".launch.json",
     ".launch-failure.json",
+    ".headless.lock",
     ".messages.jsonl",
     ".progress.jsonl",
     ".status.json",
@@ -128,7 +134,14 @@ def _uses_managed_plugin_cache(root: Path) -> bool:
 def render_dispatch_contract(
     instruction_path: Path,
     coworker_context: dict[str, Any] | None = None,
+    *,
+    mode: str = "herdr-pane",
+    agent_kind: str = "claude",
 ) -> str:
+    if mode not in {"herdr-pane", "claude-p"}:
+        raise ValueError(f"unsupported dispatch mode {mode!r}")
+    if agent_kind not in {"claude", "codex"}:
+        raise ValueError(f"unsupported agent kind {agent_kind!r}")
     origin_root = Path(__file__).resolve().parent.parent
     launcher = runtime_launcher_path()
 
@@ -172,22 +185,65 @@ def render_dispatch_contract(
   integration and cleanup. Complete this task directly rather than coordinating
   another coworker.
 """
+    if mode == "claude-p" and agent_kind == "claude":
+        anchor_fallback = """- If this dispatch does not name the anchor, report terminal `failed` asking the
+  main agent to name it before work begins.
+"""
+    else:
+        anchor_fallback = """- When needed, ask the main agent to name the anchor when this dispatch does not name one,
+  through `awaiting-main-agent` before work begins.
+"""
+    if mode == "herdr-pane":
+        interaction_rules = f"""
+- Discuss work details and authorization directly with the user. Ask the main
+  agent only for integrated instructions/context:
+  `{message} --instruction-path {shlex.quote(str(instruction_path))} --to main --intent question --message '<delta>' [--ref '<source>']`
+- If you must pause, report the checkpoint naming who can unblock you:
+  `awaiting-user-input`, `awaiting-main-agent`, or `awaiting-authorization`.
+  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status <checkpoint> --note '<what you need>' [--ref '<proof>']`
+- After a checkpoint reply, continue. Do not replace a live checkpoint with a
+  terminal status.
+"""
+        terminal_rule = """- Before stopping after completed work, report terminal `done` or `failed` with
+  the same status script; after persistence it notifies the main agent through Herdr.
+"""
+    elif agent_kind == "codex":
+        interaction_rules = f"""
+- This headless session has no direct user channel. If blocked, persist exactly
+  one `awaiting-user-input`, `awaiting-main-agent`, or `awaiting-authorization`
+  checkpoint with:
+  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status <checkpoint> --note '<what you need>' [--ref '<proof>']`
+- End this run after the checkpoint. The main agent resumes this recorded Codex thread
+  with the answer; do not overwrite the checkpoint with `done` or `failed`.
+"""
+        terminal_rule = """- When work finishes without a checkpoint, report terminal `done` or `failed`
+  before this run ends.
+"""
+    else:
+        interaction_rules = f"""
+- This headless Claude session cannot resume after it exits. If blocked by a
+  user decision, main-agent action, or authorization, report terminal `failed`
+  with the exact single unblock needed:
+  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status failed --note '<what you need>' [--ref '<proof>']`
+- Do not write an `awaiting-*` checkpoint; the main agent asks the decision and
+  starts a fresh dispatch carrying the answer.
+"""
+        terminal_rule = """- Before this run ends, report terminal `done` or `failed`.
+"""
     return f"""# Straw Boss dispatched-agent contract
 
 This contract is mandatory for this dispatched session.
 
 - Your canonical instruction path is `{instruction_path}`.
-- In `herdr-pane`, you are an independent agent after launch. You and the user
+- You are an independent agent and task owner after launch. You and the user
   choose the specification, design, implementation, and the verification method
   inside the reality anchor this dispatch names. The main agent supplies the
   user requirement, necessary hints, and known coordination facts and accepts
   those decisions. Investigate the target app's implementation and precedent
   yourself in this working directory.
 {coworker_rules}
-- Naming the anchor is the main agent's, naming the tests is yours; ask the main
-  agent to name the anchor when this dispatch does not, through the
-  `awaiting-main-agent` checkpoint below — it persists and notifies whether or
-  not this session can wait for a reply.
+- Naming the anchor is the main agent's; naming the tests is yours.
+{anchor_fallback}
 - State your own coordination graph for this task before you start, through
   `choosing-graph`; the main agent already stated its own when it dispatched
   you.
@@ -199,19 +255,8 @@ This contract is mandatory for this dispatched session.
 - Live agent messages are delta-only and at most two sentences. Do not repeat
   identity, intent, history, or detailed evidence; add repeatable
   `--ref '<artifact/source>'` arguments for detail.
-- Discuss work details and authorization directly with the user when this session
-  is interactive. Ask the main agent only for integrated instructions/context or
-  when this session has no direct user channel:
-  `{message} --instruction-path {shlex.quote(str(instruction_path))} --to main --intent question --message '<delta>' [--ref '<source>']`
-- If you must pause, choose the checkpoint that names who can unblock you:
-  `awaiting-user-input` for a user-owned decision, `awaiting-main-agent` for
-  coordination or action owned by the main agent, or `awaiting-authorization`
-  only when an existing rule requires authorization for the next action. Report it with:
-  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status <checkpoint> --note '<what you need>' [--ref '<proof>']`
+{interaction_rules}
 - Status notes follow the same two-sentence limit: state the outcome or exact
   unblock, and put verification detail in `--ref`.
-- Before stopping, report terminal `done` or `failed` with the same status
-  script; after persistence it notifies the main agent through Herdr.
-- After a checkpoint reply, continue the task. If another blocker appears,
-  report a new checkpoint instead of waiting silently.
+{terminal_rule}
 """

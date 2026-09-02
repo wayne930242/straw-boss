@@ -18,6 +18,7 @@ An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a
 - **Worktree isolation** — parallel tasks run side by side.
 - **Cross-main-agent resource lock** — a file lock for ports and shared-DB migrations worktrees can't isolate.
 - **Self-paced batches** — a backlog too big for one turn gets its own `/loop`, started by `boss-say` itself.
+- **Independent orchestrator handoff** — with your approval, move one scope into a named Herdr tab whose orchestrator takes over through `boss-say`; the original window leaves that scope.
 - **herdr for human-in-the-loop** — watch it, join it, answer a question mid-task; the default whenever it's available.
 
 ## Requirements
@@ -75,6 +76,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 |-------|-------------|
 | `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, configure work routes with provider profile/model/effort and an optional Claude advisor, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
 | `boss-say` | **The entry point for everything.** Judges scale, judges solo-vs-dispatch per item, hands off to the matching specialist skill or its own batch mechanics |
+| `handoff-orchestrator` | After explicit approval, transfer one scope and its minimal continuity state to a new orchestrator tab |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |
 | `dispatching-work` | Internal dispatch machinery — picks the transport and resolves a work route (provider/profile/model/effort, plus Claude-only native advisor), writes the instruction, dispatches, lists/wraps up existing dispatches |
 | `choosing-graph` | Pick the coordination graph (single-loop, sub-agent fan-out/fan-in, orchestrator-worker) and the reality anchor (testing, pseudo-human, human, adversarial review) before work starts — the anchor names the category, the agent doing the work still picks the method inside it |

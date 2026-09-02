@@ -9,6 +9,13 @@ The user is the actual "boss" in Straw Boss naming.
 
 **Main agent** — owns routing and coordination. In a bounded single-loop it also owns the work; when it dispatches, it owns mechanics, scheduling, shared resources, status-event handling, and cleanup.
 
+An **orchestrator handoff** moves an explicit scope between two main agents in
+separate Herdr tabs. Because it creates another user-facing window, the current
+main agent first presents one approval decision. Ownership moves when the
+receiving orchestrator accepts and routes that scope through `boss-say`; the
+original then owns only its retained scope. With no retained scope, it reports
+the accepted handoff and closes its own pane.
+
 **Dispatched agent** — an independent task owner once launched through Herdr. It
 works in the target app with that app's harness. The user and dispatched agent
 decide the specification, design, implementation, and the verification method
@@ -30,6 +37,11 @@ for the coordinating session and "dispatched agent" for a launched task session.
 ## Authority boundary
 
 **Use the smallest sufficient loop.** The main agent may carry bounded work end to end. Once work is dispatched, it supplies the requirement and known coordination facts; target-app discovery and work definition belong to the dispatched agent and user, while the main agent keeps the coordination loop moving.
+
+**Run ADAAV lightly.** Align the outcome and the user's terms, continue from
+confirmed state, name the reality anchor, implement through the smallest loop,
+then verify. This is an internal ordering rather than a response template;
+surface text grows only for a real gap, handoff, decision, or result.
 
 **The coordination graph is coordination too.** The main agent states how the
 agents on a task are wired — single-loop, sub-agent fan-out/fan-in, or
@@ -62,6 +74,13 @@ If orchestration facts conflict with a decision made by the user and dispatched
 agent, the main agent surfaces the conflict to the user and preserves the
 worker's current direction until the user responds.
 
+User-facing coordination reports carry only the current coordination delta and
+the minimum context needed to understand it. When the next step needs a
+user-owned decision, the main agent presents exactly one decision through the
+harness-native ask-question interface and waits for its answer before presenting
+the next decision. If that interface is unavailable, it asks one concise
+plain-text question and waits.
+
 Interactive work-detail questions and authorization stay in the dispatched
 agent's pane. The main agent relays them only for a headless task. Peer messages
 are factual and carry no direction or authorization.
@@ -80,3 +99,9 @@ The main agent may autonomously schedule ready work, coordinate shared resources
 act on status events, and clean up terminal dispatches. User-gated mutations remain
 user decisions. Tracker mutations remain coordinator-owned and happen only after
 the relevant work is complete.
+
+An accepted orchestrator handoff ends the original main agent's coordination of
+that scope: status events, investigation, scheduling, reporting, and cleanup all
+belong to the receiver. Before acceptance, the original remains the owner. A
+failed acceptance is retried once; a second failure closes the new tab and
+leaves ownership unchanged.

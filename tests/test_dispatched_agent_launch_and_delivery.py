@@ -54,7 +54,11 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
             ],
             calls,
         )
-        self.assertFalse(any(call and call[0] == "tab" for call in calls))
+        tab_calls = [call for call in calls if call and call[0] == "tab"]
+        self.assertEqual(
+            tab_calls,
+            [["tab", "rename", "tab-1", "api-coordinator"]],
+        )
         start = next(call for call in calls if call[:2] == ["agent", "start"])
         contract_path = str(instruction["contract_path"])
         self.assertIn("--append-system-prompt-file", start)

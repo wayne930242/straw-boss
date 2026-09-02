@@ -305,6 +305,47 @@ def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str]:
     return pane_id, main_tab_id
 
 
+def name_worker_pane(pane_id: str, name: str) -> str | None:
+    """Best-effort pane label after the final agent name is known.
+
+    A label improves operator orientation but is not part of dispatch identity,
+    so two failed attempts return a warning instead of blocking task delivery.
+    """
+    last_error: ValueError | None = None
+    for _ in range(2):
+        try:
+            run_herdr(["pane", "rename", pane_id, name])
+            return None
+        except ValueError as exc:
+            last_error = exc
+    assert last_error is not None
+    return f"worker pane {pane_id!r} could not be named {name!r}: {last_error}"
+
+
+def name_coordinator_tab(instruction: dict[str, object]) -> str | None:
+    """Best-effort shared-tab label before the worker pane is created."""
+    main_pane_id = instruction.get("main_agent_herdr_pane_id")
+    if not isinstance(main_pane_id, str) or not main_pane_id:
+        return "coordinator tab naming skipped: dispatch has no main-agent pane"
+    label = derive_agent_name("coordinator", str(instruction["app"]))
+    try:
+        tab_id = str(herdr_pane(main_pane_id)["tab_id"])
+    except ValueError as exc:
+        return f"coordinator tab naming failed; dispatch continued: {exc}"
+    last_error: ValueError | None = None
+    for _ in range(2):
+        try:
+            run_herdr(["tab", "rename", tab_id, label])
+            return None
+        except ValueError as exc:
+            last_error = exc
+    assert last_error is not None
+    return (
+        f"coordinator tab {tab_id!r} could not be named {label!r}; "
+        f"dispatch continued: {last_error}"
+    )
+
+
 class LaunchAttemptError(ValueError):
     """One failed launch attempt, classified for the retry decision above it.
 
@@ -616,6 +657,9 @@ def launch(
 
     agent_kind = str(instruction.get("agent_kind"))
     base_provider_args = provider_profile_args(instruction, agent_args)
+    coordinator_tab_warning = (
+        None if is_coworker else name_coordinator_tab(instruction)
+    )
 
     def provider_args_for(current_name: str) -> list[str]:
         if agent_kind == "claude":
@@ -647,6 +691,7 @@ def launch(
         # and only this launcher's own bookkeeping is unfinished.
         delivered = False
         provider_args = provider_args_for(str(name))
+        pane_label_warning: str | None = None
         try:
             pane_id, tab_id = create_worker_pane(instruction)
         except ValueError as exc:
@@ -696,6 +741,7 @@ def launch(
                 raise
             if start_error is not None and agent.get("agent_status") != "blocked":
                 raise start_error
+            pane_label_warning = name_worker_pane(pane_id, str(name))
             gate = startup_gate(pane_id, agent) if agent_kind == "claude" else None
             if gate is not None or agent.get("agent_status") == "blocked":
                 if agent_kind == "claude":
@@ -794,6 +840,7 @@ def launch(
             "tab_id": tab_id,
             "session_id": session_id,
             "herdr_terminal_id": terminal_id,
+            "pane_label_warning": pane_label_warning,
         }
 
     spent = spent_session_ids(inst_path)
@@ -849,6 +896,8 @@ def launch(
         **landed,
         "launched_at": datetime.now(timezone.utc).isoformat(),
     }
+    if coordinator_tab_warning is not None:
+        receipt["coordinator_tab_label_warning"] = coordinator_tab_warning
     receipt_path = launch_receipt_path(inst_path)
     dump_json(receipt_path, receipt)
     launch_failure_path(inst_path).unlink(missing_ok=True)
@@ -859,7 +908,15 @@ def launch(
         except ValueError:
             pass
 
-    return {"launch_receipt_path": str(receipt_path), "launched": True}
+    result: dict[str, Any] = {"launch_receipt_path": str(receipt_path), "launched": True}
+    warnings = [
+        warning
+        for warning in (coordinator_tab_warning, landed.get("pane_label_warning"))
+        if isinstance(warning, str) and warning
+    ]
+    if warnings:
+        result["warning"] = "; ".join(warnings)
+    return result
 
 
 def main() -> int:

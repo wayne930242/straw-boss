@@ -18,6 +18,7 @@ app 自己的 `.claude/skills/`、`.claude/settings.json` hooks，只有 session
 - **worktree 隔離**——平行任務互不干擾。
 - **跨 main agent 資源鎖**——worktree 隔不到的 port、共用 DB migration，跨 session 排隊。
 - **批次自己抓步調**——backlog 做不完一個 turn，`boss-say` 自己開 `/loop`。
+- **獨立 orchestrator 交接**——經你同意後，把一個 scope 移到具名的 Herdr tab；新 orchestrator 透過 `boss-say` 接手，原窗口離開該 scope。
 - **herdr 隨時介入**——旁觀、加入、中途回答問題；環境支援就是預設。
 
 ## 需求
@@ -73,6 +74,7 @@ $straw-boss:init
 |-------|-------------|
 | `init` | 問要管哪些 app、寫設定、同步 root `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
 | `boss-say` | **所有事情的入口。**判斷規模、逐項判斷要單獨做還是派工，交給對應的專責 skill 或自己的批次機制 |
+| `handoff-orchestrator` | 經明確同意後，把一個 scope 與最小延續狀態交給新的 orchestrator tab |
 | `work-on` | 把請求對應到某個 app，處理 legacy redirect |
 | `dispatching-work` | 內部派工機制——選派工方式並解析完整 work route（provider/profile/model/effort，加上僅 Claude 支援的原生 advisor）、寫指令、實際派工、列出/收尾既有派工 |
 | `choosing-graph` | 工作開始前先定分工圖（single-loop、sub-agent 扇出／扇入、orchestrator-worker）與 reality anchor（testing、pseudo-human、human、對抗性審查）；anchor 只定類別和檢查點，裡面用什麼接縫、哪些案例仍由做事的 agent 和你決定 |

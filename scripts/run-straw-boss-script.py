@@ -20,6 +20,7 @@ from typing import Any
 RUNTIME_LAUNCHER_PROTOCOL = 3
 PLUGIN_ID = "straw-boss@straw-boss"
 ALLOWED_SCRIPTS = {
+    "accept-orchestrator-handoff.py",
     "dispatch-coworker.py",
     "report-progress.py",
     "report-task-status.py",

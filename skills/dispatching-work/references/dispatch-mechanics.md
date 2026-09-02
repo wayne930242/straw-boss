@@ -25,6 +25,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --app <app> --slug <slug> --task "<task>" \
   --mode claude-p|herdr-pane --repo-root <repo_root> \
   [--batch <batch>] [--plan <plan> --task-id <task>] [--role <workroom>] \
+  [--retry-failed-plan-task] \
   --agent-kind claude|codex --main-agent-kind claude|codex \
   [--agent-profile <profile>] [--agent-model <model>] \
   [--agent-effort <effort>] [--advisor-model <claude-model>] \
@@ -48,6 +49,12 @@ current live Herdr record: Claude uses `agent_session.value`; Codex uses
 The contract contains the exact instruction-keyed progress, question, and
 status commands. The task prompt carries work semantics, not a hand-copied
 workflow.
+
+`--retry-failed-plan-task` applies only after a headless Claude plan attempt has
+reported terminal `failed`, been wrapped, and received its user-owned answer.
+Preserve its team-mode worktree, reuse the same `repo_root`, use a fresh dispatch
+slug, and carry the answer in the new brief. The write
+removes the old failed status and returns that same plan task to `dispatched`.
 
 ## Permission mapping
 
@@ -96,18 +103,21 @@ The launcher derives provider arguments from the recorded worker setup, then:
 3. injects Claude with `--append-system-prompt-file`, or Codex with
    `developer_instructions`;
 4. resolves the main pane and splits a worker pane in the same tab;
-5. starts the provider through herdr, then settles on herdr's own state wait
+5. starts the provider through herdr, then applies the final collision-resolved
+   agent name to the worker pane before task delivery. Pane naming retries once;
+   a second failure returns a warning and keeps the dispatch path active;
+6. settles on herdr's own state wait
    before reading the agent — a single read straight after `agent start`
    catches a Claude worker still reporting `idle`/`interactive_ready` while a
    first-run gate is mid-render;
-6. handles a startup gate by provider. Codex's own startup trust prompt is
+7. handles a startup gate by provider. Codex's own startup trust prompt is
    confirmed with `enter`. **A blocked Claude worker is never answered
    blindly**: Claude Code's startup gates — folder trust first among them —
    render as a select list whose highlighted option is `No, exit`, so `enter`,
    or the task itself which ends in one, exits the worker herdr had just
    reported healthy. The launcher reports the gate with what the pane is
    showing and leaves the pane standing for whoever answers it;
-7. submits the recorded task; when the pane was idle, already done, or
+8. submits the recorded task; when the pane was idle, already done, or
    blocked (not yet already working) just before sending, also requires
    herdr's own `--wait`/`agent_prompt_stalled` lifecycle gate to confirm a
    turn actually started, not merely that the text reached the composer;
@@ -115,12 +125,12 @@ The launcher derives provider arguments from the recorded worker setup, then:
    provider-appropriate transcript view; retries a herdr-confirmed stall or a
    complete transcript miss on a backoff, and a booted worker whose prompt
    still never lands keeps its pane;
-8. records the live provider fingerprint: Claude waits for
+9. records the live provider fingerprint: Claude waits for
    `agent_session.value` and cross-checks its preassigned id; Codex records
    `terminal_id` without waiting for a session field;
-9. writes `<app>--<slug>.launch.json` with the worker pane and shared tab, and
+10. writes `<app>--<slug>.launch.json` with the worker pane and shared tab, and
    clears any `<app>--<slug>.launch-failure.json` an earlier run left;
-10. on a top-level dispatch (never a coworker's), best-effort-names the
+11. on a top-level dispatch (never a coworker's), best-effort-names the
     coordinator's own still-unnamed pane `<app>-coordinator` — an already-named
     coordinator pane is left alone, and a failure here never fails the launch
     that already succeeded.
@@ -258,23 +268,12 @@ only wrote its prompt into the composer or swallowed both task submissions.
 
 ## Headless launch
 
-Headless mode has no live receiver. Inject the generated contract in the same
-invocation that starts the process:
+Headless mode has no live receiver. Start it through the provider-aware runner,
+which injects the generated contract in the same invocation:
 
 ```bash
-claude -p --session-id <instruction session_id> \
-  --append-system-prompt-file <contract path> <permission flags> \
-  [--agent <agent_profile>] [--model <agent_model>] \
-  [--effort <agent_effort>] [--advisor <advisor_model>] "<task>"
-```
-
-or:
-
-```bash
-codex exec --json <permission flags> \
-  -c developer_instructions="$(<contract path>)" \
-  [--profile <agent_profile>] [-m <agent_model>] \
-  [-c model_reasoning_effort=<agent_effort>] "<task>"
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/run-headless-dispatched-agent.py" \
+  start --instruction-path <path> [--agent-arg=<permission-flag>]...
 ```
 
 Codex has no native advisor. `dispatch-task.py write` refuses its
@@ -283,9 +282,19 @@ coworker or subagent.
 
 The process must write status through `report-task-status.py
 --instruction-path` before exit. With no live main-agent endpoint, that
-persisted status plus the process's own exit is what the main agent reads. A Codex
-continuation uses its separately recorded provider thread id with
-`codex exec resume` and includes the same contract content again. The interactive
+persisted status plus the process's own exit is what the main agent reads. The
+runner holds one instruction-level claim across provider start or resume, so a
+duplicate command cannot launch or continue the same task concurrently. It
+captures Codex's `thread.started` event before accepting a checkpoint.
+Continue it with:
+
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/run-headless-dispatched-agent.py" \
+  resume --instruction-path <path> --answer "<answer>"
+```
+
+That command uses the recorded provider thread id with `codex exec resume`,
+reinjects the contract, and requires a new status revision. The interactive
 Herdr `terminal_id` is only a live routing fingerprint and never substitutes for
 that thread id.
 

@@ -25,6 +25,10 @@ notify both parent and root coordinator on `done` or `failed`.
 In identifiers, "boss" means the user. Prose uses **main agent**, **dispatched
 agent**, and **subagent** for the three agent roles.
 
+Main agents order work through **ADAAV**: align outcome and user terms, continue
+confirmed state, name the reality anchor, implement, verify. The ordering stays
+implicit unless a real gap, handoff, decision, or result needs to be surfaced.
+
 ## Language
 
 **Work route**:
@@ -55,6 +59,18 @@ How much work goes out at once — one item to a specialist skill, a capped
 batch in this turn, or a self-paced `/loop` batch. `boss-say` picks it; it
 answers a different question from the coordination graph and neither renames
 the other.
+
+**Orchestrator handoff**:
+An explicitly user-approved transfer of one work scope to a receiving main agent
+in an independent Herdr tab. Acceptance moves ownership; the original keeps only
+the scope named as retained.
+_Avoid_: worker dispatch, delegation, shared ownership
+
+**Continuity payload**:
+The minimal executable state carried across an orchestrator handoff: goal and
+scope, confirmed decisions and user terms, current state and evidence, next
+action, and exclusions.
+_Avoid_: transcript, conversation summary
 
 **Reality anchor**:
 The contact with reality that proves a result. The main agent names which one

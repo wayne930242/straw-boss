@@ -70,6 +70,63 @@ def check_dispatchable(plan_slug: str, task_id: str) -> None:
         raise ValueError(f"task {task_id!r} is already {task['status']!r} -- refusing to dispatch it again")
 
 
+def check_retryable_failed(
+    plan_slug: str,
+    task_id: str,
+    *,
+    app: str,
+    new_slug: str,
+    repo_root: str,
+) -> None:
+    _, task = load_plan_and_task(plan_slug, task_id)
+    status_path = straw_boss_root() / "plans" / plan_slug / "status" / f"{task_id}.json"
+    if task.get("status") != "failed" or not status_path.is_file():
+        raise ValueError(f"task {task_id!r} is not a wrapped failed task")
+    if load_json(status_path).get("status") != "failed":
+        raise ValueError(f"task {task_id!r} has no terminal failed status to retry")
+    for path in (straw_boss_root() / "dispatch").glob("*.json"):
+        try:
+            candidate = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (
+            candidate.get("plan_id") == f"p-{plan_slug}"
+            and candidate.get("task_id") == task_id
+        ):
+            raise ValueError(
+                f"task {task_id!r} still has live instruction {path}; wrap it up before retry"
+            )
+    archives: list[tuple[Path, dict[str, Any]]] = []
+    for path in (straw_boss_root() / "dispatch" / "archive").glob("*.json"):
+        try:
+            candidate = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (
+            candidate.get("plan_id") == f"p-{plan_slug}"
+            and candidate.get("task_id") == task_id
+        ):
+            archives.append((path, candidate))
+    if not archives:
+        raise ValueError(f"task {task_id!r} has no wrapped attempt to retry")
+    archive_path, previous = max(archives, key=lambda item: item[0].stat().st_mtime_ns)
+    if previous.get("app") != app:
+        raise ValueError("a failed plan retry must use the wrapped attempt's app")
+    previous_slug = archive_path.name.removeprefix(f"{app}--").removesuffix(".json")
+    if previous_slug == new_slug:
+        raise ValueError("a failed plan retry requires a fresh dispatch slug")
+    if previous.get("mode") != "claude-p" or previous.get("agent_kind") != "claude":
+        raise ValueError("the wrapped attempt was not headless Claude")
+    previous_root = Path(str(previous.get("repo_root", ""))).resolve()
+    requested_root = Path(repo_root).resolve()
+    if requested_root != previous_root:
+        raise ValueError("a failed plan retry must reuse the wrapped attempt's repo_root")
+    if not requested_root.is_dir():
+        raise ValueError(
+            "the wrapped attempt's repo_root is gone; restore its worktree before retry"
+        )
+
+
 def mark_plan_task(plan_slug: str, task_id: str, status: str) -> None:
     plan, task = load_plan_and_task(plan_slug, task_id)
     task["status"] = status
@@ -168,6 +225,7 @@ def write_instruction(
     main_agent_session_id: str | None,
     main_agent_terminal_id: str | None,
     coworker_context: dict[str, Any] | None = None,
+    retry_failed_plan_task: bool = False,
 ) -> dict[str, Any]:
     path = instruction_path(app, slug)
     if path.exists():
@@ -195,14 +253,31 @@ def write_instruction(
             f"--advisor-model is supported only for Claude Code; agent kind {agent_kind!r} "
             "has no native advisor"
         )
+    if retry_failed_plan_task and plan_slug is None:
+        raise ValueError("--retry-failed-plan-task requires --plan and --task-id")
+    if retry_failed_plan_task and (mode != "claude-p" or agent_kind != "claude"):
+        raise ValueError(
+            "--retry-failed-plan-task is only for a headless Claude attempt"
+        )
     if plan_slug is not None:
         assert task_id is not None
-        check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
+        if retry_failed_plan_task:
+            check_retryable_failed(
+                plan_slug,
+                task_id,
+                app=app,
+                new_slug=slug,
+                repo_root=repo_root,
+            )
+        else:
+            check_dispatchable(plan_slug, task_id)  # read-only -- must run before any write below
 
     install_runtime_launcher()
     session_id = str(uuid.uuid4()) if agent_kind == "claude" else None
     generated_contract_path = contract_path(path)
-    contract = render_dispatch_contract(path, coworker_context)
+    contract = render_dispatch_contract(
+        path, coworker_context, mode=mode, agent_kind=agent_kind
+    )
     contract_digest = sha256_text(contract)
     payload: dict[str, Any] = {
         "app": app,
@@ -241,6 +316,14 @@ def write_instruction(
 
     if plan_slug is not None:
         assert task_id is not None
+        if retry_failed_plan_task:
+            (
+                straw_boss_root()
+                / "plans"
+                / plan_slug
+                / "status"
+                / f"{task_id}.json"
+            ).unlink()
         mark_plan_task(plan_slug, task_id, "dispatched")
 
     return {
@@ -357,6 +440,11 @@ def main() -> int:
     write_p.add_argument("--batch", default=None)
     write_p.add_argument("--plan", default=None, help="plan slug, if this is a plan task")
     write_p.add_argument("--task-id", default=None, help="this task's task_id within the plan")
+    write_p.add_argument(
+        "--retry-failed-plan-task",
+        action="store_true",
+        help="replace one wrapped failed plan attempt after its user-owned answer is known",
+    )
     write_p.add_argument(
         "--role",
         default=None,
@@ -482,6 +570,7 @@ def main() -> int:
                 main_agent_session_id=args.main_agent_session_id,
                 main_agent_terminal_id=args.main_agent_terminal_id,
                 coworker_context=coworker_context,
+                retry_failed_plan_task=args.retry_failed_plan_task,
             )
         else:
             result = confirm_instruction(

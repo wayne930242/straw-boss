@@ -58,7 +58,7 @@ user's. The contract already tells every worker to run the adversarial review an
 ordinary programming change carries; the brief says so only when the main agent
 runs it instead.
 
-Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates Claude's session id and every provider's immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing anything if that task isn't still `planned`. Pass the worker kind, this session's provider, and the validated pane/provider-fingerprint pair from Task 1. Never hand-write the JSON, contract, or UUID.
+Call `dispatch-task.py write` (schema in `references/dispatch-mechanics.md`) — generates Claude's session id and the provider-specific immutable contract, writes the instruction (`status: pending`), and for a plan task marks `plan.json` `dispatched`, refusing before writing if the task is not `planned`. The one exception is a wrapped headless Claude answer retry, which uses a fresh slug and `--retry-failed-plan-task`. Pass the worker kind, this session's provider, and the validated pane/provider-fingerprint pair from Task 1. Never hand-write the JSON, contract, or UUID.
 
 **Verification:** every brief statement about the work traces to the user
 request, a necessary hint or constraint, or an already-known coordination state;
@@ -70,11 +70,11 @@ discovery is assigned to the worker; instruction and hashed contract exist with
 
 ## Task 4: Dispatch
 
-Follow `references/dispatch-mechanics.md`. For `herdr-pane`, start and submit the task only through `launch-dispatched-agent.py`; it injects the generated contract before the first model turn, verifies the task reached the transcript with at most one retry, and only then writes the launch receipt consumed by `dispatch-task.py confirm`.
+Follow `references/dispatch-mechanics.md`. For `herdr-pane`, start and submit the task only through `launch-dispatched-agent.py`; it injects the generated contract before the first model turn, verifies the task reached the transcript with at most one retry, and only then writes the launch receipt consumed by `dispatch-task.py confirm`. For `claude-p`, use `run-headless-dispatched-agent.py start`; it marks the instruction in progress after process start and records the Codex provider thread before a checkpoint can exit.
 
 **Mirror the main agent's own permission mode onto the agent.** Detect it from the main agent's own process args (`ps -p "$CLAUDE_PID" -ww -o args=`, exact detection in the reference) and map it through the agent kind's own permission surface (`references/dispatch-mechanics.md`'s "Mapping permission mode across agent kinds" — a per-kind flag combo, not the identical flag string, for anything other than `claude`). An agent must never end up more tightly gated than the main agent dispatching it — never hardcode a specific mode here, and never omit this "to be safe."
 
-Once the launcher succeeds, call `dispatch-task.py confirm`. It refuses unless the launch receipt matches the instruction, contract digest, provider, pane, and provider-specific live fingerprint; then it flips to `in-progress` and records the receipt's pane, tab, and identity fields.
+Once the interactive launcher succeeds, call `dispatch-task.py confirm`. It refuses unless the launch receipt matches the instruction, contract digest, provider, pane, and provider-specific live fingerprint; then it flips to `in-progress` and records the receipt's pane, tab, and identity fields. The headless runner performs its own start and provider-identity transition.
 
 **Verification:** status is `in-progress`; permission mode was detected and mapped through the resolved agent kind's own permission surface, not hardcoded or skipped; pane/tab ids recorded for `herdr-pane`; session_id cross-checked against what herdr/the agent reports (or recorded from what it reported, for a kind that can't pre-assign one).
 
@@ -82,7 +82,9 @@ Once the launcher succeeds, call `dispatch-task.py confirm`. It refuses unless t
 
 Tell the user what was dispatched, in which mode, and how to find it (instruction path; pane/tab for `herdr-pane`).
 
-From here the dispatch reports itself. Its `report-task-status.py` calls persist each checkpoint and terminal status to the instruction's own `.status.json` sibling and then notify this session's recorded pane, so those events are what the main agent acts on — resolve `awaiting-main-agent` with `reply-to-worker.py`, point the user at the pane for the other checkpoints, and wrap up on a terminal status. Between events the task is running and the main agent is free for other coordination or the user's conversation. `peeking-work` answers what a task is currently doing when the user asks, or when observed evidence and its recorded status actually disagree.
+From here the dispatch reports itself. Its `report-task-status.py` calls persist each checkpoint and terminal status to the instruction's own `.status.json` sibling and then notify this session's recorded pane, so those events are what the main agent acts on — resolve interactive `awaiting-main-agent` with `reply-to-worker.py`, resume headless Codex with the owned result, point the user at an interactive pane for its user checkpoints, and wrap up terminal status. Between events the task is running and the main agent is free for other coordination or the user's conversation. `peeking-work` answers what a task is currently doing when the user asks, or when observed evidence and its recorded status actually disagree.
+
+Keep each user-facing event report to the coordination delta and the minimum context needed to understand it. An interactive user checkpoint stays in its worker pane. For headless Codex, present exactly one user-owned decision through the harness-native ask-question interface, wait for the answer, then run `run-headless-dispatched-agent.py resume --instruction-path <path> --answer <answer>`. A headless Claude user decision arrives as terminal `failed`; present one decision, wrap the attempt, then write a fresh-slug answer retry, using `--retry-failed-plan-task` for a plan task. Present any later decision in a later ask-question interaction.
 
 ## Branch: Dispatch a plan
 
@@ -99,18 +101,18 @@ Plans have their own file formats and a wave-scheduling step Tasks 1-5 don't —
 **Provider-neutral checkpoints and provider-specific notifications — never conflate them:**
 | Status | For | Answered by | Terminal? |
 |---|---|---|---|
-| `awaiting-authorization` | merge or another-branch push | User directly; main agent relays only for headless mode | No |
-| `awaiting-user-input` | work-detail discussion or user judgment | User directly; main agent relays only for headless mode | No |
-| `awaiting-main-agent` | integrated instructions, cross-task context, or coordinator action | Main agent | No |
+| `awaiting-authorization` | merge or another-branch push | User directly; main agent resumes headless Codex | No |
+| `awaiting-user-input` | work-detail discussion or user judgment | User directly; main agent resumes headless Codex | No |
+| `awaiting-main-agent` | integrated instructions, cross-task context, or coordinator action | Main agent directly or through headless Codex resume | No |
 | Provider fast question | non-blocking integrated/context question | Main agent | Not a status transition |
 | `watch-plan-status.py` event | every Plan status-file content transition, for every agent kind | Main agent; authoritative scheduling signal | Mirrors the persisted status and drives ready-wave recomputation |
 | live status notification | any agent reaches `done`/`failed`/a checkpoint | `report-task-status.py` writes first, then calls shared transport | Best-effort notification; durable status remains authoritative |
 
-A task unsure which applies walks `plan-mechanics.md`'s "Escalation order for a stuck task" (full order there, not restated here). `awaiting-authorization` sits outside that order — it's the merge/other-branch-push readiness gate, not a response to being stuck; a push of the task's own feature branch needs no gate at all. Interactive `awaiting-*` checkpoints work for every supported `herdr-pane` kind. Claude also uses `notifying-main-agent`; Codex relies on the provider-neutral status event and its recorded Herdr terminal identity.
+A task unsure which applies walks `plan-mechanics.md`'s "Escalation order for a stuck task". Interactive checkpoints resolve in their pane; headless Codex persists `awaiting-*` and resumes its recorded thread. Headless Claude reports terminal `failed`, then a user-answer retry gets a fresh instruction. A push of the task's own feature branch needs no gate. Claude also uses `notifying-main-agent`; Codex relies on the provider-neutral status event and its recorded Herdr terminal identity.
 
 **Same-task continuation — a task_id with a later phase coming isn't finished, don't wrap it up yet.** When a just-finished session has more of the *same* logical task_id coming (never a different, independent task), withhold `wrap-up-task.py` for it — that call atomically archives the instruction and marks the task done in `plan.json`, which would strand phase 2's own instruction lookup and mark the task complete prematurely. Reuse the session through the provider-specific continuation command in `plan-mechanics.md`; phase 2 must restate the provider-neutral status-report command. The watcher detects the later rewrite of the same status file because it deduplicates by content revision, not filename.
 
-**Status-event coverage (authoritative for Plan scheduling).** Start a `Monitor` running `watch-plan-status.py --plan <slug>`. It emits every content transition — `done`, `failed`, `cancelled`, `awaiting-authorization`, `awaiting-user-input`, `awaiting-main-agent` — including a later overwrite of the same task file. `report-task-status.py --instruction-path` writes before sending the primary herdr notification; a fresh watcher still emits current persisted states once for recovery. On terminal events, auto-detach only after checking for same-task continuation, then recompute and dispatch the next ready wave. Non-terminal events keep the task attached; resolve `awaiting-main-agent` with `reply-to-worker.py`.
+**Status-event coverage (authoritative for Plan scheduling).** Start a `Monitor` running `watch-plan-status.py --plan <slug>`. It emits every content transition — `done`, `failed`, `cancelled`, `awaiting-authorization`, `awaiting-user-input`, `awaiting-main-agent` — including a later overwrite of the same task file. `report-task-status.py --instruction-path` writes before sending the primary herdr notification; a fresh watcher still emits current persisted states once for recovery. On terminal events, auto-detach only after checking for same-task continuation, then recompute and dispatch the next ready wave. Non-terminal events keep the task attached; interactive `awaiting-main-agent` uses `reply-to-worker.py`, while headless Codex resumes its thread.
 
 **Progress visibility.** A dispatched task may call `report-progress.py --instruction-path <path> --note "<text>"` at any point during its work — a separate, non-notifying, append-only log (`dispatch-mechanics.md`'s "Reporting scripts"). `peeking-work` reads this trail before joining a task's live pane, so checking on a task usually doesn't require interrupting it.
 

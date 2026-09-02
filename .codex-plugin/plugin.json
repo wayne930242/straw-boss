@@ -1,6 +1,6 @@
 {
   "name": "straw-boss",
-  "version": "0.18.24",
+  "version": "0.18.25",
   "description": "Route work through the smallest sufficient loop, from direct bounded tasks to durable app-rooted coordination.",
   "author": {
     "name": "Wei Hung",

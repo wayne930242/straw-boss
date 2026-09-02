@@ -542,7 +542,456 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         instruction = json.loads(instruction_path.read_text())
         self.assertIsNone(instruction["main_agent_herdr_pane_id"])
         self.assertIsNone(instruction["main_agent_session_id"])
-        self.assertTrue(Path(instruction["contract_path"]).is_file())
+        contract = Path(instruction["contract_path"]).read_text()
+        self.assertIn("cannot resume after it exits", contract)
+        self.assertIn("--status failed", contract)
+        self.assertNotIn("--status <checkpoint>", contract)
+        self.assertNotIn("After a checkpoint reply", contract)
+
+    def test_headless_codex_contract_persists_a_resumable_checkpoint(self) -> None:
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Run the task.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "codex",
+            "--main-agent-kind",
+            "claude",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        instruction_path = Path(json.loads(result.stdout)["instruction_path"])
+        contract = Path(json.loads(instruction_path.read_text())["contract_path"]).read_text()
+        self.assertIn("resumes this recorded Codex thread", contract)
+        self.assertIn("--status <checkpoint>", contract)
+        self.assertIn("do not overwrite the checkpoint", contract)
+
+    def test_headless_codex_runner_records_and_resumes_the_provider_thread(
+        self,
+    ) -> None:
+        written = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Ask one decision, then finish after the answer.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "codex",
+            "--main-agent-kind",
+            "claude",
+        )
+        self.assertEqual(written.returncode, 0, written.stderr)
+        instruction_path = Path(json.loads(written.stdout)["instruction_path"])
+        status_path = self.plan_dir / "status" / "t1.json"
+        fake_bin = self.home / "bin"
+        fake_bin.mkdir()
+        capture = self.home / "codex-calls.jsonl"
+        fake_codex = fake_bin / "codex"
+        fake_codex.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, sys\n"
+            "from pathlib import Path\n"
+            "args = sys.argv[1:]\n"
+            "with open(os.environ['CODEX_CAPTURE'], 'a') as stream:\n"
+            "    stream.write(json.dumps(args) + '\\n')\n"
+            "print(json.dumps({'type': 'thread.started', 'thread_id': 'thread-123'}))\n"
+            "status = 'done' if args[:2] == ['exec', 'resume'] else 'awaiting-user-input'\n"
+            "Path(os.environ['CODEX_STATUS_PATH']).write_text(json.dumps({'status': status, 'note': 'choose A' if status != 'done' else 'finished'}))\n"
+        )
+        fake_codex.chmod(0o755)
+        env = {
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "CODEX_CAPTURE": str(capture),
+            "CODEX_STATUS_PATH": str(status_path),
+        }
+
+        started = self.run_script(
+            "run-headless-dispatched-agent.py",
+            "start",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env=env,
+        )
+        self.assertEqual(started.returncode, 0, started.stderr)
+        instruction = json.loads(instruction_path.read_text())
+        self.assertEqual(instruction["provider_thread_id"], "thread-123")
+        self.assertEqual(instruction["status"], "in-progress")
+        self.assertEqual(json.loads(status_path.read_text())["status"], "awaiting-user-input")
+
+        resumed = self.run_script(
+            "run-headless-dispatched-agent.py",
+            "resume",
+            "--instruction-path",
+            str(instruction_path),
+            "--answer",
+            "Use option A.",
+            extra_env=env,
+        )
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertEqual(json.loads(status_path.read_text())["status"], "done")
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(calls[0][:2], ["exec", "--json"])
+        self.assertEqual(calls[1][:2], ["exec", "resume"])
+        self.assertIn("thread-123", calls[1])
+        self.assertEqual(calls[1][-1], "Use option A.")
+
+    def test_one_process_claim_blocks_duplicate_headless_start_and_resume(
+        self,
+    ) -> None:
+        written = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Ask one decision, then finish after the answer.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "codex",
+            "--main-agent-kind",
+            "claude",
+        )
+        self.assertEqual(written.returncode, 0, written.stderr)
+        instruction_path = Path(json.loads(written.stdout)["instruction_path"])
+        runner_path = SCRIPTS / "run-headless-dispatched-agent.py"
+        spec = importlib.util.spec_from_file_location("headless_claim_test", runner_path)
+        assert spec is not None and spec.loader is not None
+        runner = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, str(SCRIPTS))
+        try:
+            spec.loader.exec_module(runner)
+        finally:
+            sys.path.pop(0)
+
+        with runner.headless_claim(instruction_path, "test-start"):
+            duplicate_start = self.run_script(
+                "run-headless-dispatched-agent.py",
+                "start",
+                "--instruction-path",
+                str(instruction_path),
+            )
+        self.assertNotEqual(duplicate_start.returncode, 0)
+        self.assertIn("another headless operation already owns", duplicate_start.stderr)
+
+        instruction = json.loads(instruction_path.read_text())
+        instruction["status"] = "in-progress"
+        instruction["provider_thread_id"] = "thread-123"
+        instruction["headless_resume_args"] = []
+        instruction_path.write_text(json.dumps(instruction))
+        (self.plan_dir / "status" / "t1.json").write_text(
+            json.dumps({"status": "awaiting-user-input", "note": "choose A"})
+        )
+        with runner.headless_claim(instruction_path, "test-resume"):
+            duplicate_resume = self.run_script(
+                "run-headless-dispatched-agent.py",
+                "resume",
+                "--instruction-path",
+                str(instruction_path),
+                "--answer",
+                "Use option A.",
+            )
+        self.assertNotEqual(duplicate_resume.returncode, 0)
+        self.assertIn("another headless operation already owns", duplicate_resume.stderr)
+
+    def test_wrapped_headless_claude_failure_can_be_retried_with_a_fresh_slug(
+        self,
+    ) -> None:
+        first = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Ask for the missing decision.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+        status_path = self.plan_dir / "status" / "t1.json"
+        status_path.write_text(
+            json.dumps({"status": "failed", "note": "Need one user decision."})
+        )
+        wrapped = self.run_script(
+            "wrap-up-task.py",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+        )
+        self.assertEqual(wrapped.returncode, 0, wrapped.stderr)
+
+        same_slug = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Continue with option A.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--retry-failed-plan-task",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+        )
+        self.assertNotEqual(same_slug.returncode, 0)
+        self.assertIn("fresh dispatch slug", same_slug.stderr)
+
+        wrong_app = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "web",
+            "--slug",
+            f"{self.plan_slug}-t1-retry-2",
+            "--task",
+            "Continue with option A.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--retry-failed-plan-task",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+        )
+        self.assertNotEqual(wrong_app.returncode, 0)
+        self.assertIn("wrapped attempt's app", wrong_app.stderr)
+
+        retry = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1-retry-2",
+            "--task",
+            "Continue with the user's confirmed answer: use option A.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--retry-failed-plan-task",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+        )
+
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertFalse(status_path.exists())
+        plan = json.loads(self.plan_path.read_text())
+        self.assertEqual(plan["tasks"][0]["status"], "dispatched")
+        instruction = json.loads(Path(json.loads(retry.stdout)["instruction_path"]).read_text())
+        self.assertIn("confirmed answer", instruction["task"])
+
+    def test_failed_plan_retry_requires_the_previous_attempt_to_be_wrapped(self) -> None:
+        first = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Ask for the missing decision.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+        (self.plan_dir / "status" / "t1.json").write_text(
+            json.dumps({"status": "failed", "note": "Need one decision."})
+        )
+
+        retry = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1-retry-2",
+            "--task",
+            "Continue with option A.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--retry-failed-plan-task",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+        )
+
+        self.assertNotEqual(retry.returncode, 0)
+        self.assertIn("not a wrapped failed task", retry.stderr)
+
+    def test_failed_plan_retry_is_only_for_headless_claude(self) -> None:
+        retry = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1-retry-2",
+            "--task",
+            "Continue with option A.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--retry-failed-plan-task",
+            "--agent-kind",
+            "codex",
+            "--main-agent-kind",
+            "claude",
+        )
+
+        self.assertNotEqual(retry.returncode, 0)
+        self.assertIn("only for a headless Claude attempt", retry.stderr)
+
+    def test_failed_plan_retry_rejects_a_live_previous_instruction(self) -> None:
+        first = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Ask for the missing decision.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+        plan = json.loads(self.plan_path.read_text())
+        plan["tasks"][0]["status"] = "failed"
+        self.plan_path.write_text(json.dumps(plan))
+        (self.plan_dir / "status" / "t1.json").write_text(
+            json.dumps({"status": "failed", "note": "Need one decision."})
+        )
+
+        retry = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1-retry-2",
+            "--task",
+            "Continue with option A.",
+            "--mode",
+            "claude-p",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--retry-failed-plan-task",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+        )
+
+        self.assertNotEqual(retry.returncode, 0)
+        self.assertIn("still has live instruction", retry.stderr)
 
     def test_herdr_dispatch_requires_main_agent_pane(self) -> None:
         result = self.run_script(

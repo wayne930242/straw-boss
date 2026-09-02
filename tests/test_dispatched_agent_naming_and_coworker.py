@@ -18,6 +18,61 @@ from tests.dispatched_agent_lifecycle_support import (
 
 
 class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
+    def test_launcher_names_the_coordinator_tab_before_splitting_a_worker_pane(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        rename = ["tab", "rename", "tab-1", "api-coordinator"]
+        self.assertIn(rename, calls)
+        self.assertLess(
+            calls.index(rename),
+            next(i for i, call in enumerate(calls) if call[:2] == ["pane", "split"]),
+        )
+
+    def test_coordinator_tab_naming_failure_warns_and_still_dispatches(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_FAIL_TAB_RENAME": "1",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertTrue(output["launched"])
+        self.assertIn("coordinator tab", output["warning"])
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(
+            len([call for call in calls if call[:2] == ["tab", "rename"]]),
+            2,
+        )
+        self.assertTrue(any(call[:2] == ["agent", "prompt"] for call in calls))
+
     def test_launcher_derives_a_worker_name_from_app_when_name_is_omitted(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         instruction = json.loads(instruction_path.read_text())
@@ -41,6 +96,12 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
         receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
         receipt = json.loads(receipt_path.read_text())
         self.assertEqual(receipt["name"], "api-worker")
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        rename = next(call for call in calls if call[:2] == ["pane", "rename"])
+        prompt_index = next(i for i, call in enumerate(calls) if call[:2] == ["agent", "prompt"])
+        rename_index = calls.index(rename)
+        self.assertEqual(rename, ["pane", "rename", "worker-pane", "api-worker"])
+        self.assertLess(rename_index, prompt_index)
 
     def test_launcher_avoids_a_derived_name_collision_with_a_live_agent(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
@@ -87,6 +148,9 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         starts = [call for call in calls if call[:2] == ["agent", "start"]]
         self.assertEqual([call[2] for call in starts], ["api-worker", "api-worker-2"])
+        self.assertIn(
+            ["pane", "rename", "worker-pane", "api-worker-2"], calls
+        )
         receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
         receipt = json.loads(receipt_path.read_text())
         self.assertEqual(receipt["name"], "api-worker-2")
@@ -168,6 +232,32 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("agent_name_taken", result.stderr)
+
+    def test_worker_pane_naming_failure_warns_and_still_delivers(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_FAIL_PANE_RENAME": "1",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertTrue(output["launched"])
+        self.assertIn("could not be named", output["warning"])
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        renames = [call for call in calls if call[:2] == ["pane", "rename"]]
+        self.assertEqual(len(renames), 2)
+        self.assertTrue(any(call[:2] == ["agent", "prompt"] for call in calls))
 
     def test_launcher_prefers_an_explicit_role_over_app_for_the_worker_name(self) -> None:
         instruction_path, _ = self.write_dispatch("claude", role="database")

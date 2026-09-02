@@ -239,6 +239,55 @@ class SkillInstructionQualityTests(unittest.TestCase):
             )
             self.assertNotIn("process/watcher observation", source)
 
+    def test_orchestrator_reports_compactly_and_asks_one_decision_at_a_time(
+        self,
+    ) -> None:
+        roles = normalized(ROOT / "docs" / "roles.md")
+        orchestrator = normalized(ROOT / "skills" / "i-am-orchestrator" / "SKILL.md")
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
+        plan_mechanics = normalized(
+            ROOT / "skills" / "dispatching-work" / "references" / "plan-mechanics.md"
+        )
+
+        for source in (roles, orchestrator):
+            self.assertIn("current coordination delta", source)
+            self.assertIn("harness-native ask-question interface", source)
+            self.assertIn("exactly one decision", source)
+            self.assertIn("wait", source)
+
+        self.assertIn("one** batch-wide", boss_say)
+        self.assertIn("one plan-confirmation decision", boss_say)
+        self.assertLess(
+            boss_say.index("one** batch-wide"),
+            boss_say.index("one plan-confirmation decision"),
+        )
+        self.assertIn("For headless Codex", boss_say)
+        self.assertIn("headless Claude failed note", boss_say)
+        self.assertIn("--retry-failed-plan-task", boss_say)
+        self.assertNotIn("every progress report from here on", boss_say)
+        self.assertNotIn("repeat the prior finding instead", boss_say)
+        self.assertIn("Don't re-peek or report unchanged idleness", boss_say)
+        self.assertIn("unchanged idleness stays quiet", boss_say)
+
+        self.assertIn("Present any later decision in a later ask-question interaction", dispatching)
+        self.assertIn("For headless Codex", dispatching)
+        self.assertIn("headless Claude user decision arrives as terminal failed", dispatching)
+        self.assertIn("fresh-slug answer retry", dispatching)
+        self.assertNotIn("point the user at the pane for the other checkpoints", dispatching)
+
+        self.assertIn("presents one user-owned decision", plan_mechanics)
+        self.assertIn("waits before presenting another", plan_mechanics)
+        self.assertIn("Headless Claude reports failed", plan_mechanics)
+        self.assertIn("--retry-failed-plan-task", plan_mechanics)
+        self.assertIn("fresh slug and the answer in the new brief", plan_mechanics)
+        self.assertIn("On an interactive awaiting-user-input notification", plan_mechanics)
+        self.assertIn("On a headless Codex notification", plan_mechanics)
+        self.assertNotIn(
+            "tell the user which task is asking and which worker pane to answer (from herdr_pane_id), then leave it alone. The plan loop",
+            plan_mechanics,
+        )
+
     def test_session_start_stance_states_each_coordination_rule_once(self) -> None:
         # The SessionStart hook injects the body only, so judge the body only.
         source = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
@@ -265,6 +314,26 @@ class SkillInstructionQualityTests(unittest.TestCase):
         body = stance
         for defensive in (" do not ", " never ", " without asking ", ", not "):
             self.assertNotIn(defensive, body)
+
+    def test_orchestrator_handoff_requires_approval_and_moves_ownership(self) -> None:
+        roles = normalized(ROOT / "docs" / "roles.md")
+        skill = normalized(ROOT / "skills" / "handoff-orchestrator" / "SKILL.md")
+        launcher = normalized(ROOT / "scripts" / "run-straw-boss-script.py")
+
+        self.assertIn("first presents one approval decision", roles)
+        self.assertIn("Run ADAAV lightly", roles)
+        self.assertIn("internal ordering rather than a response template", roles)
+        self.assertIn("status events, investigation, scheduling, reporting, and cleanup all belong to the receiver", roles)
+        self.assertIn("A new tab is created only after the user approves", skill)
+        self.assertIn("Pass only goal and scope", skill)
+        self.assertIn("Continue only the scope passed through --retains", skill)
+        self.assertIn('"accept-orchestrator-handoff.py"', launcher)
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        self.assertIn("Branch: Receiving an orchestrator handoff", boss_say)
+        self.assertIn("After the owner, coordination graph, and reality anchor are established", boss_say)
+        self.assertIn("--owner <owning-skill>", boss_say)
+        self.assertIn("--coordination-graph '<graph>'", boss_say)
+        self.assertIn("--reality-anchor '<anchor>'", boss_say)
 
     def test_shipping_sync_is_conditional_and_scope_is_local(self) -> None:
         source = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
@@ -778,35 +847,29 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("one review disposition", shipping)
 
     def test_the_missing_anchor_fallback_applies_in_every_dispatch_mode(self) -> None:
-        """`cc690f3` put the fallback inside the bullet that opens "In
-        `herdr-pane`, you are an independent agent after launch."
-
-        `render_dispatch_contract` takes no mode, so a headless worker reads the
-        same text and reads the fallback as inapplicable to it. The rule is a
-        worker-to-main action that needs no user in the loop, so nothing about
-        it depends on the transport.
-        """
+        """Every provider gets an executable anchor fallback for its lifecycle."""
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
             import dispatch_state
         finally:
             sys.path.pop(0)
 
-        bullets = contract_bullets(
-            dispatch_state.render_dispatch_contract(
-                instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
-            )
+        path = Path("/home/boss/.straw-boss/dispatch/app--slug.json")
+        interactive = dispatch_state.render_dispatch_contract(path)
+        headless_codex = dispatch_state.render_dispatch_contract(
+            path, mode="claude-p", agent_kind="codex"
         )
-        fallback = "ask the main agent to name the anchor when this dispatch does not"
-        carrying = [bullet for bullet in bullets if fallback in bullet]
-        self.assertEqual(len(carrying), 1, "the fallback is stated once")
-        self.assertNotIn("In herdr-pane", carrying[0])
-        self.assertNotIn("claude-p", carrying[0])
-        # And it stays executable where no reply can arrive mid-task.
-        self.assertIn("awaiting-main-agent", carrying[0])
-        mode_scoped = [bullet for bullet in bullets if "In herdr-pane" in bullet]
-        self.assertEqual(len(mode_scoped), 1)
-        self.assertNotIn(fallback, mode_scoped[0])
+        headless_claude = dispatch_state.render_dispatch_contract(
+            path, mode="claude-p", agent_kind="claude"
+        )
+
+        for contract in (interactive, headless_codex):
+            self.assertIn("name the anchor when this dispatch does not", contract)
+            self.assertIn("awaiting-main-agent", contract)
+        self.assertIn("does not name the anchor", headless_claude)
+        self.assertIn("report terminal `failed`", headless_claude)
+        fallback = headless_claude.split("does not name the anchor", 1)[1].split("\n-", 1)[0]
+        self.assertNotIn("awaiting-main-agent", fallback)
 
     def test_the_brief_source_rule_governs_what_the_brief_says_about_the_work(
         self,

@@ -228,6 +228,51 @@ def validate_current_sender(endpoint: Endpoint) -> None:
     validate_live_session(endpoint)
 
 
+def validate_current_process_in_pane(pane_id: str) -> None:
+    """Bind a destructive pane-scoped action to the caller's real process tree."""
+    current_pane = os.environ.get("HERDR_PANE_ID")
+    if current_pane != pane_id:
+        raise ValueError(
+            f"caller pane mismatch: expected {pane_id!r}, current {current_pane!r}"
+        )
+    payload = run_herdr(["pane", "process-info", "--pane", pane_id])
+    info = payload.get("result", {}).get("process_info")
+    if not isinstance(info, dict) or info.get("pane_id") != pane_id:
+        raise ValueError(f"herdr could not resolve process identity for pane {pane_id!r}")
+    foreground = info.get("foreground_processes")
+    foreground_pids = (
+        {
+            process.get("pid")
+            for process in foreground
+            if isinstance(process, dict) and isinstance(process.get("pid"), int)
+        }
+        if isinstance(foreground, list)
+        else set()
+    )
+    ancestors: set[int] = set()
+    pid = os.getpid()
+    for _ in range(64):
+        if pid <= 1 or pid in ancestors:
+            break
+        ancestors.add(pid)
+        try:
+            result = subprocess.run(
+                ["ps", "-o", "ppid=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError("could not validate the caller process tree") from exc
+        if result.returncode != 0 or not result.stdout.strip().isdigit():
+            break
+        pid = int(result.stdout.strip())
+    if not foreground_pids.intersection(ancestors):
+        raise ValueError(
+            f"caller process is not running inside Herdr pane {pane_id!r}"
+        )
+
+
 def validate_status_sender(instruction_path: str | Path, status: str) -> None:
     path = Path(instruction_path).resolve()
     if not path.is_file():

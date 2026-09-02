@@ -678,6 +678,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         normalized = " ".join(injected.replace("`", "").split())
         for boundary in (
             "Use the smallest sufficient loop",
+            "Run ADAAV silently",
             "specification, design, implementation, and the verification method",
             "inside that anchor",
             "Once work is dispatched",
@@ -685,8 +686,13 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             "A dispatch reports itself",
             "spend the time between events on other coordination or on the user's conversation",
             "when observed evidence and its recorded state actually disagree, or when the user asks",
+            "Keep user interaction compact",
+            "current coordination delta",
+            "harness-native ask-question interface",
+            "Present exactly one decision, wait for its answer, then present the next",
         ):
             self.assertIn(boundary, normalized)
+        self.assertEqual(normalized.count("Run ADAAV silently"), 1)
 
         # The complaint this budget guards: the stance injected at every
         # main-agent session start had grown to 2,373 characters of restated
