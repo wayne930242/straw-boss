@@ -2,29 +2,31 @@
 
 English | [繁體中文](./README.zh-TW.md)
 
-You call the shots. Say the word, and `boss-say` dispatches it — to whoever's the right fit: a plain subagent for something simple, or a session rooted in the app's own directory (headless, or a watchable, joinable [herdr](https://github.com/herdrdev/herdr) pane — `claude` by default, another agent CLI like `codex` where configured) for anything that needs the app's own setup. Works in one app out of the box, coordinates across a whole monorepo too. You can always see what's actually happening.
+You call the shots. Give `boss-say` one task or a backlog and it chooses the smallest sufficient loop: carry bounded work here, fan out clear branches, or coordinate app-rooted Claude Code and Codex CLI workrooms when separate ownership or continuity is useful. It works in a single app out of the box and coordinates across a monorepo when needed.
 
 Named after the ranch foreman who works the ground alongside the crew, not from an office.
 
 ## Why
 
-An app's own `.claude/skills/` and `.claude/settings.json` hooks only load for a session actually rooted in that app's directory. straw-boss dispatches the work into a session that lives there, instead of hand-maintaining a summary of what the app's rules say — for a code change, an audit, research, or a diagnosis alike. Routing across a monorepo's apps (`work-on`) is a bonus, not a requirement. Full rationale: `docs/architecture.md`.
+Bounded work should stay bounded. When a task benefits from its own workroom, straw-boss roots that worker in the app it owns instead of copying the app's context into a summary that can drift. Claude Code workers load that app's `.claude/skills/` and `.claude/settings.json` hooks there; Claude Code and Codex CLI workers both operate from the correct app directory and local instructions. The same routing applies to implementation, audits, research, and diagnosis. Cross-app routing through `work-on` is available for monorepos, not required for a single app. Full rationale: [docs/architecture.md](docs/architecture.md).
 
 ## Highlights
 
-- **One door: `boss-say`** — hand over the work; it decides the scale and how to dispatch. You never pick an entry skill.
-- **Two tiers** — a subagent when the app's own setup isn't needed, a dispatched agent when it is, judged per item.
-- **One epic, one main agent** — a single session coordinates the whole epic; it delegates, never implements.
-- **Worktree isolation** — parallel tasks run side by side.
+- **One door: `boss-say`** — hand over the work; it selects the owner, execution tier, coordination graph, and reality anchor.
+- **Smallest sufficient loop** — bounded work stays with the current agent; clear branches fan out; durable app-rooted work gets its own workroom.
+- **Claude Code and Codex CLI workers** — choose provider, profile, model, and effort per work route; Claude routes can also use a native advisor.
+- **Event-driven coordination** — persisted checkpoints and terminal status drive scheduling, handoffs, and cleanup.
+- **Worktree isolation** — team-mode tasks can run side by side on their own feature branches.
 - **Cross-main-agent resource lock** — a file lock for ports and shared-DB migrations worktrees can't isolate.
 - **Self-paced batches** — a backlog too big for one turn gets its own `/loop`, started by `boss-say` itself.
 - **Independent orchestrator handoff** — with your approval, move one scope into a named Herdr tab whose orchestrator takes over through `boss-say`; the original window leaves that scope.
-- **herdr for human-in-the-loop** — watch it, join it, answer a question mid-task; the default whenever it's available.
+- **herdr for human-in-the-loop** — watch or join a dispatched Claude Code or Codex CLI workroom and answer questions there.
 
 ## Requirements
 
 - Claude Code with plugins enabled, or Codex CLI with plugin support.
-- [herdr](https://github.com/herdrdev/herdr) (recommended, optional). Without it, dispatch runs headless `claude -p` — no live view, no mid-task questions. `init` asks whether to enable it.
+- Python 3 for the bundled lifecycle and installation scripts.
+- [herdr](https://github.com/herdrdev/herdr) (recommended, optional). With it, dispatched Claude Code and Codex CLI workrooms are visible and joinable. Without a live herdr session, separate workrooms run headlessly.
 
 ## Install
 
@@ -66,7 +68,7 @@ $straw-boss:init
 
 You can also browse or manage the installed plugin interactively by starting `codex` and entering `/plugins`. Plugins are not available in the Codex IDE extension.
 
-`init` asks which apps to manage, writes `.claude/straw-boss/apps.json`, syncs your root `CLAUDE.md`, offers to bootstrap a missing agent system per app, and asks whether to enable herdr.
+`init` asks which apps to manage, configures work routes, writes `.claude/straw-boss/apps.json`, syncs your root `CLAUDE.md`, offers to bootstrap a missing agent system per app, and records whether to enable herdr-backed dispatch.
 
 For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it when you want herdr, per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 
@@ -75,18 +77,21 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | Skill | Description |
 |-------|-------------|
 | `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, configure work routes with provider profile/model/effort and an optional Claude advisor, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
-| `boss-say` | **The entry point for everything.** Judges scale, judges solo-vs-dispatch per item, hands off to the matching specialist skill or its own batch mechanics |
+| `boss-say` | **The entry point for everything.** Selects the owning skill and smallest sufficient loop for one task, an independent batch, or a backlog |
 | `handoff-orchestrator` | After explicit approval, transfer one scope and its minimal continuity state to a new orchestrator tab |
+| `i-am-orchestrator` | Keep coordination event-driven while workers and the user own work details inside the named reality anchor |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |
 | `dispatching-work` | Internal dispatch machinery — picks the transport and resolves a work route (provider/profile/model/effort, plus Claude-only native advisor), writes the instruction, dispatches, lists/wraps up existing dispatches |
 | `choosing-graph` | Pick the coordination graph (single-loop, sub-agent fan-out/fan-in, orchestrator-worker) and the reality anchor (testing, pseudo-human, human, adversarial review) before work starts — the anchor names the category, the agent doing the work still picks the method inside it |
 | `shipping-task` | Decide the git lifecycle from how you regard the work — team-mode (worktree → develop → MR → merge → archive) or solo-mode (direct commit) — dispatch, commit and push its own feature branch freely, get authorization before every merge (and any push outside that branch) |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
+| `asking-peer-agents` | Let one dispatched task request a factual progress update or conclusion from another task |
+| `bringing-coworker` | Bring one Claude Code or Codex CLI coworker into an interactive worker's exact Herdr tab and worktree |
 | `create-great-harness` | Bootstrap a minimal agent system for an app that has none — an evidence-grounded `CLAUDE.md`, plus optional hook or rule artifacts when confirmed scope or project evidence requires them |
-| `inspecting-app` | Dispatch an evidence-bearing rules audit into the app; bounded audits may use a confirmed lower-tier route |
-| `investigating-app` | Dispatch current-state research into the app and return an explanation with evidence, not a binary answer |
-| `troubleshooting-app` | Keep ordinary diagnosis and repair in one `shipping-task` worker; split out only an integration preflight whose evidence is needed to route or schedule later dispatches |
+| `inspecting-app` | Resolve the app and run an evidence-bearing rules audit through the smallest sufficient loop |
+| `investigating-app` | Resolve the app and explain its current behavior with evidence through the smallest sufficient loop |
+| `troubleshooting-app` | Keep ordinary diagnosis and repair in one `shipping-task` loop; split out only an integration preflight whose evidence is needed to route or schedule later work |
 
 ## Usage
 
@@ -98,9 +103,10 @@ boss-say audit the payments module against our rules
 boss-say work through docs/backlog.md
 ```
 
-`boss-say` decides the rest — solo only when no managed-app files are needed,
-otherwise dispatched; one task or a batch; `/loop` or not. It states what it
-picked, and you can override it in one sentence.
+`boss-say` decides the rest: the owning skill, whether the current agent can
+carry the work or a separate workroom is useful, the coordination graph and
+reality anchor, one task or a batch, and `/loop` when a backlog needs its own
+pacing. It states what it picked, and you can override it in one sentence.
 
 Every specialist skill is also callable by name:
 
@@ -115,7 +121,7 @@ A status question or closing out a dispatch also goes through `boss-say`.
 
 ## Configuration
 
-Everything project-specific lives in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). A terse summary also syncs into your root `CLAUDE.md`, since every nested app session inherits it.
+Managed apps and their per-app lifecycle options live in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). A terse app summary and the project-wide work routes live in your root `CLAUDE.md`, which nested app sessions inherit.
 
 An app can also default to a non-`claude` agent kind (`agentKind`). Complete work routes — provider profile, model, effort, and optional Claude Code native advisor — are a separate project-wide policy `init` writes into root `CLAUDE.md` as prose. Codex routes do not support advisor.
 
