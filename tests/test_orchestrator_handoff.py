@@ -204,7 +204,9 @@ class OrchestratorHandoffTests(DispatchedAgentLifecycleFixture, unittest.TestCas
             calls,
         )
         self.assertIn(["tab", "rename", "new-tab", "api-orchestrator"], calls)
-        prompt = next(call[3] for call in calls if call[:2] == ["agent", "prompt"])
+        prompt_call = next(call for call in calls if call[:2] == ["agent", "prompt"])
+        prompt = prompt_call[3]
+        self.assertNotIn("--wait", prompt_call)
         self.assertIn("Invoke `boss-say`", prompt)
         self.assertIn("Orchestrator handoff file:", prompt)
         self.assertIn("records acceptance after it establishes the work route", prompt)
@@ -215,6 +217,30 @@ class OrchestratorHandoffTests(DispatchedAgentLifecycleFixture, unittest.TestCas
         self.assertNotIn("conversation", prompt.lower())
         self.assertLessEqual(len(prompt), 3000)
         self.assertEqual(calls[-1], ["pane", "close", "main-pane"])
+
+    def test_handoff_waits_for_new_tab_shell_before_starting_receiver(self) -> None:
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "handoff-orchestrator.py",
+            *self.handoff_args(retains=("Live verification",)),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_AUTO_ACCEPT_HANDOFF": "1",
+                "HERDR_PANE_BUSY_ATTEMPTS": "1",
+                "HERDR_WORKSPACE_ID": "workspace-1",
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_PROCESS_INFO_CALLER": "1",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        starts = [call for call in calls if call[:2] == ["agent", "start"]]
+        self.assertEqual(len(starts), 2)
+        self.assertEqual(starts[0], starts[1])
+        self.assertNotIn(["tab", "close", "new-tab"], calls)
 
     def test_tab_rename_failure_warns_but_still_transfers_the_scope(self) -> None:
         fake_bin, capture = self.install_fake_herdr()

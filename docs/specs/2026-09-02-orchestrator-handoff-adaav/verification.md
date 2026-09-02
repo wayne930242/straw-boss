@@ -11,6 +11,7 @@
 | Acceptance transfers ownership and source scope ends | Accepted integration tests verify receiver identity, retained-scope behavior, and source-pane close only after acceptance | Pass |
 | No retained work closes the source pane automatically | Integration test verifies the accepted result is emitted before `pane close` and source close is retried | Pass |
 | Failed acceptance retries once and cleans the new tab | Tests verify two prompts, tab cleanup, source retention, and explicit persisted `cleanup-failed` recovery when Herdr cleanup cannot finish | Pass |
+| A newly created tab can become ready and receive its handoff prompt | Regression tests exercise `agent_pane_busy` followed by readiness and require receipt-based prompt delivery without Herdr's working-state wait gate; a real Herdr source-candidate handoff accepted in `wT:tA` / `wT:p11` with structured `inspecting-app` / `single-loop` / `pseudo-human` route facts | Pass |
 | Naming failure does not block handoff | Tab rename is attempted twice; the handoff still reaches accepted state with one warning | Pass |
 | ADAAV stays lightweight | Authority and injected-stance tests verify one silent ordering, no response-template requirement, and the 1,800-character priming budget | Pass |
 
@@ -19,5 +20,7 @@
 - Focused handoff and provider lifecycle tests: pass.
 - Full `python3 -m unittest discover -s tests`: pass.
 - Real Herdr caller-process validation on the current pane: pass.
+- Real Herdr source-candidate handoff through new-tab readiness, prompt delivery,
+  and structured acceptance: pass.
 - `git diff --check`, Python compilation, and plugin validation: pass.
 - Fresh-context adversarial review: final disposition recorded after the last implementation pass.

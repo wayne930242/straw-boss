@@ -33,6 +33,8 @@ MAX_CONTINUITY_CHARS = 1600
 MAX_PROMPT_CHARS = 3000
 ACCEPT_TIMEOUT_SECONDS = 20.0
 ACCEPT_POLL_SECONDS = 0.25
+AGENT_START_PANE_READY_TIMEOUT_SECONDS = 15.0
+AGENT_START_PANE_READY_POLL_SECONDS = 0.25
 MAX_NAME_COLLISION_ATTEMPTS = 3
 VALID_COORDINATION_GRAPHS = {
     "single-loop",
@@ -180,17 +182,37 @@ def start_receiver(
 ) -> str:
     taken = live_names(run_herdr(["agent", "list"]))
     name = unique_agent_name(base_name, taken)
+    readiness_deadline = monotonic() + AGENT_START_PANE_READY_TIMEOUT_SECONDS
     for attempt in range(MAX_NAME_COLLISION_ATTEMPTS + 1):
-        try:
-            run_herdr(
-                ["agent", "start", name, "--kind", agent_kind, "--pane", pane_id, "--", *agent_args]
-            )
-            return name
-        except HerdrCommandError as exc:
-            if exc.error_code != "agent_name_taken" or attempt >= MAX_NAME_COLLISION_ATTEMPTS:
-                raise
-            taken.add(name)
-            name = unique_agent_name(base_name, taken)
+        while True:
+            try:
+                run_herdr(
+                    [
+                        "agent",
+                        "start",
+                        name,
+                        "--kind",
+                        agent_kind,
+                        "--pane",
+                        pane_id,
+                        "--",
+                        *agent_args,
+                    ]
+                )
+                return name
+            except HerdrCommandError as exc:
+                remaining = readiness_deadline - monotonic()
+                if exc.error_code == "agent_pane_busy" and remaining > 0:
+                    sleep(min(AGENT_START_PANE_READY_POLL_SECONDS, remaining))
+                    continue
+                if (
+                    exc.error_code != "agent_name_taken"
+                    or attempt >= MAX_NAME_COLLISION_ATTEMPTS
+                ):
+                    raise
+                taken.add(name)
+                name = unique_agent_name(base_name, taken)
+                break
     raise AssertionError("unreachable name retry")
 
 
@@ -232,19 +254,7 @@ def wait_for_acceptance(path: Path, timeout_seconds: float) -> dict[str, Any] | 
 
 
 def offer_prompt(pane_id: str, prompt: str) -> None:
-    run_herdr(
-        [
-            "agent",
-            "prompt",
-            pane_id,
-            prompt,
-            "--wait",
-            "--until",
-            "working",
-            "--timeout",
-            "8000",
-        ]
-    )
+    run_herdr(["agent", "prompt", pane_id, prompt])
 
 
 def close_failed_receiver(tab_id: str, pane_id: str | None) -> str | None:

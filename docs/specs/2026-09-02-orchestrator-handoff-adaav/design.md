@@ -27,6 +27,17 @@ needed, and surfaces any remaining cleanup failure while keeping the source
 pane. On success it returns the accepted identity; the source either continues
 with explicit retained scope or closes its pane after the compact handoff report.
 
+Herdr may return the new tab before its root shell is ready for `agent start`.
+The receiver start therefore retries the same name and provider arguments for a
+bounded 15 seconds only when Herdr reports `agent_pane_busy`. Name collisions
+continue through the existing collision-safe rename path; every other start
+error fails immediately into the same cleanup path.
+
+The receiver may already be `working` when its handoff prompt is submitted. The
+handoff uses a plain Herdr prompt because Herdr's `--wait` gate does not track a
+new turn from that state. The signed-in receiver's structured acceptance record
+is the delivery proof; the source waits for it after each prompt attempt.
+
 ## Prompt budget
 
 ADAAV is represented once as an ordering, not copied into each branch. The
