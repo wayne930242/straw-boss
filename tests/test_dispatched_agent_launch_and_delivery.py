@@ -57,7 +57,7 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         tab_calls = [call for call in calls if call and call[0] == "tab"]
         self.assertEqual(
             tab_calls,
-            [["tab", "rename", "tab-1", "api-coordinator"]],
+            [["tab", "rename", "tab-1", "contract-claude"]],
         )
         start = next(call for call in calls if call[:2] == ["agent", "start"])
         contract_path = str(instruction["contract_path"])

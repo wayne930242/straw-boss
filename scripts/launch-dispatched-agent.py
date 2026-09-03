@@ -322,16 +322,32 @@ def name_worker_pane(pane_id: str, name: str) -> str | None:
     return f"worker pane {pane_id!r} could not be named {name!r}: {last_error}"
 
 
-def name_coordinator_tab(instruction: dict[str, object]) -> str | None:
-    """Best-effort shared-tab label before the worker pane is created."""
+def dispatch_slug(inst_path: Path) -> str:
+    """The task slug an instruction filename carries, as `<app>--<slug>.json`."""
+    stem = inst_path.stem
+    _, separator, slug = stem.partition("--")
+    if not separator or not slug:
+        raise ValueError(f"instruction filename {stem!r} carries no '--<slug>' part")
+    return slug
+
+
+def name_task_tab(instruction: dict[str, object], inst_path: Path) -> str | None:
+    """Best-effort shared-tab label before the worker pane is created.
+
+    The tab is labelled with the task, not the coordinator: every dispatch for
+    one app derives the same coordinator name, so naming tabs after it made two
+    tabs working different tasks read identically. Agent names stay on panes,
+    where `ensure_coordinator_named` and `name_worker_pane` put them. A tab
+    hosting several dispatches shows the most recently dispatched task.
+    """
     main_pane_id = instruction.get("main_agent_herdr_pane_id")
     if not isinstance(main_pane_id, str) or not main_pane_id:
-        return "coordinator tab naming skipped: dispatch has no main-agent pane"
-    label = derive_agent_name("coordinator", str(instruction["app"]))
+        return "task tab naming skipped: dispatch has no main-agent pane"
     try:
+        label = dispatch_slug(inst_path)
         tab_id = str(herdr_pane(main_pane_id)["tab_id"])
     except ValueError as exc:
-        return f"coordinator tab naming failed; dispatch continued: {exc}"
+        return f"task tab naming failed; dispatch continued: {exc}"
     last_error: ValueError | None = None
     for _ in range(2):
         try:
@@ -341,7 +357,7 @@ def name_coordinator_tab(instruction: dict[str, object]) -> str | None:
             last_error = exc
     assert last_error is not None
     return (
-        f"coordinator tab {tab_id!r} could not be named {label!r}; "
+        f"task tab {tab_id!r} could not be named {label!r}; "
         f"dispatch continued: {last_error}"
     )
 
@@ -657,9 +673,7 @@ def launch(
 
     agent_kind = str(instruction.get("agent_kind"))
     base_provider_args = provider_profile_args(instruction, agent_args)
-    coordinator_tab_warning = (
-        None if is_coworker else name_coordinator_tab(instruction)
-    )
+    tab_label_warning = None if is_coworker else name_task_tab(instruction, inst_path)
 
     def provider_args_for(current_name: str) -> list[str]:
         if agent_kind == "claude":
@@ -896,8 +910,8 @@ def launch(
         **landed,
         "launched_at": datetime.now(timezone.utc).isoformat(),
     }
-    if coordinator_tab_warning is not None:
-        receipt["coordinator_tab_label_warning"] = coordinator_tab_warning
+    if tab_label_warning is not None:
+        receipt["tab_label_warning"] = tab_label_warning
     receipt_path = launch_receipt_path(inst_path)
     dump_json(receipt_path, receipt)
     launch_failure_path(inst_path).unlink(missing_ok=True)
@@ -911,7 +925,7 @@ def launch(
     result: dict[str, Any] = {"launch_receipt_path": str(receipt_path), "launched": True}
     warnings = [
         warning
-        for warning in (coordinator_tab_warning, landed.get("pane_label_warning"))
+        for warning in (tab_label_warning, landed.get("pane_label_warning"))
         if isinstance(warning, str) and warning
     ]
     if warnings:

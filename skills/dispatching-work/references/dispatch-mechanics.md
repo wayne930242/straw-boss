@@ -93,7 +93,7 @@ Run only:
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/launch-dispatched-agent.py" \
   --instruction-path <instruction path> \
   [--name <agent name>] \
-  [--agent-arg <one provider argument>]...
+  [--agent-arg=<one provider argument>]...
 ```
 
 The launcher derives provider arguments from the recorded worker setup, then:
@@ -140,6 +140,9 @@ Provider profile/model/effort are instruction-owned. Claude receives
 `--profile`/`--model`/`model_reasoning_effort`. Claude additionally receives
 `--advisor <advisor_model>` when recorded. `--agent-arg` carries permission or
 other provider options; duplicating an instruction-owned option is refused.
+Write it with `=` — a value that itself starts with `-` (every permission
+flag does) is read as the next option otherwise, and argparse rejects the
+call with `expected one argument`.
 
 Confirm only after the launcher returns:
 

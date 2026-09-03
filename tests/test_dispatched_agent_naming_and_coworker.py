@@ -18,7 +18,7 @@ from tests.dispatched_agent_lifecycle_support import (
 
 
 class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
-    def test_launcher_names_the_coordinator_tab_before_splitting_a_worker_pane(
+    def test_launcher_names_the_task_tab_before_splitting_a_worker_pane(
         self,
     ) -> None:
         instruction_path, _ = self.write_dispatch("claude")
@@ -38,7 +38,7 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
 
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
-        rename = ["tab", "rename", "tab-1", "api-coordinator"]
+        rename = ["tab", "rename", "tab-1", "contract-claude"]
         self.assertIn(rename, calls)
         self.assertLess(
             calls.index(rename),
@@ -65,7 +65,7 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(result.stdout)
         self.assertTrue(output["launched"])
-        self.assertIn("coordinator tab", output["warning"])
+        self.assertIn("task tab", output["warning"])
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         self.assertEqual(
             len([call for call in calls if call[:2] == ["tab", "rename"]]),

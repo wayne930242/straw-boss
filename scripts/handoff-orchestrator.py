@@ -311,7 +311,8 @@ def handoff(args: argparse.Namespace) -> dict[str, object]:
             pane_id = exc.pane_id
             raise
         name = start_receiver(pane_id, base_name, args.agent_kind, args.agent_arg)
-        tab_label_warning = rename_tab(tab_id, name)
+        # The tab carries the task; the agent name stays on its own pane.
+        tab_label_warning = rename_tab(tab_id, args.slug)
         record: dict[str, object] = {
             **continuity,
             "status": "offered",

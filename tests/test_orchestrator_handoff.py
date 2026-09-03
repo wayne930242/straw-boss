@@ -203,7 +203,7 @@ class OrchestratorHandoffTests(DispatchedAgentLifecycleFixture, unittest.TestCas
             ],
             calls,
         )
-        self.assertIn(["tab", "rename", "new-tab", "api-orchestrator"], calls)
+        self.assertIn(["tab", "rename", "new-tab", "api"], calls)
         prompt_call = next(call for call in calls if call[:2] == ["agent", "prompt"])
         prompt = prompt_call[3]
         self.assertNotIn("--wait", prompt_call)
