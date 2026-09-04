@@ -127,6 +127,25 @@ class SkillInstructionQualityTests(unittest.TestCase):
         )
         self.assertNotIn("Every full-flow dispatch instruction in a plan/batch MUST", source)
 
+    def test_local_files_fail_before_dispatch_unless_explicitly_optional(self) -> None:
+        init_source = normalized(ROOT / "skills" / "init" / "SKILL.md")
+        schema = normalized(
+            ROOT / "skills" / "init" / "references" / "apps-config-schema.md"
+        )
+        mechanics = normalized(
+            ROOT
+            / "skills"
+            / "dispatching-work"
+            / "references"
+            / "plan-mechanics.md"
+        )
+
+        self.assertIn("optional: true only when the app remains operable", init_source)
+        self.assertIn("optional (boolean, default false", schema)
+        self.assertIn("A missing entry is an error by default", mechanics)
+        self.assertIn("stop before launching the worker", mechanics)
+        self.assertIn("only when that exact entry has optional: true", mechanics)
+
     def test_batch_and_single_app_routing_have_bounded_scope(self) -> None:
         dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
         work_on = normalized(ROOT / "skills" / "work-on" / "SKILL.md")

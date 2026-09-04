@@ -30,10 +30,16 @@
 
 ## 安裝
 
-從 source checkout 安裝或更新這台機器上可用的所有支援 CLI，並核對實際安裝版本：
+從 GitHub marketplace 來源安裝或更新這台機器上可用的所有支援 CLI，並核對實際安裝版本：
 
 ```bash
 bash scripts/install.sh
+```
+
+只有要直接針對目前 checkout 開發時，才明確選用這台機器的本機路徑：
+
+```bash
+bash scripts/install.sh --local
 ```
 
 完成後請重開既有 agent session。對應的手動指令如下。

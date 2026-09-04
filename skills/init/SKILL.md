@@ -33,7 +33,7 @@ Each reconnaissance returns proposed fields with evidence references:
 - `forbidDirectCommit`, grounded in the repository's actual workflow or reachable branch policy;
 - `agentKind`, only when persistent app-owned provider configuration establishes a project default;
 - `gitWorkflowSkill`, when an app-owned skill handles commits, PRs, or releases;
-- `localFiles`, limited to existing, untracked, gitignored files, with sensitive material identified for later user approval;
+- `localFiles`, limited to existing, untracked, gitignored files, with sensitive material identified for later user approval and `optional: true` only when the app remains operable without that file;
 - `crossAppSkills`, when an app-owned skill contains a concrete cross-app path or repository dependency;
 - an agent-system inventory for Task 9.
 

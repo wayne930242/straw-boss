@@ -15,7 +15,7 @@ The managed-apps list lives at `.claude/straw-boss/apps.json`, relative to the p
       "agentKind": null,
       "gitWorkflowSkill": null,
       "localFiles": [
-        {"path": ".env", "sensitive": true, "note": "carries live DB credentials"}
+        {"path": ".env", "sensitive": true, "optional": false, "note": "carries live DB credentials"}
       ],
       "crossAppSkills": [
         {"withApp": "web", "skill": "handle-be-block", "note": "web already has a skill for backend-contract-missing situations"}
@@ -43,7 +43,7 @@ The managed-apps list lives at `.claude/straw-boss/apps.json`, relative to the p
 | `forbidDirectCommit` | boolean | no | Default `false`. When `true`, `shipping-task` only offers team-mode (worktree→MR) for this app, never a direct commit to its base branch. Solo-mode's commit needs no user authorization, so this field is the only gate standing between an autonomous agent and this app's shared base branch. |
 | `agentKind` | string \| `null` | no | Which agent CLI a dispatch into this app defaults to (`"claude"`, `"codex"`, ...). `null`/omitted means `"claude"`. `dispatching-work` can still override it for one dispatch (an explicit `--agent-kind`, or a task judged against root `CLAUDE.md`'s agent-routing policy if one exists) without changing this stored default. Applies equally to standalone, batch, and Plan tasks. |
 | `gitWorkflowSkill` | string \| `null` | no | Name of a project-level skill (in this app's own `.claude/skills/`) that already drives commit/MR/release mechanics. When set, `shipping-task` tells the agent to run that skill's steps instead of its own fallback. |
-| `localFiles` | array of objects | no | Gitignored files `git worktree add` won't check out, that a fresh worktree needs. Each entry: `path` (string, relative to `dir`), `sensitive` (boolean, default `false`), `note` (string, optional). |
+| `localFiles` | array of objects | no | Gitignored files `git worktree add` won't check out, that a fresh worktree needs. Each entry: `path` (string, relative to `dir`), `sensitive` (boolean, default `false`), `optional` (boolean, default `false`; set `true` only when the app remains operable without it), `note` (string, optional). |
 | `crossAppSkills` | array of objects | no | Pointers to an existing project skill that already handles this app depending on another. Each entry: `withApp` (the other app's `name`), `skill` (the skill's name), `note` (string, optional). |
 
 ## Reading and writing this file

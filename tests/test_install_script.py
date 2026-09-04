@@ -11,6 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "scripts" / "install.sh"
 PLUGIN_ID = "straw-boss@straw-boss"
+CLAUDE_REMOTE_SOURCE = "https://github.com/wayne930242/straw-boss"
+CODEX_REMOTE_SOURCE = "wayne930242/straw-boss"
 
 
 class InstallScriptTests(unittest.TestCase):
@@ -45,16 +47,23 @@ class InstallScriptTests(unittest.TestCase):
             "market = state / f'{provider}-market'\n"
             "plugin = state / f'{provider}-plugin'\n"
             "if args[:3] == ['plugin', 'marketplace', 'list']:\n"
+            "    fail_key = f'FAIL_{provider.upper()}_MARKETPLACE_LIST'\n"
+            "    if os.environ.get(fail_key) == '1':\n"
+            "        print(f'{provider} marketplace list failed', file=sys.stderr); raise SystemExit(8)\n"
+            "    kind, _, source = market.read_text().partition('|') if market.exists() else ('', '', '')\n"
             "    if provider == 'claude':\n"
-            "        payload = ([{'name': 'straw-boss', 'source': 'directory'}] if market.exists() else [])\n"
+            "        payload = ([{'name': 'straw-boss', 'source': ('directory' if kind == 'local' else kind), ('path' if kind == 'local' else 'url'): source}] if market.exists() else [])\n"
             "    else:\n"
-            "        payload = {'marketplaces': ([{'name': 'straw-boss', 'marketplaceSource': {'sourceType': os.environ.get('CODEX_MARKET_TYPE', 'local')}}] if market.exists() else [])}\n"
+            "        payload = {'marketplaces': ([{'name': 'straw-boss', 'marketplaceSource': {'sourceType': kind, 'source': source}}] if market.exists() else [])}\n"
             "    print(json.dumps(payload)); raise SystemExit\n"
             "if args[:3] == ['plugin', 'marketplace', 'add']:\n"
-            "    market.touch(); print('{}'); raise SystemExit\n"
-            "if args[:3] == ['plugin', 'marketplace', 'update']:\n"
+            "    source = args[3]\n"
+            "    market.write_text(('local' if source.startswith('/') else 'git') + '|' + source)\n"
             "    print('{}'); raise SystemExit\n"
-            "if args[:3] == ['plugin', 'marketplace', 'upgrade']:\n"
+            "if args[:3] == ['plugin', 'marketplace', 'remove']:\n"
+            "    market.unlink(missing_ok=True)\n"
+            "    print('{}'); raise SystemExit\n"
+            "if args[:3] in (['plugin', 'marketplace', 'update'], ['plugin', 'marketplace', 'upgrade']):\n"
             "    print('{}'); raise SystemExit\n"
             "if args[:2] == ['plugin', 'list']:\n"
             "    fail_key = f'FAIL_{provider.upper()}_PLUGIN_LIST'\n"
@@ -86,7 +95,9 @@ class InstallScriptTests(unittest.TestCase):
         path.chmod(0o755)
 
     def run_installer(
-        self, extra_env: dict[str, str] | None = None
+        self,
+        extra_env: dict[str, str] | None = None,
+        args: list[str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         env = {
             **os.environ,
@@ -97,7 +108,7 @@ class InstallScriptTests(unittest.TestCase):
         }
         env.update(extra_env or {})
         return subprocess.run(
-            ["bash", str(INSTALLER)],
+            ["bash", str(INSTALLER), *(args or [])],
             cwd=ROOT,
             env=env,
             capture_output=True,
@@ -108,13 +119,39 @@ class InstallScriptTests(unittest.TestCase):
     def calls(self) -> list[list[str]]:
         return [json.loads(line) for line in self.capture.read_text().splitlines()]
 
-    def test_fresh_install_adds_both_local_marketplaces_and_plugins(self) -> None:
+    def test_help_documents_remote_default_and_local_mode_without_provider_calls(
+        self,
+    ) -> None:
+        result = self.run_installer(args=["--help"])
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("GitHub marketplace source by default", result.stdout)
+        self.assertIn("--local", result.stdout)
+        self.assertFalse(self.capture.exists())
+
+    def test_unknown_argument_fails_before_provider_calls(self) -> None:
+        result = self.run_installer(args=["--unknown"])
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("unknown argument: --unknown", result.stderr)
+        self.assertFalse(self.capture.exists())
+
+    def test_fresh_install_adds_remote_marketplaces_and_plugins(self) -> None:
         result = self.run_installer()
 
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.calls()
-        self.assertTrue(
-            any(call[:4] == ["claude", "plugin", "marketplace", "add"] for call in calls)
+        self.assertIn(
+            [
+                "claude",
+                "plugin",
+                "marketplace",
+                "add",
+                CLAUDE_REMOTE_SOURCE,
+                "--scope",
+                "user",
+            ],
+            calls,
         )
         self.assertTrue(
             any(call[:3] == ["claude", "plugin", "install"] for call in calls)
@@ -126,8 +163,21 @@ class InstallScriptTests(unittest.TestCase):
             and call[2] in {"install", "uninstall", "update"}
         ]
         self.assertEqual(claude_plugin_mutations, [["claude", "plugin", "install"]])
-        self.assertTrue(
-            any(call[:4] == ["codex", "plugin", "marketplace", "add"] for call in calls)
+        self.assertIn(
+            [
+                "codex",
+                "plugin",
+                "marketplace",
+                "add",
+                CODEX_REMOTE_SOURCE,
+                "--ref",
+                "main",
+                "--json",
+            ],
+            calls,
+        )
+        self.assertFalse(
+            any(str(ROOT) in argument for call in calls for argument in call)
         )
         codex_plugin_mutations = [
             call[:3]
@@ -137,6 +187,189 @@ class InstallScriptTests(unittest.TestCase):
         ]
         self.assertEqual(codex_plugin_mutations, [["codex", "plugin", "add"]])
         self.assertIn(f"straw-boss {self.version}", result.stdout)
+
+    def test_local_flag_explicitly_uses_checkout_marketplaces(self) -> None:
+        result = self.run_installer(args=["--local"])
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertIn(
+            [
+                "claude",
+                "plugin",
+                "marketplace",
+                "add",
+                str(ROOT),
+                "--scope",
+                "user",
+            ],
+            calls,
+        )
+        self.assertIn(
+            [
+                "codex",
+                "plugin",
+                "marketplace",
+                "add",
+                str(ROOT),
+                "--json",
+            ],
+            calls,
+        )
+
+    def test_default_install_replaces_existing_local_marketplaces(self) -> None:
+        for provider in ("claude", "codex"):
+            (self.state_dir / f"{provider}-market").write_text("local|/old/checkout")
+
+        result = self.run_installer()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertIn(
+            ["claude", "plugin", "marketplace", "remove", "straw-boss"], calls
+        )
+        self.assertIn(
+            [
+                "claude",
+                "plugin",
+                "marketplace",
+                "add",
+                CLAUDE_REMOTE_SOURCE,
+                "--scope",
+                "user",
+            ],
+            calls,
+        )
+        self.assertIn(
+            [
+                "codex",
+                "plugin",
+                "marketplace",
+                "remove",
+                "straw-boss",
+                "--json",
+            ],
+            calls,
+        )
+        self.assertIn(
+            [
+                "codex",
+                "plugin",
+                "marketplace",
+                "add",
+                CODEX_REMOTE_SOURCE,
+                "--ref",
+                "main",
+                "--json",
+            ],
+            calls,
+        )
+
+    def test_default_install_replaces_mismatched_remote_marketplaces(self) -> None:
+        (self.state_dir / "claude-market").write_text(
+            "git|https://example.com/not-straw-boss.git"
+        )
+        (self.state_dir / "codex-market").write_text("git|someone/not-straw-boss")
+
+        result = self.run_installer()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertIn(
+            ["claude", "plugin", "marketplace", "remove", "straw-boss"], calls
+        )
+        self.assertIn(
+            [
+                "claude",
+                "plugin",
+                "marketplace",
+                "add",
+                CLAUDE_REMOTE_SOURCE,
+                "--scope",
+                "user",
+            ],
+            calls,
+        )
+        self.assertIn(
+            [
+                "codex",
+                "plugin",
+                "marketplace",
+                "remove",
+                "straw-boss",
+                "--json",
+            ],
+            calls,
+        )
+        self.assertIn(
+            [
+                "codex",
+                "plugin",
+                "marketplace",
+                "add",
+                CODEX_REMOTE_SOURCE,
+                "--ref",
+                "main",
+                "--json",
+            ],
+            calls,
+        )
+
+    def test_default_install_refreshes_existing_remote_marketplaces(self) -> None:
+        (self.state_dir / "claude-market").write_text(
+            f"git|{CLAUDE_REMOTE_SOURCE}"
+        )
+        (self.state_dir / "codex-market").write_text(f"git|{CODEX_REMOTE_SOURCE}")
+
+        result = self.run_installer()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertIn(
+            ["claude", "plugin", "marketplace", "update", "straw-boss"], calls
+        )
+        self.assertIn(
+            [
+                "codex",
+                "plugin",
+                "marketplace",
+                "upgrade",
+                "straw-boss",
+                "--json",
+            ],
+            calls,
+        )
+        self.assertFalse(
+            any(
+                call[:3] == ["claude", "plugin", "marketplace"]
+                and call[3] == "remove"
+                for call in calls
+            )
+        )
+        self.assertFalse(
+            any(
+                call[:3] == ["codex", "plugin", "marketplace"]
+                and call[3] == "remove"
+                for call in calls
+            )
+        )
+
+    def test_marketplace_list_failure_stops_provider_marketplace_mutation(self) -> None:
+        for provider in ("claude", "codex"):
+            with self.subTest(provider=provider):
+                self.capture.write_text("")
+                result = self.run_installer(
+                    {f"FAIL_{provider.upper()}_MARKETPLACE_LIST": "1"}
+                )
+                self.assertNotEqual(result.returncode, 0)
+                mutations = [
+                    call
+                    for call in self.calls()
+                    if call[0] == provider
+                    and call[1:3] == ["plugin", "marketplace"]
+                    and call[3] in {"add", "remove", "update", "upgrade"}
+                ]
+                self.assertEqual(mutations, [])
 
     def test_stale_install_replaces_both_existing_plugins(self) -> None:
         for provider in ("claude", "codex"):
@@ -288,7 +521,10 @@ class InstallScriptTests(unittest.TestCase):
 
     def test_both_readmes_document_the_checkout_installer(self) -> None:
         for readme in (ROOT / "README.md", ROOT / "README.zh-TW.md"):
-            self.assertIn("bash scripts/install.sh", readme.read_text())
+            source = readme.read_text()
+            self.assertIn("bash scripts/install.sh", source)
+            self.assertIn("bash scripts/install.sh --local", source)
+            self.assertIn(CLAUDE_REMOTE_SOURCE, source)
 
 
 if __name__ == "__main__":

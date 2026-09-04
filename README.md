@@ -31,10 +31,17 @@ Bounded work should stay bounded. When a task benefits from its own workroom, st
 ## Install
 
 From a source checkout, install or update every supported CLI available on this
-machine and verify the installed version:
+machine from the GitHub marketplace source and verify the installed version:
 
 ```bash
 bash scripts/install.sh
+```
+
+For development against this checkout instead, opt into its machine-local path
+explicitly:
+
+```bash
+bash scripts/install.sh --local
 ```
 
 Restart active agent sessions afterward. The equivalent manual commands are

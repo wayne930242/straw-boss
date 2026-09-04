@@ -235,9 +235,16 @@ EOF
 ```
 (`<git-common-dir>` is `git -C <app_dir> rev-parse --git-common-dir`; `<worktree-name>` is usually the branch/slug name — confirm via `ls <git-common-dir>/worktrees/`.) Re-run the verification command after writing the repair file. Do not dispatch into a worktree that still fails verification after one repair attempt — stop and report it. `git worktree repair` does **not** fix this class of problem — do not reach for it.
 
-**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree, and an agent either fails to run or has to discover and copy it itself mid-task, both a worse experience than getting it upfront. Read the resolved app's `localFiles` entry in `.claude/straw-boss/apps.json` (see `skills/init/references/apps-config-schema.md`) — copy only the files listed there, each `path` relative to the app's `dir`. Blind-copy only (`cp -r`, never `Read`/`cat`) so file contents never enter the main agent's own context. If an entry has `sensitive: true`, ask the user once before copying it, even though it's already listed in the config — a config entry pre-authorizes *that the file exists and is expected*, not that copying live credentials needs no confirmation. An app with no `localFiles` entries has nothing to copy — that's the common case, not a gap.
+**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree. Read the resolved app's `localFiles` entry in `.claude/straw-boss/apps.json` (see `skills/init/references/apps-config-schema.md`). If an entry has `sensitive: true`, ask the user once before copying it; a config entry records that the file is expected, while the copy of live credentials remains user-approved.
 
-Skip silently (no error) when a listed source file doesn't exist in the main checkout — not every dev environment has every optional local file set up.
+Run the validated copy seam once, before dispatch:
+
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/copy-local-files.py" \
+  --repo-root "<repo-root>" --app "<app>" --worktree "<app_dir>-<slug>"
+```
+
+Add `--allow-sensitive` only after the user approves every sensitive entry. The command reads no file contents into the agent context, validates the complete list before copying anything, and reports copied or skipped paths as JSON. A missing entry is an error by default: stop before launching the worker and report the app-relative path plus its `note`. It skips and reports a missing source only when that exact entry has `optional: true`; omission of `optional` means required for compatibility with existing configs. A project with no `localFiles` entries succeeds with empty result lists.
 
 **Same-tab worker panes (herdr-pane mode only).** Record the verified worktree as
 the instruction's `repo_root`. `launch-dispatched-agent.py` resolves the recorded
