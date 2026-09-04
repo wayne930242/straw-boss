@@ -133,7 +133,14 @@ The launcher derives provider arguments from the recorded worker setup, then:
 11. on a top-level dispatch (never a coworker's), best-effort-names the
     coordinator's own still-unnamed pane `<app>-coordinator` — an already-named
     coordinator pane is left alone, and a failure here never fails the launch
-    that already succeeded.
+    that already succeeded;
+12. scans the live agent list for any other pane still carrying the retired
+    `straw-boss-orchestrator*` name or terminal title — a leftover from the
+    old `/rename straw-boss-orchestrator` convention that never clears itself
+    once its session ends — and folds a non-blocking warning naming that pane
+    into the launch result; this never delays or fails the dispatch, and a
+    worker still finds its own main agent only through the instruction's
+    recorded pane and session ids, never by pattern-matching a name.
 
 Provider profile/model/effort are instruction-owned. Claude receives
 `--agent`/`--model`/`--effort`; Codex receives

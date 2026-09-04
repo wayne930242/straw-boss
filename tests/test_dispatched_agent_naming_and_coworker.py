@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import runpy
@@ -411,6 +412,147 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
         )
         self.assertGreater(rename_index, prompt_index)
         self.assertEqual(calls[rename_index], ["agent", "rename", "main-pane", "api-coordinator"])
+
+    def test_launcher_warns_about_a_decoy_orchestrator_pane_without_blocking_dispatch(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_AGENT_LIST": json.dumps(
+                    [
+                        {
+                            "pane_id": "wF:p5R",
+                            "name": "rest-api-v3-coordinator-3",
+                            "terminal_title": "✳ straw-boss-orchestrator-wF-p1",
+                            "terminal_title_stripped": "straw-boss-orchestrator-wF-p1",
+                        }
+                    ]
+                ),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertTrue(output["launched"])
+        self.assertIn("wF:p5R", output["warning"])
+        self.assertIn("straw-boss-orchestrator", output["warning"])
+
+    def test_launcher_does_not_flag_its_own_main_or_worker_pane_as_a_decoy(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_AGENT_LIST": json.dumps(
+                    [
+                        {
+                            "pane_id": "main-pane",
+                            "name": "worker",
+                            "terminal_title": "straw-boss-orchestrator-old",
+                        },
+                        {
+                            "pane_id": "worker-pane",
+                            "name": "some-earlier-worker",
+                            "terminal_title": "straw-boss-orchestrator-old-2",
+                        },
+                    ]
+                ),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertTrue(output["launched"])
+        self.assertNotIn("warning", output)
+
+    def test_launcher_does_not_flag_a_coworkers_root_coordinator_as_a_decoy(
+        self,
+    ) -> None:
+        parent_path, _ = self.write_dispatch("claude", main_agent_kind="codex")
+        self.set_worker_endpoint(parent_path)
+        written = self.write_coworker(parent_path)
+        self.assertEqual(written.returncode, 0, written.stderr)
+        child_path = Path(json.loads(written.stdout)["instruction_path"])
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(child_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_WORKER_PANE_ID": "coworker-pane",
+                "HERDR_UNNAMED_PANES": json.dumps(["worker-pane"]),
+                "HERDR_AGENT_LIST": json.dumps(
+                    [
+                        {
+                            "pane_id": "main-pane",
+                            "name": "root-coordinator",
+                            "terminal_title": "straw-boss-orchestrator-old",
+                        },
+                        {
+                            "pane_id": "wF:p9Z",
+                            "name": "unrelated-coordinator",
+                            "terminal_title": "straw-boss-orchestrator-decoy",
+                        },
+                    ]
+                ),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertTrue(output["launched"])
+        self.assertIn("wF:p9Z", output["warning"])
+        self.assertNotIn("main-pane", output["warning"])
+
+    def test_decoy_scan_rejects_a_non_list_agents_field_instead_of_crashing(
+        self,
+    ) -> None:
+        # `herdr agent list` returning a malformed shape must surface as the
+        # same ValueError the decoy scan's own shape guard already raises for
+        # a missing 'agents' key -- never an uncaught TypeError from iterating
+        # a non-list, which would crash the launcher after the dispatch (and
+        # its receipt) already succeeded.
+        launcher_path = ROOT / "scripts" / "launch-dispatched-agent.py"
+        spec = importlib.util.spec_from_file_location(
+            "launch_dispatched_agent_decoy_scan", launcher_path
+        )
+        assert spec is not None and spec.loader is not None
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            launcher = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(launcher)
+        finally:
+            sys.path.pop(0)
+
+        for malformed_agents in (42, 3.14, True):
+            with self.assertRaises(ValueError):
+                launcher.decoy_orchestrator_panes(
+                    {"result": {"agents": malformed_agents}}, set()
+                )
 
     def test_launcher_derives_a_coworker_name_and_never_renames_its_parent(self) -> None:
         parent_path, _ = self.write_dispatch("claude", main_agent_kind="codex")

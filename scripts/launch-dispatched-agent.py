@@ -204,6 +204,52 @@ def ensure_coordinator_named(instruction: dict[str, object], taken: set[str]) ->
     taken.add(candidate)
 
 
+DEPRECATED_ORCHESTRATOR_NAME_MARKER = "straw-boss-orchestrator"
+
+
+def decoy_orchestrator_panes(
+    payload: dict[str, Any], exclude_pane_ids: set[str]
+) -> list[str]:
+    """Live panes still carrying the retired `straw-boss-orchestrator*` label.
+
+    That convention had a coordinator run `/rename straw-boss-orchestrator` on
+    its own pane; nothing ever clears the name or terminal title it left
+    behind once a session ends, so an idle pane from months ago keeps reading
+    as *the* orchestrator to anything that goes looking for one by name
+    pattern instead of by the pane id a dispatch instruction actually records.
+    """
+    try:
+        agents = payload["result"]["agents"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"unexpected 'herdr agent list' shape -- missing {exc}") from exc
+    if not isinstance(agents, list):
+        raise ValueError(f"unexpected 'herdr agent list' shape -- agents was {type(agents).__name__}")
+    decoys: list[str] = []
+    for agent in agents:
+        if not isinstance(agent, dict) or agent.get("pane_id") in exclude_pane_ids:
+            continue
+        fields = (agent.get("name"), agent.get("terminal_title"), agent.get("terminal_title_stripped"))
+        if any(
+            isinstance(value, str) and DEPRECATED_ORCHESTRATOR_NAME_MARKER in value.lower()
+            for value in fields
+        ):
+            decoys.append(str(agent.get("pane_id") or "<unknown pane>"))
+    return decoys
+
+
+def decoy_orchestrator_warning(
+    payload: dict[str, Any], exclude_pane_ids: set[str]
+) -> str | None:
+    decoys = decoy_orchestrator_panes(payload, exclude_pane_ids)
+    if not decoys:
+        return None
+    return (
+        f"pane(s) {', '.join(sorted(decoys))} still carry the retired "
+        f"'{DEPRECATED_ORCHESTRATOR_NAME_MARKER}*' naming convention; they are not this "
+        "dispatch's main agent, whatever they look like -- do not treat them as one"
+    )
+
+
 def wait_for_agent_session(
     pane_id: str,
     *,
@@ -916,16 +962,31 @@ def launch(
     dump_json(receipt_path, receipt)
     launch_failure_path(inst_path).unlink(missing_ok=True)
 
-    if not is_coworker:
+    decoy_warning: str | None = None
+    try:
+        agent_list_payload = run_herdr(["agent", "list"])
+    except ValueError:
+        agent_list_payload = None
+    if agent_list_payload is not None:
+        if not is_coworker:
+            try:
+                ensure_coordinator_named(instruction, live_names(agent_list_payload))
+            except ValueError:
+                pass
+        exclude_pane_ids = {landed["pane_id"]}
+        for pane_field in ("main_agent_herdr_pane_id", "root_main_agent_herdr_pane_id"):
+            pane_value = instruction.get(pane_field)
+            if isinstance(pane_value, str) and pane_value:
+                exclude_pane_ids.add(pane_value)
         try:
-            ensure_coordinator_named(instruction, live_names(run_herdr(["agent", "list"])))
+            decoy_warning = decoy_orchestrator_warning(agent_list_payload, exclude_pane_ids)
         except ValueError:
-            pass
+            decoy_warning = None
 
     result: dict[str, Any] = {"launch_receipt_path": str(receipt_path), "launched": True}
     warnings = [
         warning
-        for warning in (tab_label_warning, landed.get("pane_label_warning"))
+        for warning in (tab_label_warning, landed.get("pane_label_warning"), decoy_warning)
         if isinstance(warning, str) and warning
     ]
     if warnings:
