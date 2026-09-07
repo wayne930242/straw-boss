@@ -260,3 +260,100 @@ This contract is mandatory for this dispatched session.
   unblock, and put verification detail in `--ref`.
 {terminal_rule}
 """
+
+
+def confirm_dispatch(
+    path: Path,
+    pane_id: str | None = None,
+    tab_id: str | None = None,
+    observed_session_id: str | None = None,
+) -> dict[str, Any]:
+    """Bind a launched dispatch's pane/session identities and mark it in-progress.
+
+    The launcher calls this itself the moment it writes a matching receipt, so a
+    worker can report its own status without waiting on a separate coordinator
+    step. `dispatch-task.py confirm` calls the same function for a dispatch whose
+    launch wrote a receipt but could not finish its own bookkeeping.
+    """
+    if not path.is_file():
+        raise ValueError(f"no instruction file at {path}")
+    payload = load_json(path)
+    status = payload["status"]
+    if status == "in-progress":
+        return {"instruction_path": str(path), "already_confirmed": True}
+    if status != "pending":
+        raise ValueError(
+            f"instruction at {path} is {status!r}, not 'pending' -- "
+            f"refusing to confirm a dispatch that wasn't just written"
+        )
+    if payload.get("mode") == "herdr-pane":
+        receipt_path = launch_receipt_path(path)
+        if not receipt_path.is_file():
+            raise ValueError(
+                f"no launch receipt at {receipt_path} -- start this dispatch through "
+                "launch-dispatched-agent.py before confirming it"
+            )
+        receipt = load_json(receipt_path)
+        receipt_instruction_path = receipt.get("instruction_path")
+        if (
+            not isinstance(receipt_instruction_path, str)
+            or Path(receipt_instruction_path).resolve() != path.resolve()
+        ):
+            raise ValueError(
+                f"launch receipt instruction_path={receipt_instruction_path!r} "
+                f"does not match {str(path)!r}"
+            )
+        expected_receipt = {
+            "contract_sha256": payload.get("contract_sha256"),
+            "agent_kind": payload.get("agent_kind"),
+        }
+        for field, expected in expected_receipt.items():
+            if receipt.get(field) != expected:
+                raise ValueError(
+                    f"launch receipt {field}={receipt.get(field)!r} does not match {expected!r}"
+                )
+        if pane_id is not None and receipt.get("pane_id") != pane_id:
+            raise ValueError("launch receipt pane id does not match --pane-id")
+        if tab_id is not None and receipt.get("tab_id") != tab_id:
+            raise ValueError("launch receipt tab id does not match --tab-id")
+        receipt_session_id = receipt.get("session_id")
+        receipt_terminal_id = receipt.get("herdr_terminal_id")
+        if payload.get("agent_kind") == "codex" and (
+            not isinstance(receipt_terminal_id, str) or not receipt_terminal_id
+        ):
+            raise ValueError("launch receipt has no herdr terminal id")
+        if observed_session_id is not None and receipt_session_id != observed_session_id:
+            raise ValueError("launch receipt session id does not match --observed-session-id")
+        pane_id = str(receipt["pane_id"])
+        tab_id = receipt.get("tab_id")
+        observed_session_id = (
+            receipt_session_id if isinstance(receipt_session_id, str) else None
+        )
+        if isinstance(receipt_terminal_id, str) and receipt_terminal_id:
+            payload["herdr_terminal_id"] = receipt_terminal_id
+
+    payload["status"] = "in-progress"
+    if pane_id is not None:
+        payload["herdr_pane_id"] = pane_id
+    if tab_id is not None:
+        payload["herdr_tab_id"] = tab_id
+    if observed_session_id is not None:
+        # claude was launched with the pre-generated session_id passed as
+        # --session-id, so the two must match -- a mismatch means the pane
+        # this confirms isn't the one this dispatch launched. Other agent
+        # kinds (e.g. codex) don't accept a caller-supplied session id -- the
+        # pre-generated one was never passed to the launch command, so it's
+        # replaced with what the agent itself reported instead of compared.
+        if payload["agent_kind"] == "claude" and payload["session_id"] != observed_session_id:
+            raise ValueError(
+                f"observed session id {observed_session_id!r} does not match the session id "
+                f"{payload['session_id']!r} recorded at write time -- the agent in this pane may "
+                f"not be the one this dispatch launched"
+            )
+        payload["session_id"] = observed_session_id
+    elif payload["agent_kind"] == "claude":
+        raise ValueError("Claude launch receipt has no session id")
+    else:
+        payload["session_id"] = None
+    dump_json(path, payload)
+    return {"instruction_path": str(path)}

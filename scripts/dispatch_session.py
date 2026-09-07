@@ -87,6 +87,12 @@ def resolve_endpoint(instruction: dict[str, Any], target: Target) -> Endpoint:
     terminal_id = instruction.get(f"{prefix}herdr_terminal_id")
     agent_kind = instruction.get(f"{prefix}kind" if prefix else "agent_kind")
     if not pane_id:
+        if target == "worker" and instruction.get("status") == "pending":
+            raise ValueError(
+                f"dispatch instruction has no {target} herdr pane -- it is still "
+                "pending, so the coordinator has not run 'dispatch-task.py confirm' "
+                "after launching. Ask the main agent to confirm the dispatch."
+            )
         raise ValueError(f"dispatch instruction has no {target} herdr pane")
     if agent_kind == "claude" and not session_id:
         raise ValueError(f"dispatch instruction has no {target} session fingerprint")

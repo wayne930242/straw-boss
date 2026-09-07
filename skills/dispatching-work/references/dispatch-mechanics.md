@@ -151,16 +151,29 @@ Write it with `=` — a value that itself starts with `-` (every permission
 flag does) is read as the next option otherwise, and argparse rejects the
 call with `expected one argument`.
 
-Confirm only after the launcher returns:
+The launcher confirms the dispatch itself against the receipt it just wrote:
+it refuses any instruction, contract, provider, pane, or provider-fingerprint
+mismatch, records the receipt values, and moves the instruction to
+`in-progress`. Its result carries `"confirmed": true`.
+
+A launch that reports `"confirmed": false` carries the reason in its warning
+and leaves the worker running an unreachable instruction — its status reports
+fail with "dispatch instruction has no worker herdr pane" until you run the
+confirm the warning names:
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" confirm \
   --app <app> --slug <slug>
 ```
 
-Confirmation consumes the receipt and refuses any instruction, contract,
-provider, pane, or provider-fingerprint mismatch. It records the receipt values
-and moves the instruction to `in-progress`.
+Confirming an already-confirmed dispatch is a no-op that reports
+`already_confirmed`, so a stale habit of always running it costs nothing.
+
+Claude's own session fingerprint is not part of that gate. herdr reads it off
+the pane's terminal title, and some panes never carry one; the agent was
+started with `--session-id`, so the launcher records the id it assigned and
+warns, rather than discarding a task the worker already accepted.
+`STRAW_BOSS_AGENT_SESSION_WAIT_SECONDS` bounds that wait (default 15s).
 
 ### When a launch fails
 

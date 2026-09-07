@@ -244,6 +244,107 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         ]
         self.assertGreaterEqual(len(gets_after_prompt), 2)
 
+    def test_launcher_confirms_the_dispatch_it_just_launched(self) -> None:
+        # A separate coordinator-run confirm step was routinely skipped, and the
+        # instruction then stayed pending with no worker pane -- so every status
+        # report the running worker sent was refused.
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "self-confirming-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)["confirmed"])
+        confirmed = json.loads(instruction_path.read_text())
+        self.assertEqual(confirmed["status"], "in-progress")
+        self.assertEqual(confirmed["herdr_pane_id"], "worker-pane")
+        self.assertEqual(confirmed["herdr_tab_id"], "tab-1")
+
+    def test_confirming_an_already_confirmed_dispatch_is_a_no_op(self) -> None:
+        # The launcher confirms on its own now, so a coordinator still running
+        # the old manual step must not be told its dispatch is broken.
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+        self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "already-confirmed-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+            },
+        )
+
+        result = self.run_script(
+            "dispatch-task.py",
+            "confirm",
+            "--app",
+            "api",
+            "--slug",
+            "contract-claude",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)["already_confirmed"])
+        self.assertEqual(
+            json.loads(instruction_path.read_text())["status"], "in-progress"
+        )
+
+    def test_launcher_records_the_assigned_session_when_herdr_exposes_none(
+        self,
+    ) -> None:
+        # herdr reads a Claude pane's session off its terminal title, and some
+        # panes never carry one. The agent was started with --session-id, so
+        # that id is the session in the pane -- discarding a delivered task over
+        # herdr's own blind spot left the worker running and unreachable.
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "sessionless-pane-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_OMIT_AGENT_SESSION": "1",
+                "STRAW_BOSS_AGENT_SESSION_WAIT_SECONDS": "0.5",
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["confirmed"])
+        self.assertIn("agent_session.value", payload["warning"])
+        receipt_path = instruction_path.with_name("api--contract-claude.launch.json")
+        self.assertEqual(
+            json.loads(receipt_path.read_text())["session_id"],
+            instruction["session_id"],
+        )
+        confirmed = json.loads(instruction_path.read_text())
+        self.assertEqual(confirmed["status"], "in-progress")
+        self.assertEqual(confirmed["herdr_pane_id"], "worker-pane")
+
     def test_launcher_records_codex_terminal_without_waiting_for_a_session(
         self,
     ) -> None:

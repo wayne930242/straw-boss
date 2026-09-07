@@ -21,6 +21,7 @@ from typing import Any
 from dispatch_session import agent_matches_identity, resolve_endpoint, session_value
 from agent_naming import derive_agent_name, live_names, unique_agent_name
 from dispatch_state import (
+    confirm_dispatch,
     dump_json,
     launch_failure_path,
     launch_receipt_path,
@@ -37,6 +38,7 @@ from dispatch_transport import (
 )
 
 
+AGENT_SESSION_WAIT_SECONDS = 15.0
 AGENT_START_PANE_READY_TIMEOUT_SECONDS = 5.0
 AGENT_START_PANE_READY_POLL_INTERVAL_SECONDS = 0.25
 # `agent start` returning only proves the process launched -- the agent's TUI is
@@ -251,12 +253,26 @@ def decoy_orchestrator_warning(
     )
 
 
+def agent_session_wait_seconds() -> float:
+    raw = os.environ.get("STRAW_BOSS_AGENT_SESSION_WAIT_SECONDS")
+    if raw is None:
+        return AGENT_SESSION_WAIT_SECONDS
+    try:
+        parsed = float(raw)
+    except ValueError:
+        return AGENT_SESSION_WAIT_SECONDS
+    return parsed if parsed >= 0 else AGENT_SESSION_WAIT_SECONDS
+
+
 def wait_for_agent_session(
     pane_id: str,
     *,
-    timeout_seconds: float = 15.0,
+    timeout_seconds: float | None = None,
     poll_interval_seconds: float = 0.25,
-) -> str:
+    required: bool = True,
+) -> str | None:
+    if timeout_seconds is None:
+        timeout_seconds = agent_session_wait_seconds()
     deadline = monotonic() + timeout_seconds
     last_status: object = None
     while True:
@@ -269,6 +285,8 @@ def wait_for_agent_session(
                 return value
         remaining = deadline - monotonic()
         if remaining <= 0:
+            if not required:
+                return None
             raise ValueError(
                 "launched agent did not expose agent_session.value within "
                 f"{timeout_seconds:g}s after its first prompt "
@@ -866,13 +884,27 @@ def launch(
             )
             delivered = True
             terminal_id, session_id = live_agent_identity(pane_id, agent_kind)
+            session_fingerprint_warning: str | None = None
             if agent_kind == "claude":
-                session_id = wait_for_agent_session(pane_id)
-                if session_id != instruction.get("session_id"):
-                    raise ValueError(
-                        f"launched Claude session {session_id!r} does not match preassigned session "
-                        f"{instruction.get('session_id')!r}"
+                observed_session_id = wait_for_agent_session(pane_id, required=False)
+                if observed_session_id is None:
+                    # herdr reads a Claude pane's session from its terminal
+                    # title, and some panes never carry one. The agent was
+                    # started with --session-id, so the preassigned id is the
+                    # session running in that pane; recording it beats
+                    # discarding a task the worker already accepted.
+                    session_id = instruction.get("session_id")
+                    session_fingerprint_warning = (
+                        f"herdr never exposed agent_session.value for pane {pane_id!r}; "
+                        "recorded the session id this launch assigned the agent instead"
                     )
+                else:
+                    session_id = observed_session_id
+                    if session_id != instruction.get("session_id"):
+                        raise ValueError(
+                            f"launched Claude session {session_id!r} does not match preassigned session "
+                            f"{instruction.get('session_id')!r}"
+                        )
         except LaunchAttemptError:
             raise
         except PromptDeliveryError as exc:
@@ -913,6 +945,7 @@ def launch(
             "session_id": session_id,
             "herdr_terminal_id": terminal_id,
             "pane_label_warning": pane_label_warning,
+            "session_fingerprint_warning": session_fingerprint_warning,
         }
 
     spent = spent_session_ids(inst_path)
@@ -996,9 +1029,37 @@ def launch(
             decoy_warning = None
 
     result: dict[str, Any] = {"launch_receipt_path": str(receipt_path), "launched": True}
+    # Bind the pane and session identities onto the instruction here, against the
+    # receipt just written. Left to a separate coordinator step, the instruction
+    # stayed "pending" with no herdr_pane_id whenever that step was missed, and
+    # every status report the worker sent failed with "dispatch instruction has
+    # no worker herdr pane" -- with the worker already running the task.
+    confirm_warning: str | None = None
+    try:
+        confirm_dispatch(inst_path)
+        result["confirmed"] = True
+    except (ValueError, KeyError, OSError) as exc:
+        result["confirmed"] = False
+        stem = inst_path.name.removesuffix(".json")
+        app, separator, slug = stem.partition("--")
+        retry = (
+            f"dispatch-task.py confirm --app {app} --slug {slug}"
+            if separator
+            else "dispatch-task.py confirm"
+        )
+        confirm_warning = (
+            f"the worker is running but this dispatch is not confirmed ({exc}); "
+            f"it cannot report status until you run: {retry}"
+        )
     warnings = [
         warning
-        for warning in (tab_label_warning, landed.get("pane_label_warning"), decoy_warning)
+        for warning in (
+            tab_label_warning,
+            landed.get("pane_label_warning"),
+            landed.get("session_fingerprint_warning"),
+            decoy_warning,
+            confirm_warning,
+        )
         if isinstance(warning, str) and warning
     ]
     if warnings:

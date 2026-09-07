@@ -1492,5 +1492,39 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertNotIn("holder_boss", lock)
 
 
+class UnconfirmedDispatchDiagnosticTests(unittest.TestCase):
+    """A launched-but-unconfirmed dispatch used to fail the worker's status
+    report with a bare "no worker herdr pane", which says nothing about the
+    coordinator having skipped `dispatch-task.py confirm`."""
+
+    @staticmethod
+    def _resolve_endpoint():
+        if str(SCRIPTS) not in sys.path:
+            sys.path.insert(0, str(SCRIPTS))
+        from dispatch_session import resolve_endpoint
+
+        return resolve_endpoint
+
+    def test_pending_instruction_names_the_missing_confirm_step(self) -> None:
+        resolve_endpoint = self._resolve_endpoint()
+
+        with self.assertRaises(ValueError) as caught:
+            resolve_endpoint(
+                {"status": "pending", "agent_kind": "claude", "session_id": "s"},
+                "worker",
+            )
+        self.assertIn("confirm", str(caught.exception))
+
+    def test_confirmed_instruction_without_pane_keeps_the_bare_message(self) -> None:
+        resolve_endpoint = self._resolve_endpoint()
+
+        with self.assertRaises(ValueError) as caught:
+            resolve_endpoint(
+                {"status": "in-progress", "agent_kind": "claude", "session_id": "s"},
+                "worker",
+            )
+        self.assertNotIn("confirm", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
