@@ -25,6 +25,8 @@ A new orchestrator is a user window. Ask one approval decision, then use `handof
 
 ## Communicate only coordination deltas
 
+Register this session's scope and reach another orchestrator through `contacting-orchestrators`.
+
 Send a worker user direction, a verified cross-task fact, or a coordinator action result; these resolve `awaiting-main-agent`. A conflict goes to the user; the worker's direction stands. User authorization remains with the user.
 
 **Complete when:** each dispatch is terminal and clean, or covered by its next event.

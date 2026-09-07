@@ -83,6 +83,7 @@ $straw-boss:init
 | `init` | 問要管哪些 app、寫設定、同步 root `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
 | `boss-say` | **所有事情的入口。**為單一任務、獨立批次或 backlog 選擇 owner skill 與最小充分迴圈 |
 | `handoff-orchestrator` | 經明確同意後，把一個 scope 與最小延續狀態交給新的 orchestrator tab |
+| `contacting-orchestrators` | 登記本 orchestrator 的身分與一句話 scope、查看還有哪些 orchestrator 活著、送出帶著自己 herdr pane id 的事實 delta |
 | `i-am-orchestrator` | 依狀態事件維持協調迴圈；worker 與你負責 reality anchor 內的工作細節 |
 | `work-on` | 把請求對應到某個 app，處理 legacy redirect |
 | `dispatching-work` | 內部派工機制——選派工方式並解析完整 work route（provider/profile/model/effort，加上僅 Claude 支援的原生 advisor）、寫指令、實際派工、列出/收尾既有派工 |

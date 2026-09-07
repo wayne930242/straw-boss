@@ -72,6 +72,12 @@ scope, confirmed decisions and user terms, current state and evidence, next
 action, and exclusions.
 _Avoid_: transcript, conversation summary
 
+**Orchestrator directory**:
+The machine-local record of each live main agent's identity and one-line work
+scope, keyed on the provider session fingerprint that dispatch delivery already
+validates on. A session registers before its first dispatch.
+_Avoid_: pane list, agent roster
+
 **Reality anchor**:
 The contact with reality that proves a result. The main agent names which one
 and arranges its checkpoint; the worker and user choose the method inside it.

@@ -16,6 +16,12 @@ receiving orchestrator accepts and routes that scope through `boss-say`; the
 original then owns only its retained scope. With no retained scope, it reports
 the accepted handoff and closes its own pane.
 
+Several main agents may coordinate on one machine at once. Each registers its own
+identity and one-line work scope in the orchestrator directory before it
+dispatches, and reaches another through `contacting-orchestrators`. Those
+messages carry facts, questions, and answers; work direction stays inside each
+orchestrator's own loop with its workers, and authorization stays with the user.
+
 **Dispatched agent** — an independent task owner once launched through Herdr. It
 works in the target app with that app's harness. The user and dispatched agent
 decide the specification, design, implementation, and the verification method

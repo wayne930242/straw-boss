@@ -13,7 +13,7 @@ from dispatch_state import load_json
 
 
 SUBPROCESS_TIMEOUT_S = 30
-Target = Literal["main", "root-main", "worker"]
+Target = Literal["main", "root-main", "worker", "orchestrator"]
 
 
 @dataclass(frozen=True)

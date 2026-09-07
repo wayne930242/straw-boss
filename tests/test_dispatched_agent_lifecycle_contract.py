@@ -697,8 +697,12 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         # The complaint this budget guards: the stance injected at every
         # main-agent session start had grown to 2,373 characters of restated
         # rules. Keep the trim, or restate a rule somewhere it is not already
-        # stated and this fails.
-        self.assertLessEqual(len(injected), 1800, injected)
+        # stated and this fails. The budget buys one line per coordination rule
+        # a main agent actually operates -- it moved from 1,800 to 1,900 when
+        # orchestrator registration became one of them, and the
+        # each-rule-stated-once assertions above stay the guard against
+        # restatement buying that room back.
+        self.assertLessEqual(len(injected), 1900, injected)
 
     def test_control_message_preserves_the_exact_slash_command(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
