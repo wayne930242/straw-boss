@@ -18,6 +18,7 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
+from dispatch_session import agent_matches_identity, resolve_endpoint, session_value
 from agent_naming import derive_agent_name, live_names, unique_agent_name
 from dispatch_state import (
     dump_json,
@@ -170,7 +171,7 @@ def live_agent(pane_id: str) -> dict[str, object]:
     return agent
 
 
-def live_agent_terminal_id(pane_id: str, agent_kind: str) -> str:
+def live_agent_identity(pane_id: str, agent_kind: str) -> tuple[str, str | None]:
     agent = live_agent(pane_id)
     if agent.get("pane_id") != pane_id:
         raise ValueError(f"launched agent did not report pane {pane_id!r}")
@@ -182,7 +183,7 @@ def live_agent_terminal_id(pane_id: str, agent_kind: str) -> str:
     terminal_id = agent.get("terminal_id")
     if not isinstance(terminal_id, str) or not terminal_id:
         raise ValueError(f"launched agent in pane {pane_id!r} did not expose terminal_id")
-    return terminal_id
+    return terminal_id, session_value(agent)
 
 
 def ensure_coordinator_named(instruction: dict[str, object], taken: set[str]) -> None:
@@ -705,6 +706,18 @@ def launch(
     if sha256_text(contract) != instruction.get("contract_sha256"):
         raise ValueError("dispatch contract digest does not match the instruction")
 
+    # Pin a modern Codex conversation while the originally recorded terminal
+    # still proves ownership. A resumed legacy endpoint uses rebind-dispatch.py.
+    if instruction.get("main_agent_kind") == "codex":
+        endpoint = resolve_endpoint(instruction, "main")
+        main_agent = live_agent(endpoint.pane_id)
+        if main_agent.get("pane_id") != endpoint.pane_id or not agent_matches_identity(
+            main_agent, "codex", endpoint.expected_session_id, endpoint.expected_terminal_id
+        ):
+            raise ValueError("main agent identity mismatch before launch")
+        instruction["main_agent_session_id"] = session_value(main_agent)
+        dump_json(inst_path, instruction)
+
     is_coworker = bool(instruction.get("parent_instruction_path"))
     name_is_derived = name is None
     base_candidate_name = ""
@@ -852,8 +865,7 @@ def launch(
                 pane_id, str(instruction["task"]), agent_kind
             )
             delivered = True
-            terminal_id = live_agent_terminal_id(pane_id, agent_kind)
-            session_id: str | None = None
+            terminal_id, session_id = live_agent_identity(pane_id, agent_kind)
             if agent_kind == "claude":
                 session_id = wait_for_agent_session(pane_id)
                 if session_id != instruction.get("session_id"):

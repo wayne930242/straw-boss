@@ -82,3 +82,12 @@ The two git lifecycle shapes, picked from how the user regards the work:
 worktree → develop → MR → merge → archive, or a direct commit to the base
 branch.
 _Avoid_: full flow, light flow
+
+**Session identity**:
+The provider conversation that owns a dispatch across terminal restarts.
+_Avoid_: pane id, terminal id
+
+**Terminal identity**:
+One live Herdr terminal instance; legacy Codex dispatches use it when the
+provider conversation identity was unavailable at launch.
+_Avoid_: conversation id

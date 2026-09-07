@@ -160,6 +160,32 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
     )
 
 
+def session_value(agent: dict[str, Any]) -> str | None:
+    """Provider conversation identity, distinct from its current terminal."""
+    session = agent.get("agent_session")
+    if not isinstance(session, dict):
+        return None
+    if session.get("agent", agent.get("agent")) != agent.get("agent"):
+        return None
+    value = session.get("value")
+    return value if isinstance(value, str) and value else None
+
+
+def agent_matches_identity(
+    agent: dict[str, Any], agent_kind: str,
+    session_id: str | None, terminal_id: str | None,
+) -> bool:
+    """Use a recorded conversation id; terminal-only is legacy Codex identity."""
+    if agent.get("agent") != agent_kind:
+        return False
+    if session_id:
+        return session_value(agent) == session_id
+    return bool(
+        agent_kind == "codex" and terminal_id
+        and agent.get("terminal_id") == terminal_id
+    )
+
+
 def validate_live_session(endpoint: Endpoint) -> str | None:
     payload = run_herdr(["agent", "get", endpoint.pane_id])
     agent = payload.get("result", {}).get("agent")
@@ -175,8 +201,15 @@ def validate_live_session(endpoint: Endpoint) -> str | None:
                 f"{endpoint.target} agent kind mismatch for pane {endpoint.pane_id!r}: "
                 f"expected 'codex', live {agent.get('agent')!r}; refusing to send"
             )
-        if agent.get("terminal_id") == endpoint.expected_terminal_id:
+        if agent_matches_identity(
+            agent, endpoint.agent_kind, endpoint.expected_session_id, endpoint.expected_terminal_id
+        ):
             return agent_status
+        if endpoint.expected_session_id:
+            raise ValueError(
+                f"{endpoint.target} session mismatch for pane {endpoint.pane_id!r}: "
+                f"expected {endpoint.expected_session_id!r}, live {session_value(agent)!r}; refusing to send"
+            )
         raise ValueError(
             f"{endpoint.target} terminal mismatch for pane {endpoint.pane_id!r}: "
             f"expected {endpoint.expected_terminal_id!r}, live {agent.get('terminal_id')!r}; refusing to send"
@@ -200,21 +233,36 @@ def validate_live_session(endpoint: Endpoint) -> str | None:
 def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
     try:
         payload = run_herdr(["agent", "get", endpoint.pane_id])
+        agent = payload.get("result", {}).get("agent")
     except HerdrCommandError as exc:
-        if exc.error_code == "agent_not_found":
-            return True
-        raise
-    agent = payload.get("result", {}).get("agent")
+        if exc.error_code not in {"agent_not_found", "pane_not_found"}:
+            raise
+        agent = None
+    if endpoint.agent_kind == "codex":
+        if isinstance(agent, dict):
+            if agent_matches_identity(
+                agent, endpoint.agent_kind, endpoint.expected_session_id,
+                endpoint.expected_terminal_id,
+            ):
+                return False
+            if (agent.get("agent") == "codex"
+                    and (not endpoint.expected_session_id or session_value(agent) is None)):
+                raise ValueError("worker session is unavailable; cannot confirm closure")
+        if endpoint.expected_session_id:
+            # A live conversation may have moved away from its recorded route.
+            agents = run_herdr(["agent", "list"]).get("result", {}).get("agents")
+            if not isinstance(agents, list):
+                raise ValueError("cannot confirm closure without a live agent list")
+            return not any(
+                isinstance(candidate, dict) and agent_matches_identity(
+                    candidate, endpoint.agent_kind, endpoint.expected_session_id,
+                    endpoint.expected_terminal_id,
+                ) for candidate in agents
+            )
+        return True
     if not isinstance(agent, dict) or agent.get("pane_id") != endpoint.pane_id:
         return True
-    if endpoint.agent_kind == "codex":
-        return not (
-            agent.get("agent") == "codex"
-            and agent.get("terminal_id") == endpoint.expected_terminal_id
-        )
-    live_session = agent.get("agent_session")
-    live_session_id = live_session.get("value") if isinstance(live_session, dict) else None
-    if live_session_id == endpoint.expected_session_id:
+    if session_value(agent) == endpoint.expected_session_id:
         return False
     return not _claude_registry_corroborates(endpoint)
 

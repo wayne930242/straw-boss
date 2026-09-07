@@ -17,15 +17,14 @@ For every `herdr-pane` dispatch, record:
 - `--main-agent-kind <claude|codex>`;
 - `--main-agent-pane-id "$HERDR_PANE_ID"`;
 - for Claude, `--main-agent-session-id <agent_session.value from herdr agent get>`;
-- for Codex, `--main-agent-terminal-id <terminal_id from herdr agent get>`.
+- for Codex, `--main-agent-terminal-id <terminal_id>` and, when available,
+  `--main-agent-session-id <agent_session.value>` from the same live record.
 
-The pane is an address; the provider fingerprint proves which live agent occupies
-it. Both are required so a reused pane cannot receive a stale task's message.
-Claude's fingerprint is its session id. Herdr 0.8.0 does not expose a Codex
-`agent_session`, so Codex uses Herdr's terminal id plus the reported agent kind;
-that terminal id is not a Codex thread id. A headless dispatch has no live
-endpoint; the status it persists before exiting carries the same events, and its
-process exit marks completion.
+The pane is an address; the provider session proves which conversation occupies
+it. Codex instructions with a recorded session continue across terminal restarts
+only when that same session remains in the recorded pane. Older instructions
+without a session retain exact terminal matching. A different or missing
+recorded session is a mismatch even if the terminal still matches.
 
 `dispatch-task.py write` generates the instruction path and mandatory contract.
 The task author does not reproduce communication prose in `--task`.
@@ -104,3 +103,26 @@ not replace any worker/main transport rule.
 - A provider fingerprint mismatch is a hard failure before delivery.
 - Every checkpoint and terminal outcome has durable status independent of live
   notification.
+
+## Resume an older Codex dispatch
+
+When terminal-only routing fails after a Herdr restart, inspect the original
+provider rollout to identify the main and worker sessions. From the recorded
+main pane, run the single-record repair command with those original ids:
+
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/rebind-dispatch.py" \
+  --instruction-path <instruction> \
+  --main-session-id <original-main-session> \
+  --worker-session-id <original-worker-session> \
+  --ref <original-main-rollout.jsonl> \
+  --ref <original-worker-rollout.jsonl>
+```
+
+It checks the supplied rollout logs against the launch receipt, verifies the
+caller process and both live sessions, and atomically records the
+updated routing with its evidence, and preserves the launch receipt, contract,
+and task status. A session already stored on the instruction remains binding.
+Use original-session evidence for legacy records; a pane name or cwd is only a
+location. Then reply through the normal instruction-keyed channel and let the
+worker report its own status.

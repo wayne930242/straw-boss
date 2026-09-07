@@ -493,7 +493,7 @@ def main() -> int:
     write_p.add_argument(
         "--main-agent-session-id",
         default=None,
-        help="the dispatching Claude main agent's live herdr agent_session.value",
+        help="the dispatching main agent's live herdr agent_session.value, when available",
     )
     write_p.add_argument(
         "--main-agent-terminal-id",

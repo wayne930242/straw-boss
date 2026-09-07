@@ -10,8 +10,8 @@ the question no other script can -- which workers are actually alive right now,
 whose they are, and which dispatch records no longer have anyone behind them --
 so several coordinators sharing one herdr session can each recognise their own.
 
-**Liveness is decided by `agent_session.value` (Claude) or `terminal_id`
-(Codex) together with `agent_status`, never by a pane's terminal title.** A
+**Liveness uses the recorded provider session, or exact terminal matching for
+legacy Codex instructions, together with agent_status.** A
 title only reflects whatever the foreground program last set: an idle agent's
 pane can read back as a plain shell prompt while the agent is perfectly alive.
 Reading a title as proof of death is what let one coordinator declare another's
@@ -42,6 +42,7 @@ from dispatch_state import (
     straw_boss_root,
 )
 from dispatch_transport import run_herdr
+from dispatch_session import agent_matches_identity, session_value
 
 
 TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled"})
@@ -59,12 +60,6 @@ def instruction_paths() -> list[Path]:
         for path in directory.glob("*.json")
         if not path.name.endswith(INSTRUCTION_SIBLING_SUFFIXES)
     )
-
-
-def session_value(agent: dict[str, Any]) -> str | None:
-    session = agent.get("agent_session")
-    value = session.get("value") if isinstance(session, dict) else None
-    return value if isinstance(value, str) and value else None
 
 
 def live_agents() -> list[dict[str, Any]]:
@@ -117,17 +112,17 @@ def worker_agent(
     but not yet confirmed is exactly the window in which calling it absent
     invites a second dispatch on top of it.
     """
-    for source in (instruction, receipt):
-        if not source:
-            continue
-        if instruction.get("agent_kind") == "codex":
-            terminal_id = source.get("herdr_terminal_id")
-            found = by_terminal.get(str(terminal_id)) if terminal_id else None
-        else:
-            session_id = source.get("session_id")
-            found = by_session.get(str(session_id)) if session_id else None
-        if found is not None:
-            return found
+    # The confirmed instruction is authoritative; an older receipt must not
+    # let a different session fall back to the previous terminal fingerprint.
+    source = instruction
+    if not source.get("session_id") and not source.get("herdr_terminal_id"):
+        source = receipt or instruction
+    kind = str(instruction.get("agent_kind"))
+    session = source.get("session_id")
+    terminal = source.get("herdr_terminal_id")
+    found = by_session.get(str(session)) if session else by_terminal.get(str(terminal))
+    if found is not None and agent_matches_identity(found, kind, session, terminal):
+        return found
     return None
 
 
@@ -225,12 +220,10 @@ def dispatched_by_me(instruction: dict[str, Any], mine: tuple[str, str] | None) 
     if mine is None:
         return True
     session, terminal = mine
-    return (
-        bool(session) and str(instruction.get("main_agent_session_id")) == session
-    ) or (
-        bool(terminal)
-        and str(instruction.get("main_agent_herdr_terminal_id")) == terminal
-    )
+    expected_session = instruction.get("main_agent_session_id")
+    if expected_session:
+        return expected_session == session
+    return bool(terminal) and instruction.get("main_agent_herdr_terminal_id") == terminal
 
 
 def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
@@ -302,6 +295,8 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
         # thing this row exists to deny.
         pane_holder = agent or (by_pane.get(gate[0]) if gate else None)
         if agent is not None and recorded_pane and live_pane != str(recorded_pane):
+            if reported not in TERMINAL_STATUSES:
+                verdict = "routing-mismatch"
             note = f"{note}; worker moved to pane {live_pane} (instruction records {recorded_pane})"
         if main_session and str(main_session) not in by_session:
             note = f"{note}; its coordinator session is no longer live"
@@ -423,8 +418,8 @@ def render(report: dict[str, Any]) -> str:
 def current_fingerprints() -> tuple[str, str]:
     """This pane's own session and terminal fingerprints.
 
-    Both are read, because a Codex coordinator has no session value and
-    instructions record it under `main_agent_herdr_terminal_id` instead.
+    Both are read to support session-aware instructions and legacy Codex
+    instructions that recorded only `main_agent_herdr_terminal_id`.
     Refusing when neither resolves is deliberate: silently falling back to
     "everything is mine" answers the one question `--mine` exists to answer,
     wrongly.

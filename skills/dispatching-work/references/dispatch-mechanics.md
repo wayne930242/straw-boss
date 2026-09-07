@@ -39,8 +39,8 @@ share one app but work different concerns. The launcher's derived agent name
 prefers it over `--app`; omit it only when no such label is actually known.
 
 For `herdr-pane`, obtain the main-agent pane and provider fingerprint from the
-current live Herdr record: Claude uses `agent_session.value`; Codex uses
-`terminal_id`. The command creates:
+current live Herdr record: both providers use `agent_session.value` when
+available; Codex also records `terminal_id` for older Herdr compatibility. The command creates:
 
 - `<app>--<slug>.json`: pending instruction and receiver fingerprints;
 - `<app>--<slug>.contract.md`: mandatory workflow text;
@@ -127,7 +127,7 @@ The launcher derives provider arguments from the recorded worker setup, then:
    still never lands keeps its pane;
 9. records the live provider fingerprint: Claude waits for
    `agent_session.value` and cross-checks its preassigned id; Codex records
-   `terminal_id` without waiting for a session field;
+   `terminal_id` and any available session id from the same snapshot;
 10. writes `<app>--<slug>.launch.json` with the worker pane and shared tab, and
    clears any `<app>--<slug>.launch-failure.json` an earlier run left;
 11. on a top-level dispatch (never a coworker's), best-effort-names the
@@ -262,7 +262,7 @@ instruction" reading is the second half of the same incident.
 
 `--mine` narrows the dispatch list to the ones this pane dispatched, for a
 machine running several coordinators at once, matching on this pane's own
-session value or terminal id (a Codex coordinator has only the latter). It
+recorded session value, or terminal id for legacy Codex instructions. It
 refuses when neither resolves rather than falling back to "everything is
 mine" — that fallback would answer the one question `--mine` exists to answer,
 wrongly and silently. It never narrows attribution either: every instruction is
@@ -304,9 +304,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/run-headless-dispatched-agent.py"
 ```
 
 That command uses the recorded provider thread id with `codex exec resume`,
-reinjects the contract, and requires a new status revision. The interactive
-Herdr `terminal_id` is only a live routing fingerprint and never substitutes for
-that thread id.
+reinjects the contract, and requires a new status revision. The interactive Herdr session identifies the live conversation; headless
+resume still uses the provider thread recorded by the headless runner.
 
 ## Reporting and communication
 
