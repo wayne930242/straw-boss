@@ -770,6 +770,86 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertEqual(session_ids[0], first_session)
         self.assertEqual(len(set(session_ids)), 3)
 
+    def test_launcher_retries_a_codex_worker_whose_model_is_still_resolving(
+        self,
+    ) -> None:
+        # Codex answers the opening prompt with `agent_blocked` for the first
+        # seconds after boot, while its model list resolves -- the pane already
+        # shows a ready composer, so nothing is waiting on a human. Reporting
+        # that as a standing condition made every Codex dispatch cost the
+        # coordinator a hand-run second launch.
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+        failure_path = instruction_path.with_name(
+            "api--contract-codex.launch-failure.json"
+        )
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "booting-codex-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_TEXT": ">_ OpenAI Codex (v0.153.4)\n"
+                "model:       loading   /model to change\n"
+                "permissions: YOLO mode\n"
+                "\u203a Ask Codex to do anything",
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
+                    {"worker-pane": "agent_blocked"}
+                ),
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("launch failed after 3 attempt(s)", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(len([c for c in calls if c[:2] == ["agent", "start"]]), 3)
+        recorded = json.loads(failure_path.read_text())
+        self.assertEqual(len(recorded["attempts"]), 3)
+        self.assertTrue(all(a["retryable"] for a in recorded["attempts"]))
+
+    def test_launcher_does_not_retry_a_blocked_worker_without_the_codex_boot_banner(
+        self,
+    ) -> None:
+        # The same herdr code also covers a real gate awaiting a human. Without
+        # the ready composer and unresolved model on the pane, `agent_blocked`
+        # stays a standing condition -- retrying it would burn panes on exactly
+        # the dialogs the gate handling exists to leave standing.
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+        failure_path = instruction_path.with_name(
+            "api--contract-codex.launch-failure.json"
+        )
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "gated-codex-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_TEXT": "Allow Codex to access this folder?\n"
+                " > No   Yes",
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps(
+                    {"worker-pane": "agent_blocked"}
+                ),
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(len([c for c in calls if c[:2] == ["agent", "start"]]), 1)
+        recorded = json.loads(failure_path.read_text())
+        self.assertEqual(len(recorded["attempts"]), 1)
+        self.assertFalse(recorded["attempts"][0]["retryable"])
+
     def test_launcher_keeps_the_pane_when_bookkeeping_fails_after_confirmed_delivery(
         self,
     ) -> None:

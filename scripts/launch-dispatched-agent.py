@@ -85,6 +85,16 @@ RETRYABLE_HERDR_ERROR_CODES = frozenset(
 # can report anything richer than a failed start, so this refusal only ever
 # exists on the pane. A retry mints a fresh id, which is exactly what clears it.
 SPENT_SESSION_PANE_MARKER = "is already in use"
+# Codex answers `agent prompt` with `agent_blocked` while its model list is
+# still resolving, even though the pane already shows a ready composer. That is
+# a boot race a second attempt clears, not a gate -- but `agent_blocked` alone
+# cannot say which, and blanket-retrying it would burn panes on the gates that
+# code also covers. Both markers together are what distinguishes them: a gate
+# renders its own prompt in place of the composer, and a resolved model never
+# reads `loading`. Matched whitespace-normalized, because the pane pads the
+# model row and a narrow worker pane wraps it.
+CODEX_READY_COMPOSER_MARKER = "Ask Codex to do anything"
+CODEX_MODEL_LOADING_MARKER = "model: loading"
 TASK_DELIVERY_MARKER_PREFIX = "sb256"
 MAX_NAME_COLLISION_ATTEMPTS = 5
 
@@ -455,13 +465,33 @@ class LaunchAttemptError(ValueError):
         self.pane_excerpt = pane_excerpt
 
 
+def codex_model_still_loading(error: ValueError, excerpt: str) -> bool:
+    """A Codex worker herdr calls blocked only because its model is unresolved.
+
+    Narrow on purpose: the error code alone also covers the startup gates that
+    no retry can answer, so the ready composer must be on the pane too.
+    """
+    if (
+        not isinstance(error, HerdrCommandError)
+        or error.error_code != "agent_blocked"
+    ):
+        return False
+    normalized = normalize_transcript_text(excerpt)
+    return (
+        normalize_transcript_text(CODEX_READY_COMPOSER_MARKER) in normalized
+        and normalize_transcript_text(CODEX_MODEL_LOADING_MARKER) in normalized
+    )
+
+
 def is_retryable(error: ValueError, excerpt: str = "") -> bool:
     if (
         isinstance(error, HerdrCommandError)
         and error.error_code in RETRYABLE_HERDR_ERROR_CODES
     ):
         return True
-    return SPENT_SESSION_PANE_MARKER in excerpt
+    if SPENT_SESSION_PANE_MARKER in excerpt:
+        return True
+    return codex_model_still_loading(error, excerpt)
 
 
 def pane_excerpt(pane_id: str) -> str:
