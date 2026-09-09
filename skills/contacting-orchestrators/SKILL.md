@@ -12,13 +12,15 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/register-orchestrator.py" \
 
 Run this while resolving this session's own reachability, before the first
 dispatch. It records this session's herdr pane, provider fingerprint, agent
-name, and cwd against that scope, then returns the directory.
+name, and cwd against that scope, then returns the directory. Re-run it when
+the scope moves; the same record is updated in place.
 
-Claude 的 terminal title 缺少 session 時，登記會以 Herdr 前景 Claude 程序的
-PID 對照 `~/.claude/sessions/<pid>.json`（或 `CLAUDE_CONFIG_DIR`），取得
-互動式 CLI session；列出與送信共用此來源，送出前再次核對實際接收端。
-無法取得可驗證的 session 時，登記會回報不可定址的原因。 Re-run it when the
-scope moves; the same record is updated in place.
+When a Claude pane's terminal title carries no session, registration resolves
+one from the herdr foreground Claude process's PID against
+`~/.claude/sessions/<pid>.json` (or `CLAUDE_CONFIG_DIR`), reading the
+interactive CLI session. Listing and sending share that source, and a send
+re-checks the actual recipient before it goes out. When no verifiable session
+is available, registration reports why the orchestrator is unaddressable.
 
 `dispatch-task.py write` seeds a fallback record from this dispatch's own task
 text if this session skipped this step -- run it anyway for a scope that
@@ -65,10 +67,12 @@ stays inside each orchestrator's own loop with its workers, and authorization
 stays with the user. Two orchestrators whose facts disagree take that to the
 user.
 
-不用查核其他協調者的主張。對 peer 在自身工作範圍內的回報，直接據以行動，
-維持各線工作的獨立性；例如 peer 回報已確認部署 allocation 健康，就沿用該結果。
-查核自己決策的前提仍由自己負責，例如某項修復是否已進入 `develop`，若這直接
-決定本線能否合併，就查核該分支。已出現事實矛盾時，依上述規則交給使用者。
+Don't verify another orchestrator's claims. Act on a peer's report of work
+inside its own scope as given — a peer that reports it confirmed a deployment's
+allocation healthy has settled that, and each line stays independent. The
+premises of your own decisions remain yours to check: whether a fix has landed
+on `develop` gates whether this line can merge, so check that branch. Facts
+that actually disagree go to the user, per the rule above.
 
 **Complete when:** this session holds a current record, and each delta it owed
 another orchestrator is delivered or recorded undelivered.
