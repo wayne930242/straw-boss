@@ -212,6 +212,48 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
             self.assertIn("scope", result.stderr)
         self.assertEqual(self.records(), [])
 
+    def test_dispatch_write_auto_registers_an_unregistered_main_agent(self) -> None:
+        """A live coordinator that never ran register-orchestrator.py itself is
+        still addressable: dispatch-task.py write's own --main-agent-pane-id/
+        --main-agent-session-id are enough to seed a record, with no herdr call
+        of their own."""
+        self.write_dispatch("claude")
+
+        records = self.records()
+        self.assertEqual([path.name for path in records], ["claude-main-session.json"])
+        record = json.loads(records[0].read_text())
+        self.assertEqual(record["session_id"], "main-session")
+        self.assertEqual(record["herdr_pane_id"], "main-pane")
+        self.assertIn("api", record["scope"])
+
+    def test_dispatch_write_auto_register_never_overwrites_an_explicit_scope(self) -> None:
+        self.register(
+            "Coordinating the billing app.",
+            pane_id="main-pane",
+            agents=[agent("main-pane", "main-session")],
+        )
+
+        self.write_dispatch("claude")
+
+        records = self.records()
+        self.assertEqual(len(records), 1)
+        record = json.loads(records[0].read_text())
+        self.assertEqual(record["scope"], "Coordinating the billing app.")
+
+    def test_dispatch_write_does_not_auto_register_a_coworkers_own_pane(self) -> None:
+        """A coworker's main_agent_* fields are the dispatched worker's own
+        pane/session (see resolve_coworker_context), not the root
+        orchestrator -- auto-registering from those would put a busy task
+        worker into the orchestrator directory as if it coordinated."""
+        parent_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent_path)
+
+        result = self.write_coworker(parent_path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        records = self.records()
+        self.assertEqual([path.name for path in records], ["claude-main-session.json"])
+
     def test_a_record_whose_session_ended_lists_as_not_live_and_is_kept(self) -> None:
         self.register("Coordinating the billing app.", pane_id=BETA)
 

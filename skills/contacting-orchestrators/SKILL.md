@@ -15,6 +15,11 @@ dispatch. It records this session's herdr pane, provider fingerprint, agent
 name, and cwd against that scope, then returns the directory. Re-run it when the
 scope moves; the same record is updated in place.
 
+`dispatch-task.py write` seeds a fallback record from this dispatch's own task
+text if this session skipped this step -- run it anyway for a scope that
+actually names this session's work instead of one dispatch's task line; it
+overwrites the fallback in place.
+
 ## Read who else is coordinating
 
 ```bash

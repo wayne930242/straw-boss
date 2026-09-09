@@ -42,6 +42,7 @@ from dispatch_state import (
     straw_boss_root,
 )
 from dispatch_transport import resolve_endpoint, validate_current_sender
+from orchestrator_registry import MAX_SCOPE_CHARS, auto_register_from_dispatch
 
 
 def instruction_path(app: str, slug: str) -> Path:
@@ -314,6 +315,23 @@ def write_instruction(
     path.parent.mkdir(parents=True, exist_ok=True)
     generated_contract_path.write_text(contract)
     dump_json(path, payload)
+
+    if main_agent_pane_id and coworker_context is None:
+        # A coworker's own main_agent_* fields are the dispatched worker's
+        # pane/session (see resolve_coworker_context below), not the root
+        # orchestrator -- auto-registering here would write the worker's own
+        # live pane into the orchestrator directory as if it coordinated.
+        task_first_line = task.strip().splitlines()[0] if task.strip() else ""
+        scope = f"Dispatching in {app}"
+        if task_first_line:
+            scope = f"{scope}: {task_first_line}"[:MAX_SCOPE_CHARS]
+        auto_register_from_dispatch(
+            agent_kind=main_agent_kind,
+            pane_id=main_agent_pane_id,
+            session_id=main_agent_session_id,
+            terminal_id=main_agent_terminal_id,
+            scope=scope,
+        )
 
     if plan_slug is not None:
         assert task_id is not None

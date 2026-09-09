@@ -234,6 +234,57 @@ def register(scope: str) -> dict[str, Any]:
     }
 
 
+def auto_register_from_dispatch(
+    *,
+    agent_kind: str,
+    pane_id: str,
+    session_id: str | None,
+    terminal_id: str | None,
+    scope: str,
+) -> dict[str, Any] | None:
+    """Best-effort fallback for a dispatching session that never ran
+    register-orchestrator.py itself: dispatch-task.py write calls this with the
+    main-agent identity it already carries, so a live coordinator that forgot
+    to register is still addressable by the next one.
+
+    Skipped entirely once a record exists for this identity -- an explicit
+    register-orchestrator.py --scope call always wins over this dispatch's own
+    task text, and a later dispatch from the same session must not overwrite
+    it. Makes no herdr call of its own and never raises: registry bookkeeping
+    must not block a dispatch.
+    """
+    if agent_kind not in SUPPORTED_AGENT_KINDS:
+        return None
+    fingerprint = session_id or terminal_id
+    if not fingerprint:
+        return None
+    path = record_path(agent_kind, fingerprint)
+    if path.is_file():
+        return None
+    try:
+        clean_scope = validate_scope(scope)
+    except ValueError:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    record = {
+        "agent_kind": agent_kind,
+        "session_id": session_id,
+        "herdr_terminal_id": terminal_id,
+        "herdr_pane_id": pane_id,
+        "name": None,
+        "cwd": None,
+        "scope": clean_scope,
+        "registered_at": now,
+        "updated_at": now,
+    }
+    try:
+        registry_root().mkdir(parents=True, exist_ok=True)
+        dump_json(path, record)
+    except OSError:
+        return None
+    return record
+
+
 def resolve_target(address: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     matches = [
         row

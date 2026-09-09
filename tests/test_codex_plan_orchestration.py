@@ -726,6 +726,67 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         self.assertNotEqual(duplicate_resume.returncode, 0)
         self.assertIn("another headless operation already owns", duplicate_resume.stderr)
 
+    def test_wrap_up_resolves_plan_status_from_instruction_with_app_and_slug_alone(
+        self,
+    ) -> None:
+        """`wrap-up-task.py --app <app> --slug <slug>` (no --plan/--task-id) is
+        the bare form dispatch-mechanics.md's "Closing an instruction" shows,
+        with no hint that a plan task needs more. For a plan-linked dispatch
+        this must resolve plan_id/task_id from the instruction payload the
+        same way report-task-status.py's resolve_instruction_status_path
+        already does, not fall through to the standalone sibling-file path and
+        refuse a task that already reported done."""
+        dispatch = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+            "--task",
+            "Produce the prerequisite.",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(ROOT),
+            "--plan",
+            self.plan_slug,
+            "--task-id",
+            "t1",
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+            "--main-agent-pane-id",
+            "main-pane",
+            "--main-agent-session-id",
+            "main-session",
+        )
+        self.assertEqual(dispatch.returncode, 0, dispatch.stderr)
+        instruction_path = Path(json.loads(dispatch.stdout)["instruction_path"])
+        instruction = json.loads(instruction_path.read_text())
+        instruction["status"] = "in-progress"
+        instruction["herdr_pane_id"] = "worker-pane"
+        instruction["session_id"] = "worker-session"
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+
+        status_path = self.plan_dir / "status" / "t1.json"
+        status_path.write_text(json.dumps({"status": "done", "note": "Delivered."}) + "\n")
+
+        wrapped = self.run_script(
+            "wrap-up-task.py",
+            "--app",
+            "api",
+            "--slug",
+            f"{self.plan_slug}-t1",
+        )
+        self.assertEqual(wrapped.returncode, 0, wrapped.stderr)
+        plan = json.loads(self.plan_path.read_text())
+        self.assertEqual(plan["tasks"][0]["status"], "done")
+        self.assertFalse(instruction_path.exists())
+        archive = self.home / ".straw-boss" / "dispatch" / "archive"
+        self.assertTrue((archive / f"api--{self.plan_slug}-t1.json").is_file())
+
     def test_wrapped_headless_claude_failure_can_be_retried_with_a_fresh_slug(
         self,
     ) -> None:
