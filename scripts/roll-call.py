@@ -43,6 +43,7 @@ from dispatch_state import (
 )
 from dispatch_transport import run_herdr
 from dispatch_session import agent_matches_identity, session_value
+from orchestrator_registry import live_agents
 
 
 TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled"})
@@ -60,14 +61,6 @@ def instruction_paths() -> list[Path]:
         for path in directory.glob("*.json")
         if not path.name.endswith(INSTRUCTION_SIBLING_SUFFIXES)
     )
-
-
-def live_agents() -> list[dict[str, Any]]:
-    payload = run_herdr(["agent", "list"])
-    agents = payload.get("result", {}).get("agents")
-    if not isinstance(agents, list):
-        raise ValueError("herdr agent list did not return an agent list")
-    return [agent for agent in agents if isinstance(agent, dict)]
 
 
 def open_pane_ids() -> set[str]:

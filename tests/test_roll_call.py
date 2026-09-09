@@ -47,6 +47,7 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERDR_CAPTURE": str(capture),
             "HERDR_AGENT_LIST": json.dumps(agents),
+            "HERDR_PROCESS_INFOS": json.dumps(getattr(self, "process_infos", {})),
             "HERDR_PANE_LIST": json.dumps(
                 panes if panes is not None else [{"pane_id": a["pane_id"]} for a in agents]
             ),
@@ -61,6 +62,51 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         rows = [r for r in report["dispatches"] if r["dispatch"] == dispatch]
         self.assertEqual(len(rows), 1, report["dispatches"])
         return rows[0]
+
+    def install_session(self, pane: str, session: str, pid: int) -> None:
+        if not hasattr(self, "process_infos"):
+            self.process_infos = {}
+        self.process_infos[pane] = {
+            "pane_id": pane,
+            "foreground_process_group_id": pid,
+            "foreground_processes": [{"pid": pid, "argv0": "claude"}],
+        }
+        root = self.home / ".claude" / "sessions"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / f"{pid}.json").write_text(json.dumps({
+            "pid": pid, "sessionId": session, "kind": "interactive", "entrypoint": "cli",
+        }))
+
+    def test_registry_fingerprints_identify_live_worker_and_coordinator(self) -> None:
+        path, _ = self.write_dispatch(slug="registry-worker")
+        self.set_worker_endpoint(path, pane="wF:p9", session="worker-session")
+        instruction = json.loads(path.read_text())
+        instruction["main_agent_session_id"] = "main-session"
+        path.write_text(json.dumps(instruction))
+        self.install_session("wF:p9", "worker-session", 4242)
+        self.install_session("wF:p1", "main-session", 4243)
+        agents = [agent("wF:p9", ""), agent("wF:p1", "")]
+        for item in agents:
+            item["agent_session"] = None
+        report = self.roll_call(agents, "--mine", pane_id="wF:p1")
+        row = self.row(report, "api--registry-worker")
+        self.assertEqual(row["verdict"], "running")
+        self.assertNotIn("no longer live", row["note"])
+        self.assertEqual(report["agents_without_instruction"][0]["role"], "coordinator")
+
+    def test_registry_must_match_recorded_session(self) -> None:
+        path, _ = self.write_dispatch(slug="reused-pane")
+        self.set_worker_endpoint(path, pane="wF:p9", session="worker-session")
+        self.install_session("wF:p9", "different-session", 4242)
+        report = self.roll_call([agent("wF:p9", "")])
+        self.assertEqual(self.row(report, "api--reused-pane")["verdict"], "orphaned")
+
+    def test_registry_does_not_override_exposed_session(self) -> None:
+        path, _ = self.write_dispatch(slug="exposed-session")
+        self.set_worker_endpoint(path, pane="wF:p9", session="worker-session")
+        self.install_session("wF:p9", "worker-session", 4242)
+        report = self.roll_call([agent("wF:p9", "different-session")])
+        self.assertEqual(self.row(report, "api--exposed-session")["verdict"], "orphaned")
 
     def test_an_idle_worker_whose_pane_title_fell_back_to_a_shell_prompt_is_running(
         self,
