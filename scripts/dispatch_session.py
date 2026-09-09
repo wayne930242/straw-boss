@@ -124,11 +124,12 @@ def _is_foreground_claude_process(
     )
 
 
-def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
-    payload = run_herdr(["pane", "process-info", "--pane", endpoint.pane_id])
+def claude_registry_session(pane_id: str) -> str | None:
+    """Resolve the interactive Claude session bound to this pane's foreground PID."""
+    payload = run_herdr(["pane", "process-info", "--pane", pane_id])
     process_info = payload.get("result", {}).get("process_info")
-    if not isinstance(process_info, dict) or process_info.get("pane_id") != endpoint.pane_id:
-        return False
+    if not isinstance(process_info, dict) or process_info.get("pane_id") != pane_id:
+        return None
     foreground_process_group_id = process_info.get("foreground_process_group_id")
     foreground_processes = process_info.get("foreground_processes")
     if (
@@ -137,7 +138,7 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
         or not isinstance(foreground_processes, list)
     ):
         raise ValueError(
-            f"herdr process-info response for pane {endpoint.pane_id!r} is missing or "
+            f"herdr process-info response for pane {pane_id!r} is missing or "
             "malformed foreground-process fields -- cannot determine corroboration"
         )
     candidates = [
@@ -146,7 +147,7 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
         if _is_foreground_claude_process(process, foreground_process_group_id)
     ]
     if len(candidates) != 1:
-        return False
+        return None
 
     config_dir_value = os.environ.get("CLAUDE_CONFIG_DIR")
     config_dir = (
@@ -157,12 +158,20 @@ def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
     registry = load_json(
         config_dir / "sessions" / f"{foreground_process_group_id}.json"
     )
-    return (
+    if (
         isinstance(registry, dict)
         and registry.get("pid") == foreground_process_group_id
-        and registry.get("sessionId") == endpoint.expected_session_id
         and registry.get("kind") == "interactive"
         and registry.get("entrypoint") == "cli"
+    ):
+        session = registry.get("sessionId")
+        return session if isinstance(session, str) and session.strip() else None
+    return None
+
+
+def _claude_registry_corroborates(endpoint: Endpoint) -> bool:
+    return bool(endpoint.expected_session_id) and (
+        claude_registry_session(endpoint.pane_id) == endpoint.expected_session_id
     )
 
 

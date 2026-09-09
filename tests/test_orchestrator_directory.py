@@ -56,13 +56,13 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         fake_bin, capture = self.install_fake_herdr()
         self.capture = capture
         live_sessions = {
-            str(one["pane_id"]): str(one["agent_session"]["value"])  # type: ignore[index]
+            str(one["pane_id"]): (one.get("agent_session") or {}).get("value")
             for one in agents
-            if "agent_session" in one
         }
         env = {
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERDR_CAPTURE": str(capture),
+            "HERDR_PROCESS_INFOS": json.dumps(getattr(self, "process_infos", {})),
             "HERDR_AGENT_LIST": json.dumps(agents),
             "HERDR_SESSIONS": json.dumps(sessions if sessions is not None else live_sessions),
             "HERDR_AGENT_KINDS": json.dumps(
@@ -132,6 +132,67 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
             if line.strip()
         ]
         return [call for call in calls if call[:2] == ["agent", "prompt"]]
+
+    def install_claude_session(self, pane: str, session: object, **overrides: object) -> None:
+        pid = 4242
+        self.process_infos = {
+            pane: {
+                "pane_id": pane,
+                "foreground_process_group_id": pid,
+                "foreground_processes": [{"pid": pid, "argv0": "claude"}],
+            }
+        }
+        root = self.home / ".claude" / "sessions"
+        root.mkdir(parents=True, exist_ok=True)
+        record = {"pid": pid, "sessionId": session, "kind": "interactive", "entrypoint": "cli"}
+        record.update(overrides)
+        (root / f"{pid}.json").write_text(json.dumps(record))
+
+    def test_missing_title_session_registers_lists_and_sends_both_ways(self) -> None:
+        self.install_claude_session(BETA, "orchestrator-b")
+        agents = [ALPHA_AGENT, agent(BETA, None, name="orchestrator-beta")]
+        output = self.register("缺少 title 的協調者", pane_id=BETA, agents=agents)
+        self.assertEqual(output["record"]["session_id"], "orchestrator-b")
+        self.register("測試協調者", pane_id=ALPHA, agents=agents)
+        listed = self.run_directory_script("register-orchestrator.py", "--list", agents=agents)
+        row = next(row for row in json.loads(listed.stdout)["directory"] if row["session_id"] == "orchestrator-b")
+        self.assertTrue(row["live"])
+        for source, target in ((ALPHA, BETA), (BETA, ALPHA)):
+            result = self.send("--to", target, "--intent", "inform", "--message", "驗證 session 定址。", pane_id=source, agents=agents)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(json.loads(result.stdout)["submitted"])
+            self.assertEqual(self.prompts()[-1][2], target)
+
+    def test_missing_title_rejects_unverified_registry(self) -> None:
+        for overrides in ({"pid": 999}, {"kind": "sdk"}, {"entrypoint": "sdk"}, {"sessionId": ""}, {"sessionId": 42}):
+            with self.subTest(overrides=overrides):
+                self.install_claude_session(BETA, "orchestrator-b", **overrides)
+                result = self.run_directory_script("register-orchestrator.py", "--scope", "測試", agents=[agent(BETA, None)], pane_id=BETA)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("cannot be addressed", result.stderr)
+                self.assertEqual(self.records(), [])
+
+    def test_missing_title_without_registry_is_unaddressable(self) -> None:
+        self.register("既有接收端", pane_id=BETA)
+        agents = [agent(BETA, None)]
+        result = self.run_directory_script("register-orchestrator.py", "--scope", "測試", agents=agents, pane_id=BETA)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cannot be addressed", result.stderr)
+        listed = self.run_directory_script("register-orchestrator.py", "--list", agents=agents)
+        row = json.loads(listed.stdout)["directory"][0]
+        self.assertFalse(row["live"])
+        self.assertIn("verified", row["unavailable_reason"])
+
+    def test_missing_title_replacement_session_does_not_receive_old_address(self) -> None:
+        self.install_claude_session(BETA, "orchestrator-b")
+        agents = [ALPHA_AGENT, agent(BETA, None)]
+        self.register("接收端", pane_id=BETA, agents=agents)
+        self.register("發送端", pane_id=ALPHA, agents=agents)
+        self.install_claude_session(BETA, "replacement-session")
+        result = self.send("--to", BETA, "--intent", "inform", "--message", "驗證替換。", pane_id=ALPHA, agents=agents)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(json.loads(result.stdout)["submitted"])
+        self.assertEqual(self.prompts(), [])
 
     def test_registering_records_this_session_and_returns_the_live_directory(self) -> None:
         self.register("Coordinating the billing app.", pane_id=BETA)

@@ -33,6 +33,7 @@ from dispatch_session import (
     Endpoint,
     HerdrCommandError,
     agent_matches_identity,
+    claude_registry_session,
     run_herdr,
     session_value,
     validate_current_sender,
@@ -68,7 +69,19 @@ def live_agents() -> list[dict[str, Any]]:
     agents = payload.get("result", {}).get("agents")
     if not isinstance(agents, list):
         raise ValueError("herdr agent list did not return an agent list")
-    return [agent for agent in agents if isinstance(agent, dict)]
+    resolved = []
+    for agent in agents:
+        if not isinstance(agent, dict):
+            continue
+        if agent.get("agent") == "claude" and session_value(agent) is None:
+            try:
+                session = claude_registry_session(str(agent.get("pane_id")))
+            except (ValueError, OSError):
+                session = None
+            if session:
+                agent = {**agent, "agent_session": {"agent": "claude", "value": session}}
+        resolved.append(agent)
+    return resolved
 
 
 def current_agent(agents: list[dict[str, Any]]) -> dict[str, Any]:
@@ -84,7 +97,7 @@ def current_agent(agents: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def agent_identity(agent: dict[str, Any]) -> tuple[str, str | None, str | None]:
-    """This session's own (kind, session, terminal), read from herdr itself.
+    """This session's (kind, session, terminal), resolved by live_agents.
 
     The fingerprint a record is keyed on is whatever the delivery path validates
     on: the provider conversation id, or the terminal for a Codex agent whose
@@ -98,8 +111,9 @@ def agent_identity(agent: dict[str, Any]) -> tuple[str, str | None, str | None]:
     terminal = terminal if isinstance(terminal, str) and terminal else None
     if not session and not (kind == "codex" and terminal):
         raise ValueError(
-            f"herdr exposes no session fingerprint for pane {agent.get('pane_id')!r}, "
-            "so this orchestrator cannot be addressed"
+            f"no verified session fingerprint for pane {agent.get('pane_id')!r}, "
+            "so this orchestrator cannot be addressed; Claude requires a foreground "
+            "interactive CLI session registry entry"
         )
     return str(kind), session, terminal
 
@@ -168,6 +182,9 @@ def directory(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "herdr_terminal_id": record.get("herdr_terminal_id"),
                 "agent_status": live.get("agent_status") if live else None,
                 "live": live is not None,
+                "unavailable_reason": (
+                    None if live else "no live agent has a verified matching session fingerprint"
+                ),
                 "updated_at": record.get("updated_at"),
                 "record_path": str(path),
             }

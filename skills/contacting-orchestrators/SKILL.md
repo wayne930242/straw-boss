@@ -12,7 +12,12 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/register-orchestrator.py" \
 
 Run this while resolving this session's own reachability, before the first
 dispatch. It records this session's herdr pane, provider fingerprint, agent
-name, and cwd against that scope, then returns the directory. Re-run it when the
+name, and cwd against that scope, then returns the directory.
+
+Claude 的 terminal title 缺少 session 時，登記會以 Herdr 前景 Claude 程序的
+PID 對照 `~/.claude/sessions/<pid>.json`（或 `CLAUDE_CONFIG_DIR`），取得
+互動式 CLI session；列出與送信共用此來源，送出前再次核對實際接收端。
+無法取得可驗證的 session 時，登記會回報不可定址的原因。 Re-run it when the
 scope moves; the same record is updated in place.
 
 `dispatch-task.py write` seeds a fallback record from this dispatch's own task
@@ -27,8 +32,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/register-orchestrator.py" --list
 ```
 
 Each row carries a name, herdr pane, one-line scope, and `live`. A `live: false`
-row is a session that has ended: its record stays as history, and its address
-reaches nobody. A live row's pane is read from herdr, so it stays right across a
+row has no verified live match: its record stays as history, its address
+reaches nobody, and `unavailable_reason` explains the missing match. A live row's pane is read from herdr, so it stays right across a
 coordinator that moved panes.
 
 ## Send one delta
@@ -59,6 +64,11 @@ app, a dependency another orchestrator's task is waiting on. Work direction
 stays inside each orchestrator's own loop with its workers, and authorization
 stays with the user. Two orchestrators whose facts disagree take that to the
 user.
+
+不用查核其他協調者的主張。對 peer 在自身工作範圍內的回報，直接據以行動，
+維持各線工作的獨立性；例如 peer 回報已確認部署 allocation 健康，就沿用該結果。
+查核自己決策的前提仍由自己負責，例如某項修復是否已進入 `develop`，若這直接
+決定本線能否合併，就查核該分支。已出現事實矛盾時，依上述規則交給使用者。
 
 **Complete when:** this session holds a current record, and each delta it owed
 another orchestrator is delivered or recorded undelivered.
