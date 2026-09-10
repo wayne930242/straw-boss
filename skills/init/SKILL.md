@@ -5,13 +5,13 @@ description: One-time (or occasional) setup for straw-boss in a project. Use whe
 
 ## Overview
 
-設定專案 managed apps 與 work routes，並檢查委派所需的 Herdr。設定與指引同步可獨立完成；啟動委派時需要可用的 Herdr 服務及目前 pane。
+Configure the project's managed apps and work routes, and check the Herdr dependency a dispatch needs. Configuration and instruction sync can complete on their own; starting a dispatch needs a running Herdr service and a current pane.
 
 ## Task 1: Check for an existing apps config
 
-Locate the repo root with `git rev-parse --show-toplevel` — never assume the current directory is the root. 執行 `references/apps-config-schema.md` 的共用讀取 handler，依 exit code 區分有設定、缺設定與設定錯誤。以回傳的 `config` 作為後續修改基礎，`path` 與 `legacy` 作為遷移證據。 If it exists, show the current app list and ask whether the user wants to keep it, add/remove apps, or redo it from scratch — do not silently overwrite it.
+Locate the repo root with `git rev-parse --show-toplevel` — never assume the current directory is the root. Run the shared read handler in `references/apps-config-schema.md`, and read its exit code to tell a present config from a missing one and from a config error. The returned `config` is the basis for every edit below; `path` and `legacy` are the migration evidence. If it exists, show the current app list and ask whether the user wants to keep it, add/remove apps, or redo it from scratch — do not silently overwrite it.
 
-- **Keep, no changes:** 保留 app 清單，略過 Task 2 的確認對話；若來源為舊路徑，依 schema 的遷移規則寫入新路徑。 The rest of the skill still runs in full: Task 3's agent-routing question, Tasks 4-8 的 Herdr 檢查 are independent of the apps list, Task 9 still checks each app for a missing agent system, and Task 10 still re-syncs `AGENTS.md` 與 `CLAUDE.md`, in case that file drifted independently of the config.
+- **Keep, no changes:** keep the app list and skip Task 2's confirmation dialogue; where the source was the old path, write it to the new path per the schema's migration rule. The rest of the skill still runs in full: Task 3's agent-routing question, the Herdr checks in Tasks 4-8 are independent of the apps list, Task 9 still checks each app for a missing agent system, and Task 10 still re-syncs `AGENTS.md` and `CLAUDE.md`, in case those files drifted independently of the config.
 - **Add/remove apps, or redo from scratch:** Task 2 runs for real, scoped to what the user asked to change (e.g. only the new apps, not re-confirming ones the user didn't mention).
 - **No existing config:** Task 2 runs fresh, as normal.
 
@@ -49,49 +49,49 @@ Ask once, project-wide — not per app — whether to configure work routes for 
 
 If either root `AGENTS.md` or `CLAUDE.md` already has a `<!-- straw-boss:agent-routing:start/end -->` section, show its current routes and ask whether to keep, edit, remove, or add routes. Preserve a kept route without re-asking each field.
 
-先讀取兩檔的 routing 區段（缺少的檔案以一行專案標題建立）；僅一檔有區段時採用它，兩檔相同時保留，兩檔不同時呈現差異由使用者選定，再同步已確認內容。寫入限於 routing markers 內，保留兩檔各自的其他內容。
+Read the routing section of both files first, creating a missing file with a one-line project heading. Where only one carries a section, take it; where both agree, keep it; where they differ, present the difference for the user to settle, then sync the confirmed content. Writes stay inside the routing markers, and each file keeps everything outside them.
 
 For every new or edited route:
 
 1. Get the work description used for matching.
 2. Get the agent kind (`claude` or `codex`) and optional provider profile — Claude's named `--agent` preset or Codex's named `--profile` configuration.
-3. Recommend model and reasoning effort. Check that provider's local config, relevant installed routing guidance, and the user's personal root `AGENTS.md` 與 `CLAUDE.md` before proposing values. Use current official guidance only when local evidence gives no clear preference. For bounded investigation, audit, or diagnosis routes, offer a lower-tier model such as Haiku or a lower-tier Codex model when it remains capable of returning an explanatory result with evidence; never trade away the evidence requirement for a binary answer.
+3. Recommend model and reasoning effort. Check that provider's local config, relevant installed routing guidance, and the user's personal root `AGENTS.md` and `CLAUDE.md` before proposing values. Use current official guidance only when local evidence gives no clear preference. For bounded investigation, audit, or diagnosis routes, offer a lower-tier model such as Haiku or a lower-tier Codex model when it remains capable of returning an explanatory result with evidence; never trade away the evidence requirement for a binary answer.
 4. For a Claude route only, ask whether to use a Claude Code native advisor and, if so, recommend its model. Sonnet with Opus is one documented pairing; availability and accepted pairings still depend on the installed Claude Code account/provider. Codex has no native advisor, so a Codex route records `advisor: none` without offering a coworker or subagent as a substitute.
 5. Present the whole route and get explicit confirmation or correction before recording it. Then offer another route.
 
-Write confirmed routes as canonical prose between the routing markers, one line per route: `<work description> → worker: kind=<kind>, profile=<profile|default>, model=<model|default>, effort=<effort|default>; advisor=<model|none>`. Keep this policy in root `AGENTS.md` 與 `CLAUDE.md`, not `apps.json`.
+Write confirmed routes as canonical prose between the routing markers, one line per route: `<work description> → worker: kind=<kind>, profile=<profile|default>, model=<model|default>, effort=<effort|default>; advisor=<model|none>`. Keep this policy in root `AGENTS.md` and `CLAUDE.md` rather than `apps.json`.
 
-**Verification:** every written route was confirmed as a whole; recommendations used local preferences before current official guidance; only Claude routes can name an advisor; existing routes were presented before replacement; multiple work routes can reuse the same agent kind with different profiles/models; 結果僅寫入根目錄 `AGENTS.md` 與 `CLAUDE.md` 的 agent-routing markers 內。
+**Verification:** every written route was confirmed as a whole; recommendations used local preferences before current official guidance; only Claude routes can name an advisor; existing routes were presented before replacement; multiple work routes can reuse the same agent kind with different profiles/models; the result is written only inside the agent-routing markers of root `AGENTS.md` and `CLAUDE.md`.
 
-## Task 4: 檢查 Herdr CLI 與服務
+## Task 4: Check the Herdr CLI and service
 
-以 `command -v herdr` 與 `herdr status` 檢查委派依賴。缺少時回報安裝或啟動 Herdr 的需求，仍可完成本地設定與 Task 10 指引同步；待服務就緒再進行 Task 9 的 app 委派。
+Check the dispatch dependency with `command -v herdr` and `herdr status`. Where either is missing, report what has to be installed or started; local configuration and Task 10's instruction sync still complete. Task 9's per-app dispatch waits for the service to be ready.
 
-**Verification:** 實際觀察 CLI 與服務狀態，回報尚未滿足的委派條件。
+**Verification:** the CLI and service state were actually observed, and any unmet dispatch condition is reported.
 
-## Task 5: 建立委派狀態目錄
+## Task 5: Create the dispatch state directories
 
-以 Python `Path.home()` 解析使用者目錄，建立 `.straw-boss/dispatch/` 與 `.straw-boss/dispatch/archive/`。
+Resolve the user's home directory with Python's `Path.home()`, then create `.straw-boss/dispatch/` and `.straw-boss/dispatch/archive/`.
 
-**Verification:** 狀態目錄位於使用者 home。
+**Verification:** the state directories are under the user's home.
 
-## Task 6: 檢查目前 Herdr session
+## Task 6: Check the current Herdr session
 
-以 `$HERDR_PANE_ID` 取得目前 Herdr live agent record，核對 provider 身分。缺少 pane 時，請使用者在 Herdr session 繼續委派；本地設定與 Task 10 指引同步仍可完成。
+Fetch the current Herdr live agent record through `$HERDR_PANE_ID` and check the provider identity. With no pane, ask the user to continue dispatching from a Herdr session; local configuration and Task 10's instruction sync still complete.
 
-**Verification:** 委派前已取得目前 pane 與 provider fingerprint。
+**Verification:** the current pane and provider fingerprint were obtained before any dispatch.
 
-## Task 7: 檢查 provider integration
+## Task 7: Check the provider integration
 
-執行 `herdr integration status`，核對此次 worker provider 所需的整合。若 Claude integration 缺少，說明 `herdr integration install claude` 會寫入全域 Claude hook 與 settings，取得使用者授權後安裝並核對結果。Codex 依 Herdr live record 的 provider session／terminal 身分進行驗證。
+Run `herdr integration status` and check the integration this worker provider needs. Where the Claude integration is missing, explain that `herdr integration install claude` writes a global Claude hook and settings, then install it with the user's authorization and check the result. Codex is validated through the provider session and terminal identity in the Herdr live record.
 
-**Verification:** 需要的整合已就緒，或明確回報待完成條件。
+**Verification:** the required integration is ready, or the outstanding condition is reported explicitly.
 
-## Task 8: 完成就緒檢查
+## Task 8: Finish the readiness check
 
-依 CLI、服務、session 與 provider integration 的實際結果判斷能否委派。模式固定為 `herdr-pane`，就緒狀態在每次委派入口重新檢查。Task 9 有未滿足條件時，回報待執行的 app inventory／bootstrap，再完成 Task 10。
+Judge whether a dispatch is possible from the actual CLI, service, session, and provider-integration results. The mode is always `herdr-pane`, and readiness is re-checked at every dispatch entry point. Where Task 9 has an unmet condition, report the app inventory or bootstrap still to run, then complete Task 10.
 
-**Verification:** 設定完成與委派就緒分別回報；尚未執行的 app 工作保持未完成。
+**Verification:** configuration completion and dispatch readiness are reported as separate claims, and unrun app work stays marked incomplete.
 
 ## Task 9: Offer to bootstrap a missing agent system, per app
 
@@ -99,12 +99,12 @@ Use Task 2's worker-reported agent-system inventory for each app. For an
 unchanged configured app that has no current-run report, dispatch the same
 bounded inventory rooted in that app.
 
-以下任一條件表示已有 agent system：
-`<app-dir>/AGENTS.md` 或 `<app-dir>/CLAUDE.md` 存在，或 app 的 `.agents/skills/`、`.claude/skills/`、`.claude/rules/`、`.claude/hooks/` 有專案指引。settings 本身屬於設定。
+Either of these means an agent system already exists:
+`<app-dir>/AGENTS.md` or `<app-dir>/CLAUDE.md` exists, or the app's `.agents/skills/`, `.claude/skills/`, `.claude/rules/`, or `.claude/hooks/` carries project instructions. Settings themselves count as configuration.
 
-已有 agent system 的 app 記錄證據；若 `AGENTS.md` 或 `CLAUDE.md` 缺少，提議透過 `create-great-harness` 補齊缺檔並保留既有指引。兩檔齊備時繼續。完全缺少 agent system 的 app，提議建立兩個指引檔。每個 app 各自確認範圍，將已確認範圍交給 bootstrap。
+Record the evidence for an app that already has one. Where `AGENTS.md` or `CLAUDE.md` is missing, offer to fill the gap through `create-great-harness` while keeping the existing instructions; with both present, move on. For an app with no agent system at all, offer to create both instruction files. Scope is confirmed per app, and the confirmed scope is what goes to bootstrap.
 
-`AGENTS.md` 與 `CLAUDE.md` 是 bootstrap 的必要產物；可選 hook 或 rule 依具體專案證據或已確認範圍建立。
+`AGENTS.md` and `CLAUDE.md` are required bootstrap outputs; an optional hook or rule is created only from concrete project evidence or confirmed scope.
 
 For every confirmed bootstrap, dispatch `create-great-harness` through
 `dispatching-work` with the app's already-resolved directory and the user's
@@ -120,11 +120,11 @@ the still-running instruction and how the user can inspect it.
 bootstrap has an explicit per-app confirmation; app mutations occurred only in
 rooted workers; dispatch state and completion follow `dispatching-work`.
 
-## Task 10: 同步根目錄 AGENTS.md 與 CLAUDE.md
+## Task 10: Sync the root AGENTS.md and CLAUDE.md
 
-等待 Task 9 中以 repo root 為 app 的 bootstrap 完成並清理後，再寫入同一根目錄的指引檔。
+Wait for Task 9's bootstrap of the repo-root app to finish and clean up before writing the instruction files in that same root.
 
-讀取 `<repo-root>/AGENTS.md` 與 `<repo-root>/CLAUDE.md`；缺少的檔案先建立一行專案標題。將同一份 apps 摘要同步至兩檔。僅列 app 名稱、目錄及設定位置；各 app 的詳細政策保存在 apps.json。
+Read `<repo-root>/AGENTS.md` and `<repo-root>/CLAUDE.md`, creating a missing file with a one-line project heading first. Sync the same apps summary into both. List only app names, directories, and the config location; each app's detailed policy stays in `apps.json`.
 
 ```markdown
 <!-- straw-boss:apps:start -->
@@ -137,11 +137,11 @@ Full config (routing, redirects, per-app rules): `.straw-boss/apps.json`.
 <!-- straw-boss:apps:end -->
 ```
 
-既有 markers 存在時只替換區段內容；缺少時以一個空白行分隔並附加。保留兩檔各自的區段外內容。再次執行 init 時同步這兩份摘要，並核對 Task 3 已確認的 routing 區段在兩檔一致。
+Where the markers already exist, replace only the section content; where they are missing, append the section after one blank line. Each file keeps everything outside its section. A later `init` run re-syncs both summaries and checks that Task 3's confirmed routing section matches across the two files.
 
-**Verification:** 根目錄兩個指引檔皆存在，apps 區段與設定一致，routing 區段與 Task 3 的決定一致，區段外內容保留；根目錄 bootstrap 已完成才寫入。
+**Verification:** both root instruction files exist, the apps section matches the configuration, the routing section matches Task 3's decision, content outside the sections is preserved, and the write happened only after the root bootstrap completed.
 
 ## References
 
 - `references/apps-config-schema.md` — exact `apps.json` field names, types, and how other skills read it.
-- `${CLAUDE_PLUGIN_ROOT}/skills/dispatching-work/references/dispatch-mechanics.md` — Herdr 委派介面。
+- `${CLAUDE_PLUGIN_ROOT}/skills/dispatching-work/references/dispatch-mechanics.md` — the Herdr dispatch interface.

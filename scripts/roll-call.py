@@ -30,6 +30,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -219,115 +220,142 @@ def dispatched_by_me(instruction: dict[str, Any], mine: tuple[str, str] | None) 
     return bool(terminal) and instruction.get("main_agent_herdr_terminal_id") == terminal
 
 
-def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
-    agents = live_agents()
-    panes = open_pane_ids()
-    by_session = {
-        value: agent for agent in agents if (value := session_value(agent)) is not None
-    }
-    by_terminal = {
-        str(agent["terminal_id"]): agent
-        for agent in agents
-        if isinstance(agent.get("terminal_id"), str) and agent["terminal_id"]
-    }
-    by_pane = {str(agent.get("pane_id")): agent for agent in agents}
+@dataclass(frozen=True)
+class LiveAgents:
+    """One reading of herdr's live agents, indexed the three ways rows need.
 
-    rows: list[dict[str, Any]] = []
-    repo_roots: dict[str, list[str]] = {}
-    claimed_panes: set[str] = set()
-    coordinator_sessions: set[str] = set()
+    Taken once per report: every row is judged against the same instant, so two
+    rows cannot disagree about whether a pane was open.
+    """
 
-    # Every instruction is read, whatever --mine asks for: a worker or
-    # coordinator belonging to another session must still be attributed, or
-    # filtering the report would manufacture exactly the ownerless-looking
-    # agent this script exists to stop anyone acting on.
-    for path in instruction_paths():
-        try:
-            instruction = load_json(path)
-        except (OSError, json.JSONDecodeError):
-            rows.append(
-                {
-                    "dispatch": path.stem,
-                    "verdict": "unreadable",
-                    "mine": True,  # an unreadable instruction is nobody's to hide
-                    "note": f"could not parse {path}",
-                    "instruction_path": str(path),
-                }
-            )
-            continue
-        main_session = instruction.get("main_agent_session_id")
-        if main_session:
-            coordinator_sessions.add(str(main_session))
-        repo_root = str(instruction.get("repo_root") or "")
-        if repo_root:
-            repo_roots.setdefault(repo_root, []).append(path.stem)
+    all: list[dict[str, Any]]
+    panes: set[str]
+    by_session: dict[str, dict[str, Any]]
+    by_terminal: dict[str, dict[str, Any]]
+    by_pane: dict[str, dict[str, Any]]
 
-        receipt = read_record(launch_receipt_path(path))
-        agent = worker_agent(instruction, receipt, by_session, by_terminal)
-        gate = kept_launch_pane(path) if instruction.get("status") == "pending" else None
-        if gate is not None and gate[0] not in panes:
-            gate = None
-        recorded_pane = instruction.get("herdr_pane_id") or (
-            receipt.get("pane_id") if receipt else None
+    @classmethod
+    def read(cls) -> LiveAgents:
+        agents = live_agents()
+        return cls(
+            all=agents,
+            panes=open_pane_ids(),
+            by_session={
+                value: agent
+                for agent in agents
+                if (value := session_value(agent)) is not None
+            },
+            by_terminal={
+                str(agent["terminal_id"]): agent
+                for agent in agents
+                if isinstance(agent.get("terminal_id"), str) and agent["terminal_id"]
+            },
+            by_pane={str(agent.get("pane_id")): agent for agent in agents},
         )
-        reported = reported_status(path, instruction)
-        pane_open = bool(recorded_pane) and str(recorded_pane) in panes
-        verdict, note = classify(instruction, agent, reported, pane_open, gate)
-        if agent is not None:
-            claimed_panes.add(str(agent.get("pane_id")))
-        if gate is not None:
-            claimed_panes.add(gate[0])
-        if verdict in ("never-launched", "launched-unconfirmed"):
-            failure = launch_failure_summary(path)
-            if failure:
-                note = failure
 
-        live_pane = str(agent.get("pane_id")) if agent else (gate[0] if gate else None)
-        # A pane kept for a human holds a live agent that simply has no
-        # fingerprint yet; reporting it as "no live agent" would say the one
-        # thing this row exists to deny.
-        pane_holder = agent or (by_pane.get(gate[0]) if gate else None)
-        if agent is not None and recorded_pane and live_pane != str(recorded_pane):
-            if reported not in TERMINAL_STATUSES:
-                verdict = "routing-mismatch"
-            note = f"{note}; worker moved to pane {live_pane} (instruction records {recorded_pane})"
-        if main_session and str(main_session) not in by_session:
-            note = f"{note}; its coordinator session is no longer live"
 
-        rows.append(
+def dispatch_row(
+    path: Path, mine: tuple[str, str] | None, live: LiveAgents
+) -> tuple[dict[str, Any], set[str]]:
+    """One dispatch's row, and the panes it accounts for.
+
+    The claimed panes are returned rather than accumulated in place because they
+    are what the two passes after the loop subtract from -- a pane this row
+    explains is not an unattributed agent.
+    """
+    try:
+        instruction = load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return (
             {
                 "dispatch": path.stem,
-                "verdict": verdict,
-                "mine": dispatched_by_me(instruction, mine),
-                "app": instruction.get("app"),
-                "role": instruction.get("role"),
-                "agent_kind": instruction.get("agent_kind"),
-                "instruction_status": instruction.get("status"),
-                "reported_status": reported,
-                "worker_pane": live_pane or recorded_pane,
-                "worker_agent_status": (
-                    pane_holder.get("agent_status") if pane_holder else None
-                ),
-                "worker_name": pane_holder.get("name") if pane_holder else None,
-                "coordinator_pane": instruction.get("main_agent_herdr_pane_id"),
-                "coordinator_session": main_session,
-                "note": note,
-                "repo_root": repo_root or None,
+                "verdict": "unreadable",
+                "mine": True,  # an unreadable instruction is nobody's to hide
+                "note": f"could not parse {path}",
                 "instruction_path": str(path),
-            }
+            },
+            set(),
         )
 
-    # cwd is not attribution -- a coworker shares its parent's worktree, and an
-    # agent started outside launch-dispatched-agent.py carries a session id no
-    # instruction ever recorded. It is still the one fact that stops a reader
-    # taking "nothing carries this fingerprint" for "nothing is running for
-    # this dispatch", so it is reported beside those rows as a caution.
+    main_session = instruction.get("main_agent_session_id")
+    repo_root = str(instruction.get("repo_root") or "")
+
+    receipt = read_record(launch_receipt_path(path))
+    agent = worker_agent(instruction, receipt, live.by_session, live.by_terminal)
+    gate = kept_launch_pane(path) if instruction.get("status") == "pending" else None
+    if gate is not None and gate[0] not in live.panes:
+        gate = None
+    recorded_pane = instruction.get("herdr_pane_id") or (
+        receipt.get("pane_id") if receipt else None
+    )
+    reported = reported_status(path, instruction)
+    pane_open = bool(recorded_pane) and str(recorded_pane) in live.panes
+    verdict, note = classify(instruction, agent, reported, pane_open, gate)
+
+    claimed: set[str] = set()
+    if agent is not None:
+        claimed.add(str(agent.get("pane_id")))
+    if gate is not None:
+        claimed.add(gate[0])
+    if verdict in ("never-launched", "launched-unconfirmed"):
+        failure = launch_failure_summary(path)
+        if failure:
+            note = failure
+
+    live_pane = str(agent.get("pane_id")) if agent else (gate[0] if gate else None)
+    # A pane kept for a human holds a live agent that simply has no fingerprint
+    # yet; reporting it as "no live agent" would say the one thing this row
+    # exists to deny.
+    pane_holder = agent or (live.by_pane.get(gate[0]) if gate else None)
+    if agent is not None and recorded_pane and live_pane != str(recorded_pane):
+        if reported not in TERMINAL_STATUSES:
+            verdict = "routing-mismatch"
+        note = f"{note}; worker moved to pane {live_pane} (instruction records {recorded_pane})"
+    if main_session and str(main_session) not in live.by_session:
+        note = f"{note}; its coordinator session is no longer live"
+
+    return (
+        {
+            "dispatch": path.stem,
+            "verdict": verdict,
+            "mine": dispatched_by_me(instruction, mine),
+            "app": instruction.get("app"),
+            "role": instruction.get("role"),
+            "agent_kind": instruction.get("agent_kind"),
+            "instruction_status": instruction.get("status"),
+            "reported_status": reported,
+            "worker_pane": live_pane or recorded_pane,
+            "worker_agent_status": (
+                pane_holder.get("agent_status") if pane_holder else None
+            ),
+            "worker_name": pane_holder.get("name") if pane_holder else None,
+            "coordinator_pane": instruction.get("main_agent_herdr_pane_id"),
+            "coordinator_session": main_session,
+            "note": note,
+            "repo_root": repo_root or None,
+            "instruction_path": str(path),
+        },
+        claimed,
+    )
+
+
+def note_unmatched_neighbours(
+    rows: list[dict[str, Any]], live: LiveAgents, claimed_panes: set[str]
+) -> None:
+    """Flag live agents sharing a dispatch's repo_root that nothing ties to it.
+
+    cwd is not attribution -- a coworker shares its parent's worktree, and an
+    agent started outside launch-dispatched-agent.py carries a session id no
+    instruction ever recorded. It is still the one fact that stops a reader
+    taking "nothing carries this fingerprint" for "nothing is running for this
+    dispatch", so it is reported beside those rows as a caution.
+    """
     for row in rows:
         if row.get("worker_pane") or not row.get("repo_root"):
             continue
         neighbours = sorted(
             str(agent.get("pane_id"))
-            for agent in agents
+            for agent in live.all
             if str(agent.get("cwd")) == row["repo_root"]
             and str(agent.get("pane_id")) not in claimed_panes
         )
@@ -342,8 +370,21 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
             "look before dispatching it again"
         )
 
+
+def unattributed_agents(
+    rows: list[dict[str, Any]], live: LiveAgents, claimed_panes: set[str]
+) -> list[dict[str, Any]]:
+    """Live agents no row accounts for, each said to be a coordinator or unknown."""
+    coordinator_sessions = {
+        str(row["coordinator_session"]) for row in rows if row.get("coordinator_session")
+    }
+    repo_roots: dict[str, list[str]] = {}
+    for row in rows:
+        if row.get("repo_root"):
+            repo_roots.setdefault(str(row["repo_root"]), []).append(row["dispatch"])
+
     unattributed: list[dict[str, Any]] = []
-    for agent in agents:
+    for agent in live.all:
         pane_id = str(agent.get("pane_id"))
         if pane_id in claimed_panes:
             continue
@@ -365,11 +406,30 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
                 "in_repo_root_of": repo_roots.get(str(agent.get("cwd")), []),
             }
         )
+    return unattributed
+
+
+def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
+    live = LiveAgents.read()
+
+    # Every instruction is read, whatever --mine asks for: a worker or
+    # coordinator belonging to another session must still be attributed, or
+    # filtering the report would manufacture exactly the ownerless-looking
+    # agent this script exists to stop anyone acting on.
+    rows: list[dict[str, Any]] = []
+    claimed_panes: set[str] = set()
+    for path in instruction_paths():
+        row, claimed = dispatch_row(path, mine, live)
+        rows.append(row)
+        claimed_panes |= claimed
+
+    note_unmatched_neighbours(rows, live, claimed_panes)
 
     return {
         "dispatches": [row for row in rows if row["mine"]],
-        "agents_without_instruction": unattributed,
+        "agents_without_instruction": unattributed_agents(rows, live, claimed_panes),
     }
+
 
 
 def render(report: dict[str, Any]) -> str:

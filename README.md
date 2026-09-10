@@ -26,7 +26,7 @@ Bounded work should stay bounded. When a task benefits from its own workroom, st
 
 - Claude Code with plugins enabled, or Codex CLI with plugin support.
 - Python 3 for the bundled lifecycle and installation scripts.
-- [Herdr](https://github.com/herdrdev/herdr)（委派必要需求）。Claude Code 與 Codex CLI worker 都在可查看、可加入的 Herdr pane 執行。安裝、讀取設定與整理已保存狀態可獨立執行；開始委派前須有可用的 Herdr 服務與目前 pane。
+- [Herdr](https://github.com/herdrdev/herdr), required for dispatch. Claude Code and Codex CLI workers both run in a Herdr pane you can watch and join. Installing, reading configuration, and tidying persisted state all work on their own; starting a dispatch needs a running Herdr service and a current pane.
 
 ## Install
 
@@ -75,7 +75,7 @@ $straw-boss:init
 
 You can also browse or manage the installed plugin interactively by starting `codex` and entering `/plugins`. Plugins are not available in the Codex IDE extension.
 
-`init` 會確認 managed apps 與 work routes，寫入 `.straw-boss/apps.json`，同步根目錄的 `AGENTS.md` 與 `CLAUDE.md`，提議補齊各 app 缺少的指引檔，並檢查 Herdr 委派需求。
+`init` confirms the managed apps and work routes, writes `.straw-boss/apps.json`, syncs the root `AGENTS.md` and `CLAUDE.md`, offers to fill in each app's missing instruction files, and checks the Herdr dispatch requirement.
 
 For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it to check Herdr readiness, configure per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 
@@ -83,10 +83,10 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 
 | Skill | Description |
 |-------|-------------|
-| `init` | 設定 managed apps、work routes 與 herdr dispatch；同步根目錄的 `AGENTS.md`、`CLAUDE.md`，並提議補齊各 app 的指引檔 |
+| `init` | Configure managed apps, work routes, and Herdr dispatch; sync the root `AGENTS.md` and `CLAUDE.md`, and offer to fill in each app's instruction files |
 | `boss-say` | **The entry point for everything.** Selects the owning skill and smallest sufficient loop for one task, an independent batch, or a backlog |
 | `handoff-orchestrator` | After explicit approval, transfer one scope and its minimal continuity state to a new orchestrator tab |
-| `boss-assistant` | 老闆助理：將各協調者的摩擦當作 Straw Boss UAT，修復 graph 並依量測優化效能與儲存；先查本地專案，再準備 issue／PR 並詢問是否發布 |
+| `boss-assistant` | The boss assistant: treat every main agent's friction as Straw Boss UAT, repair the coordination graph, and optimize performance and storage against measurements; locate the local project first, then prepare an issue or PR and ask whether to publish |
 | `contacting-orchestrators` | Register this orchestrator's identity and one-line scope, read which other orchestrators are live, and send one a factual delta carrying this session's herdr pane id |
 | `i-am-orchestrator` | Keep coordination event-driven while workers and the user own work details inside the named reality anchor |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |
@@ -97,7 +97,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `asking-peer-agents` | Let one dispatched task request a factual progress update or conclusion from another task |
 | `bringing-coworker` | Bring one Claude Code or Codex CLI coworker into an interactive worker's exact Herdr tab and worktree |
-| `create-great-harness` | 依專案證據建立或補齊 `AGENTS.md`、`CLAUDE.md`，依已確認範圍加入可選 hook／rule |
+| `create-great-harness` | Write or complete `AGENTS.md` and `CLAUDE.md` from project evidence, adding an optional hook or rule within the confirmed scope |
 | `inspecting-app` | Resolve the app and run an evidence-bearing rules audit through the smallest sufficient loop |
 | `investigating-app` | Resolve the app and explain its current behavior with evidence through the smallest sufficient loop |
 | `troubleshooting-app` | Keep ordinary diagnosis and repair in one `shipping-task` loop; split out only an integration preflight whose evidence is needed to route or schedule later work |
@@ -130,11 +130,11 @@ A status question or closing out a dispatch also goes through `boss-say`.
 
 ## Configuration
 
-`init` 將 managed apps 與各 app 的生命週期設定寫入 `.straw-boss/apps.json`。格式見 [apps config schema](skills/init/references/apps-config-schema.md)。app 摘要與專案 work routes 同步至根目錄的 `AGENTS.md` 與 `CLAUDE.md`。
+`init` writes the managed apps and each app's lifecycle configuration to `.straw-boss/apps.json`. The format is the [apps config schema](skills/init/references/apps-config-schema.md). The app summary and the project's work routes are synced into the root `AGENTS.md` and `CLAUDE.md`.
 
-app 的 `agentKind` 指定預設 agent。專案 work routes 則指定 provider profile、model、effort 與可選的 Claude advisor，由 `init` 同步至兩個指引檔；Codex route 的 advisor 為 none。
+An app's `agentKind` names its default agent. The project's work routes name the provider profile, model, effort, and an optional Claude advisor, which `init` syncs into both instruction files; a Codex route records `advisor: none`.
 
-設定讀取優先使用 `.straw-boss/apps.json`；新路徑不存在時相容 `.claude/straw-boss/apps.json`。`init` 將確認後的舊設定寫入新路徑並保留舊檔，回報其已被取代。
+Configuration is read from `.straw-boss/apps.json` first, falling back to `.claude/straw-boss/apps.json` when the new path does not exist. `init` writes the confirmed old configuration to the new path, leaves the old file in place, and reports that it has been superseded.
 
 ## License
 

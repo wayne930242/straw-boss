@@ -54,15 +54,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic, sleep
 
+from straw_boss.dispatch.messages import validate_note
 from straw_boss.dispatch.state import (
     load_json,
     plan_status_path,
     resolve_instruction_status_path,
 )
 from straw_boss.herdr.transport import (
-    normalize_references,
     send_instruction_message,
-    validate_delta_message,
     validate_status_sender,
 )
 
@@ -141,11 +140,7 @@ def report_status(
 ) -> Path:
     if status not in VALID_STATUSES:
         raise ValueError(f"status must be one of {VALID_STATUSES}, got {status!r}")
-    try:
-        note = validate_delta_message(note)
-    except ValueError as exc:
-        raise ValueError(str(exc).replace("message", "--note", 1)) from exc
-    normalized_references = normalize_references(references)
+    note, normalized_references = validate_note(note, references)
 
     if instruction_path is not None:
         validate_status_sender_when_ready(instruction_path, status)

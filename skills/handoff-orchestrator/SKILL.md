@@ -7,7 +7,8 @@ description: Move one approved work scope to a new orchestrator in an independen
 
 ## 1. Get approval
 
-Present one ask-question decision naming the scope that moves and any work this
+A handoff creates another user-facing window, so the current main agent first
+presents one approval decision, naming the scope that moves and any work this
 orchestrator retains. A new tab is created only after the user approves.
 
 ## 2. Carry continuity
@@ -26,8 +27,9 @@ new tab and leaves ownership here.
 
 ## 4. Leave the scope
 
-On acceptance, report the new tab and transferred scope compactly. Continue only
-the scope passed through `--retains`. When none is retained, let the launcher
+On acceptance, status events, investigation, scheduling, reporting, and cleanup
+all belong to the receiver. Report the new tab and transferred scope compactly.
+Continue only the scope passed through `--retains`. When none is retained, let the launcher
 close this pane after it emits the accepted result.
 
 **Complete when:** the receiver accepted and this orchestrator left the scope,

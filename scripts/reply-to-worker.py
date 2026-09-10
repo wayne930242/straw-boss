@@ -26,7 +26,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from straw_boss.dispatch.state import dump_json, load_json, resolve_instruction_status_path
+from straw_boss.dispatch.state import (
+    dump_json,
+    load_herdr_pane_instruction,
+    load_json,
+    resolve_instruction_status_path,
+)
 from straw_boss.herdr.transport import (
     HerdrCommandError,
     confirm_transcript_contains,
@@ -40,22 +45,15 @@ def reply_to_worker(
     reply: str,
     references: list[str] | tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    inst_path = Path(worker_instruction_path)
-    if not inst_path.is_file():
-        raise ValueError(f"no worker instruction file at {inst_path}")
-    instruction = load_json(inst_path)
-
-    mode = instruction.get("mode")
+    inst_path, instruction = load_herdr_pane_instruction(
+        worker_instruction_path,
+        label="worker instruction",
+        requires="awaiting-main-agent requires a herdr-pane worker using a supported "
+        "agent kind",
+        undispatched_hint="was dispatch confirmed?",
+    )
+    herdr_pane_id = instruction["herdr_pane_id"]
     agent_kind = instruction.get("agent_kind")
-    if mode != "herdr-pane" or agent_kind not in ("claude", "codex"):
-        raise ValueError(
-            f"worker {inst_path} is mode={mode!r} agent_kind={agent_kind!r} -- "
-            "awaiting-main-agent requires a herdr-pane worker using a supported agent kind"
-        )
-
-    herdr_pane_id = instruction.get("herdr_pane_id")
-    if not herdr_pane_id:
-        raise ValueError(f"worker {inst_path} has no herdr_pane_id recorded -- was dispatch confirmed?")
 
     status_path = resolve_instruction_status_path(inst_path, instruction)
     if not status_path.is_file():

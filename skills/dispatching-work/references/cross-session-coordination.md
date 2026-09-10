@@ -3,8 +3,9 @@
 All agent-to-agent communication is instruction-keyed. The caller supplies an
 instruction path and semantic intent; repository scripts resolve the endpoint,
 validate its provider-specific live fingerprint, deliver the message, and
-record the submission. See `docs/roles.md` for the **own the loop, not the
-work** boundary.
+record the submission. The main agent owns the loop and the worker owns the
+work: these messages carry facts, questions, and answers, while work direction
+stays inside the worker's own conversation with the user.
 
 Live bodies carry one delta in at most two sentences. Put longer context,
 instructions, or evidence behind repeatable `--ref`; the transport supplies

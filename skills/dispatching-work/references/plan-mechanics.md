@@ -55,7 +55,7 @@ or, for a task that hit a substantive work-content question, not a git mutation 
 ```json
 {"status": "awaiting-user-input", "note": "the question it's asking -- e.g. \"which of two existing approaches should this follow?\"", "timestamp": "..."}
 ```
-or, for a dispatch cancelled under `docs/roles.md`'s explicit user/objective-invalidity boundary (mechanics in `cross-session-coordination.md`):
+or, for a dispatch the user explicitly cancelled, or one that is objectively invalid, duplicate, or unreachable (mechanics in `cross-session-coordination.md`):
 ```json
 {"status": "cancelled", "note": "why the dispatch itself was wrong, not what the agent did", "timestamp": "..."}
 ```
@@ -65,26 +65,26 @@ or, for a dispatch cancelled under `docs/roles.md`'s explicit user/objective-inv
 
 ## Authorization checkpoints (team-mode only)
 
-合併或推送至任務以外的分支前，worker 回報 `awaiting-authorization`，由使用者在 pane 直接回答。自己的 feature branch commit／push 維持既有授權規則。checkpoint 保持非終態並占用原有 slot，使用者回答後由 worker 繼續並回報狀態。
+Before a merge, or a push landing on any branch other than the task's own, the worker reports `awaiting-authorization` and the user answers directly in the pane. Commits and pushes of its own feature branch keep their existing authorization. The checkpoint stays non-terminal and holds its slot; once the user answers, the worker continues and reports its status.
 
 ## User-clarification checkpoints
 
-`awaiting-user-input` 表示工作細節需要使用者判斷；worker 在自己的 pane 提問並等待，回覆本身不授予變更授權。
+`awaiting-user-input` means a work detail needs the user's judgement: the worker asks in its own pane and waits, and the answer alone grants no authorization for a mutation.
 
-**Escalation order.** 工作細節與判斷直接詢問使用者；整合指示、跨任務資訊與協調者操作詢問主 agent；peer 僅交換事實。
+**Escalation order.** Work detail and judgement go to the user; integration direction, cross-task facts, and coordinator-owned actions go to the main agent; peers exchange facts only.
 
-On an interactive `awaiting-user-input` notification, 主 agent 指出任務與 worker pane，讓使用者直接回答。plan loop 保持任務 attached 與非終態。
+On an interactive `awaiting-user-input` notification, the main agent names the task and its worker pane so the user answers there directly. The plan loop keeps the task attached and non-terminal.
 
 ## Main-agent-action checkpoints
 
-`awaiting-main-agent` 用於整合資訊或協調者操作結果。工作內容與變更授權由使用者及 worker 決定。
+`awaiting-main-agent` carries integration context or the result of a coordinator-owned action. Work content and authorization for a mutation stay with the user and the worker.
 
 An interactive checkpoint is resolved through `reply-to-worker.py`:
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/reply-to-worker.py" \
   --worker-instruction-path <path> --reply "<text>"
 ```
-It delivers the reply, confirms it landed, then records the resolution. worker 的下一次狀態更新完成 checkpoint。
+It delivers the reply, confirms it landed, then records the resolution. The worker's next status update closes the checkpoint.
 
 For an interactive task, if resolving takes more than a couple of tool calls, an optional `send-dispatch-message.py --to worker --intent inform` nudge lets the worker know it is being handled. `reply-to-worker.py` still resolves that interactive checkpoint.
 
@@ -224,7 +224,7 @@ EOF
 ```
 (`<git-common-dir>` is `git -C <app_dir> rev-parse --git-common-dir`; `<worktree-name>` is usually the branch/slug name — confirm via `ls <git-common-dir>/worktrees/`.) Re-run the verification command after writing the repair file. Do not dispatch into a worktree that still fails verification after one repair attempt — stop and report it. `git worktree repair` does **not** fix this class of problem — do not reach for it.
 
-**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree. 透過 `skills/init/references/apps-config-schema.md` 的共用讀取 handler，取得已解析 app 的 `localFiles`。 If an entry has `sensitive: true`, ask the user once before copying it; a config entry records that the file is expected, while the copy of live credentials remains user-approved.
+**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree. Read the resolved app's `localFiles` through the shared read handler in `skills/init/references/apps-config-schema.md`. If an entry has `sensitive: true`, ask the user once before copying it; a config entry records that the file is expected, while the copy of live credentials remains user-approved.
 
 Run the validated copy seam once, before dispatch:
 
@@ -271,7 +271,7 @@ the pre-push sequence.
 
 ## Failure handling
 
-On a watcher event reporting `status: failed` for a task, read that task's status file's `note` field, and if it isn't conclusive, invoke `peeking-work` on that task to judge whether the failure looks like a permission denial (Claude Code declining an action rather than the task failing on its own merits) — don't read the transcript inline here. If it does, tell the user plainly and ask whether to retry that task with a permission bypass (`claude --dangerously-skip-permissions`/`--allow-dangerously-skip-permissions`, per `claude --help`) — **every time, never applied automatically**. 重試採用新的委派指令與正常派工流程。 A non-permission failure is reported to the user as a failure; retrying it is the user's call.
+On a watcher event reporting `status: failed` for a task, read that task's status file's `note` field, and if it isn't conclusive, invoke `peeking-work` on that task to judge whether the failure looks like a permission denial (Claude Code declining an action rather than the task failing on its own merits) — don't read the transcript inline here. If it does, tell the user plainly and ask whether to retry that task with a permission bypass (`claude --dangerously-skip-permissions`/`--allow-dangerously-skip-permissions`, per `claude --help`) — **every time, never applied automatically**. A retry uses a fresh dispatch instruction through the normal flow. A non-permission failure is reported to the user as a failure; retrying it is the user's call.
 
 ## Shared-resource coordination (ports, DB migrations — cross-main-agent, not just cross-task)
 

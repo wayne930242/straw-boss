@@ -1,17 +1,17 @@
 ---
 name: create-great-harness
-description: 當 init 發現 app 缺少 AGENTS.md 或 CLAUDE.md 並取得補齊確認，或使用者直接要求建立精簡 agent system 時使用。
+description: Use when init finds an app missing AGENTS.md or CLAUDE.md and has confirmation to fill the gap, or when the user asks directly for a minimal agent system.
 ---
 
 ## Overview
 
-為 app 建立精簡 agent system 或補齊缺少的指引檔。 `AGENTS.md` 與 `CLAUDE.md` 是必要產物。 A guard hook or skill-authoring rule is included only when concrete project evidence or explicit confirmed scope calls for it.
+Build a minimal agent system for an app, or fill in whichever instruction file is missing. `AGENTS.md` and `CLAUDE.md` are both required outputs. A guard hook or skill-authoring rule is included only when concrete project evidence or explicit confirmed scope calls for it.
 
 Runs either inline (a user asked for this directly) or as a dispatched agent rooted in `<app-dir>` (`init`'s own bootstrap step dispatches it via `dispatching-work`). The dispatch instruction, when present, states that scope was already confirmed and how to report completion — Task 1 and Task 6 both branch on whether that's the case.
 
 ## Task 1: Confirm scope before writing anything
 
-State the confirmed scope before writing: `<app-dir>/AGENTS.md` 與 `<app-dir>/CLAUDE.md`, plus any optional hook or rule the user or dispatch instruction explicitly requested. The survey may support a recommendation for another artifact, but extending the confirmed scope remains a user-owned decision.
+State the confirmed scope before writing: `<app-dir>/AGENTS.md` and `<app-dir>/CLAUDE.md`, plus any optional hook or rule the user or dispatch instruction explicitly requested. The survey may support a recommendation for another artifact, but extending the confirmed scope remains a user-owned decision.
 
 - **Invoked directly by a user in this session:** get explicit confirmation before proceeding — this writes into the app's own checkout, not just plugin state.
 - **Invoked as a dispatched agent:** the dispatch instruction already states the scope was confirmed — that confirmation *is* `init`'s own per-app yes/skip ask. Don't ask again; there's no user in this session to answer, and the worker proceeds within the confirmed scope. State the scope for the record and proceed straight to Task 2.
@@ -20,18 +20,18 @@ State the confirmed scope before writing: `<app-dir>/AGENTS.md` 與 `<app-dir>/C
 
 ## Task 2: Survey the app for non-obvious content
 
-Read what's actually there: `package.json`/`pyproject.toml`/`Cargo.toml`/`go.mod`/equivalent manifest, lockfile (which package manager — `bun.lock` vs `package-lock.json` vs `pnpm-lock.yaml` matters), top-level directory listing, existing README if short. Filter everything through one question: **can a fresh agent session derive this from reading the code, the manifest, or running `ls`?** If yes, it doesn't belong in `AGENTS.md` 與 `CLAUDE.md`.
+Read what's actually there: `package.json`/`pyproject.toml`/`Cargo.toml`/`go.mod`/equivalent manifest, lockfile (which package manager — `bun.lock` vs `package-lock.json` vs `pnpm-lock.yaml` matters), top-level directory listing, existing README if short. Filter everything through one question: **can a fresh agent session derive this from reading the code, the manifest, or running `ls`?** If yes, it doesn't belong in `AGENTS.md` and `CLAUDE.md`.
 
 Look specifically for non-default tooling (`bun` rather than the ecosystem default, a custom build/test script), the actual build/test/dev commands, and documented project-specific risks that could justify an optional guard or rule.
 
 **If nothing non-obvious turns up** (a fully idiomatic, default-tooling setup):
-清楚回報此結果；接近空白的 `AGENTS.md` 與 `CLAUDE.md` 也可以是有證據支持的產物。
+Report that plainly: a near-empty `AGENTS.md` and `CLAUDE.md` can be the evidence-backed answer.
 
-**Verification:** every fact that ends up in `AGENTS.md` 與 `CLAUDE.md` (Task 3) traces to something read here, not to general knowledge about the language/framework.
+**Verification:** every fact that ends up in `AGENTS.md` and `CLAUDE.md` (Task 3) traces to something read here, not to general knowledge about the language/framework.
 
-## Task 3: 建立 AGENTS.md 與 CLAUDE.md
+## Task 3: Write AGENTS.md and CLAUDE.md
 
-先讀取兩檔。以相同的專案共同指引建立缺少的檔案；若已有其中一檔，保留原文並從中取用適用的共同指引。兩檔都存在時保留既有指引，將需要調整的差異交回已確認範圍處理。
+Read both files first. Create whichever is missing from the same shared project instructions; where one already exists, keep its text and take the applicable shared instructions from it. With both present, keep the existing instructions and hand any difference that needs changing back to the confirmed scope.
 
 Use up to three relevant sections: **Role** (what this app is), **Scope** (what is in or out when that boundary is non-obvious), and **Standards** (the non-default commands or conventions Task 2 found). Omit empty sections. Keep the file concise by removing material a fresh session can derive from the manifest, repository layout, or existing focused documentation.
 
@@ -77,7 +77,7 @@ Run this task only when the confirmed scope explicitly requests skill-authoring 
 
 ## Task 6: Report
 
-回報 `AGENTS.md` 與 `CLAUDE.md` 各自的行數、章節摘要，以及實際建立的可選產物。 Report evidence-backed recommendations, conflicts, fetch failures, and any `/hooks`-or-restart caveat separately from completed writes.
+Report the line count and section summary of `AGENTS.md` and `CLAUDE.md` separately, plus whichever optional artifacts were actually created. Report evidence-backed recommendations, conflicts, fetch failures, and any `/hooks`-or-restart caveat separately from completed writes.
 
 - **Invoked directly by a user in this session:** report inline, in this conversation.
 - **Invoked as a dispatched agent:** state it as this turn's own final text output and run `report-task-status.py --instruction-path <path> --status done --note "<one-line summary>"`. That command writes durable state before notifying the recorded main-agent herdr pane. Follow `notifying-main-agent` only for a valid Claude-to-Claude fallback if herdr is unavailable or fails.

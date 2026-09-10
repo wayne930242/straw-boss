@@ -45,8 +45,8 @@ def instruction_lines(path: Path) -> list[tuple[int, str]]:
 def prose_surfaces(include_scripts: bool = False) -> list[Path]:
     """Live instruction surfaces -- what an agent actually reads to act.
 
-    `docs` is deliberately non-recursive: only its top-level files
-    (`roles.md`, `architecture.md`) are live instruction surfaces.
+    `docs` is deliberately non-recursive: only its top-level files are live
+    instruction surfaces.
     """
     paths = [
         *(ROOT / "skills").glob("**/*.md"),
@@ -104,7 +104,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
 
     def test_harness_has_no_guessed_default_artifacts(self) -> None:
         source = normalized(ROOT / "skills" / "create-great-harness" / "SKILL.md")
-        self.assertIn("AGENTS.md 與 CLAUDE.md 是必要產物", source)
+        self.assertIn("AGENTS.md and CLAUDE.md are both required outputs", source)
         self.assertIn("concrete project evidence or explicit confirmed scope", source)
         self.assertNotIn("universally applicable", source)
         self.assertNotIn("single most common irreversible-mistake footgun", source)
@@ -114,7 +114,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
     def test_init_and_work_on_use_the_shared_config_handler(self) -> None:
         for name in ("init", "work-on"):
             source = normalized(ROOT / "skills" / name / "SKILL.md")
-            self.assertIn("共用讀取 handler", source)
+            self.assertIn("shared read handler", source)
         schema = normalized(ROOT / "skills/init/references/apps-config-schema.md")
         self.assertIn("read-apps-config.py", schema)
         self.assertIn("exit 3", schema)
@@ -125,16 +125,24 @@ class SkillInstructionQualityTests(unittest.TestCase):
             source = path.read_text().lower()
             self.assertNotIn("headless", source, str(path))
             self.assertNotIn("claude-p", source, str(path))
-        for name in ("README.md", "README.zh-TW.md"):
-            self.assertIn("委派必要需求", (ROOT / name).read_text())
+        self.assertIn("required for dispatch", (ROOT / "README.md").read_text())
+        self.assertIn("委派必要需求", (ROOT / "README.zh-TW.md").read_text())
         self.assertFalse((ROOT / "scripts/run-headless-dispatched-agent.py").exists())
 
     def test_init_reaches_guidance_sync_without_herdr(self) -> None:
         source = normalized(ROOT / "skills/init/SKILL.md")
-        self.assertIn("本地設定與 Task 10 指引同步仍可完成", source)
-        self.assertIn("補齊缺檔並保留既有指引", source)
-        self.assertIn("保留兩檔各自的區段外內容", source)
-        self.assertIn("routing 區段在兩檔一致", source)
+        self.assertIn(
+            "local configuration and Task 10's instruction sync still complete", source
+        )
+        self.assertIn(
+            "offer to fill the gap through create-great-harness while keeping the "
+            "existing instructions",
+            source,
+        )
+        self.assertIn("Each file keeps everything outside its section", source)
+        self.assertIn(
+            "Task 3's confirmed routing section matches across the two files", source
+        )
 
     def test_moving_base_refresh_is_conditional(self) -> None:
         source = normalized(
@@ -238,6 +246,48 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("rather than routing data", source)
         self.assertNotIn("dispatch/<session_id>.json", source)
 
+    def test_skills_carry_their_own_rules_rather_than_pointing_at_a_document(
+        self,
+    ) -> None:
+        """A skill is read at execution time; a doc beside it is not.
+
+        Every `docs/roles.md` pointer was either filler restating the next
+        paragraph, or a rule that belonged in the skill that operates it. The
+        file is gone, and a new pointer to it would be a rule with no reader.
+        """
+        offenders = [
+            str(path.relative_to(ROOT))
+            for path in sorted((ROOT / "skills").rglob("*.md"))
+            if "roles.md" in path.read_text()
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_the_english_surface_is_written_in_english(self) -> None:
+        """One language per surface.
+
+        A file mixing scripts reads as two half-written instructions, and the
+        mixed lines were where the drift collected -- `README.md` had carried an
+        untranslated requirements bullet and a whole Chinese section of its
+        skill table for long enough that only a manual scan found them. The
+        zh-TW README is the one file that is supposed to be Chinese; the link
+        label pointing at it is how the English one reaches it.
+        """
+        surfaces = [
+            *sorted((ROOT / "skills").rglob("*.md")),
+            *sorted((ROOT / "docs").rglob("*.md")),
+            ROOT / "README.md",
+            ROOT / "CONTEXT.md",
+        ]
+        language_switcher = "](./README.zh-TW.md)"
+        offenders = []
+        for path in surfaces:
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if language_switcher in line:
+                    continue
+                if any("\u4e00" <= character <= "\u9fff" for character in line):
+                    offenders.append(f"{path.relative_to(ROOT)}:{number}")
+        self.assertEqual(offenders, [])
+
     def test_coordination_lifecycle_is_event_driven(self) -> None:
         orchestrator = normalized(ROOT / "skills" / "i-am-orchestrator" / "SKILL.md")
         self.assertIn("Keep the lifecycle event-driven", orchestrator)
@@ -253,14 +303,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertNotIn("watch status", orchestrator)
         self.assertNotIn("every dispatch is observed or terminal", orchestrator)
 
-        roles = normalized(ROOT / "docs" / "roles.md")
-        self.assertIn("status-event handling", roles)
-        self.assertIn(
-            "That persisted status and its notification are what drive the coordination lifecycle",
-            roles,
-        )
-        self.assertNotIn("status observation", roles)
-        self.assertNotIn("observe status", roles)
+        self.assertNotIn("status observation", orchestrator)
+        self.assertNotIn("observe status", orchestrator)
 
         dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
         self.assertIn(
@@ -284,7 +328,6 @@ class SkillInstructionQualityTests(unittest.TestCase):
     def test_orchestrator_reports_compactly_and_asks_one_decision_at_a_time(
         self,
     ) -> None:
-        roles = normalized(ROOT / "docs" / "roles.md")
         orchestrator = normalized(ROOT / "skills" / "i-am-orchestrator" / "SKILL.md")
         boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
         dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
@@ -292,7 +335,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
             ROOT / "skills" / "dispatching-work" / "references" / "plan-mechanics.md"
         )
 
-        for source in (roles, orchestrator):
+        for source in (orchestrator,):
             self.assertIn("current coordination delta", source)
             self.assertIn("harness-native ask-question interface", source)
             self.assertIn("exactly one decision", source)
@@ -345,14 +388,14 @@ class SkillInstructionQualityTests(unittest.TestCase):
             self.assertNotIn(defensive, body)
 
     def test_orchestrator_handoff_requires_approval_and_moves_ownership(self) -> None:
-        roles = normalized(ROOT / "docs" / "roles.md")
+        orchestrator = normalized(ROOT / "skills" / "i-am-orchestrator" / "SKILL.md")
         skill = normalized(ROOT / "skills" / "handoff-orchestrator" / "SKILL.md")
         launcher = normalized(ROOT / "scripts" / "run-straw-boss-script.py")
 
-        self.assertIn("first presents one approval decision", roles)
-        self.assertIn("Run ADAAV lightly", roles)
-        self.assertIn("internal ordering rather than a response template", roles)
-        self.assertIn("status events, investigation, scheduling, reporting, and cleanup all belong to the receiver", roles)
+        self.assertIn("first presents one approval decision", skill)
+        self.assertIn("Run ADAAV silently", orchestrator)
+        self.assertIn("Surface text grows only for a real gap, handoff, decision, or result", orchestrator)
+        self.assertIn("status events, investigation, scheduling, reporting, and cleanup all belong to the receiver", skill)
         self.assertIn("A new tab is created only after the user approves", skill)
         self.assertIn("Pass only goal and scope", skill)
         self.assertIn("Continue only the scope passed through --retains", skill)
@@ -419,16 +462,13 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self,
     ) -> None:
         """Both halves of the boundary, stated where authority is defined."""
-        roles = normalized(ROOT / "docs" / "roles.md")
-        self.assertIn("The reality anchor is coordination; the method inside it is work", roles)
-        self.assertIn("The main agent names which anchor proves a task", roles)
-        self.assertIn("Naming the anchor is not naming the tests", roles)
-
         graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn("The reality anchor is coordination; the method inside it is work", graph)
+        self.assertIn("The main agent names which anchor proves a task", graph)
         self.assertIn("Naming the anchor is not naming the tests", graph)
         # The testing anchor's own escalation stays with the worker on every
         # surface that spells the default out.
-        for name, source in (("choosing-graph", graph), ("docs/roles.md", roles)):
+        for name, source in (("choosing-graph", graph),):
             self.assertIn("smallest credible seam that can go red before the change", source, name)
             self.assertIn("integration or E2E", source, name)
         self.assertIn(
@@ -545,7 +585,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """A main agent has to name an anchor from a list, so the list has to be
         the same list everywhere.
 
-        Naming a fifth kind in the skill while `docs/roles.md` enumerates four
+        Naming a fifth kind in the anchor list while the authority sentence enumerates four
         leaves audit and research dispatches with no nameable category -- the
         same shape of defect as an unscoped verification-method grant.
         """
@@ -556,14 +596,14 @@ class SkillInstructionQualityTests(unittest.TestCase):
             named, ["testing", "pseudo-human", "human", "adversarial-review"]
         )
 
-        roles = normalized(ROOT / "docs" / "roles.md")
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
         enumeration = [
             sentence
-            for sentence in sentences(roles)
+            for sentence in sentences(graph)
             if "names which anchor proves a task" in sentence
         ]
         self.assertEqual(
-            len(enumeration), 1, "docs/roles.md enumerates the anchors exactly once"
+            len(enumeration), 1, "choosing-graph enumerates the anchors exactly once"
         )
         for anchor in ("testing", "pseudo-human", "human", "adversarial review"):
             self.assertIn(anchor, enumeration[0], anchor)
@@ -914,16 +954,15 @@ class SkillInstructionQualityTests(unittest.TestCase):
         )
 
     def test_the_coordination_graph_is_named_where_authority_is_defined(self) -> None:
-        """`docs/roles.md` calls itself the single execution-time definition of
-        who decides what, and `choosing-graph` calls the graph and the anchor
-        both coordination -- but only the anchor was defined there, and the
-        stance the SessionStart hook injects listed only the anchor too.
+        """`choosing-graph` calls the graph and the anchor both coordination, so
+        both have to be stated there, and the stance the SessionStart hook
+        injects has to name the graph among what a coordinator owns.
         """
-        roles = normalized(ROOT / "docs" / "roles.md")
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
         self.assertIn(
-            "The coordination graph is coordination too", roles
+            "The coordination graph is coordination too", graph
         )
-        self.assertIn("a dispatched agent states its own for its own task", roles)
+        self.assertIn("a dispatched agent states its own for its own task", graph)
         orchestrator = normalized(ROOT / "skills" / "i-am-orchestrator" / "SKILL.md")
         self.assertIn("the coordination graph", orchestrator)
 
@@ -1125,7 +1164,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
     def test_the_workers_own_coordination_graph_obligation_reaches_the_contract(
         self,
     ) -> None:
-        """`docs/roles.md` says a dispatched agent states its own
+        """`choosing-graph` says a dispatched agent states its own
         coordination graph for its own task, but nothing a worker is
         required to read ever carried it -- every live "go invoke
         `choosing-graph`" pointer for this purpose sat on the coordinator's
@@ -1167,7 +1206,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
     ) -> None:
         """A writable coworker's own bullet already forbids it from
         coordinating another coworker (nesting stops at one level,
-        `docs/roles.md`), and `bringing-coworker` itself only runs from an
+        `i-am-orchestrator`), and `bringing-coworker` itself only runs from an
         interactive worker sharing its own live Herdr tab -- a headless
         `claude-p` worker has none. The obligation bullet named "a coworker"
         as a route for every reader regardless.

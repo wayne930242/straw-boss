@@ -5,8 +5,6 @@ description: Use when the user wants to check or audit something against existin
 
 ## Overview
 
-See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
-
 Resolve the app, choose the smallest sufficient loop through `choosing-graph`, and assess it against real rule sources. This skill supplies the app boundary; the selected audit skill supplies the method.
 
 ## Task 1: Resolve the app

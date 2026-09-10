@@ -5,8 +5,6 @@ description: Use when something is broken and the cause is unknown in a managed 
 
 ## Overview
 
-See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
-
 A reported failure is expected to end fixed, not merely explained. Diagnosis and repair stay in one `shipping-task` single-loop so the same agent preserves the evidence and context it discovers.
 
 An **integration preflight** is useful only when both conditions hold: the failure crosses an integration boundary, and its explanatory conclusion is needed to shape or schedule later dispatches. It supplies evidence-backed coordination input. A symptom that one resolved app can diagnose and repair stays in the same worker.

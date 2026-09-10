@@ -34,15 +34,18 @@ import argparse
 import json
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from straw_boss.dispatch.state import dump_json, load_json, resolve_instruction_status_path
+from straw_boss.dispatch.messages import validate_note
+from straw_boss.dispatch.state import (
+    dump_json,
+    load_herdr_pane_instruction,
+    load_json,
+    resolve_instruction_status_path,
+)
 from straw_boss.herdr.transport import (
-    normalize_references,
     resolve_endpoint,
     validate_current_sender,
-    validate_delta_message,
     worker_endpoint_confirmed_closed,
 )
 
@@ -61,29 +64,15 @@ def recover_task_status(
             f"--status must be one of {RECOVERABLE_STATUSES}, got {status!r} -- "
             "cancelled already has its own main-agent path through report-task-status.py"
         )
-    try:
-        note = validate_delta_message(note)
-    except ValueError as exc:
-        raise ValueError(str(exc).replace("message", "--note", 1)) from exc
-    normalized_references = normalize_references(references)
+    note, normalized_references = validate_note(note, references)
 
-    inst_path = Path(instruction_path)
-    if not inst_path.is_file():
-        raise ValueError(f"no instruction file at {inst_path}")
-    instruction = load_json(inst_path)
-
-    mode = instruction.get("mode")
-    agent_kind = instruction.get("agent_kind")
-    if mode != "herdr-pane" or agent_kind not in ("claude", "codex"):
-        raise ValueError(
-            f"instruction {inst_path} is mode={mode!r} agent_kind={agent_kind!r} -- "
-            "closed-pane recovery only applies to a herdr-pane worker using a supported agent kind"
-        )
-    if not instruction.get("herdr_pane_id"):
-        raise ValueError(
-            f"instruction {inst_path} has no herdr_pane_id recorded -- it was never "
-            "dispatched, so there is nothing to recover"
-        )
+    inst_path, instruction = load_herdr_pane_instruction(
+        instruction_path,
+        label="instruction",
+        requires="closed-pane recovery only applies to a herdr-pane worker using a "
+        "supported agent kind",
+        undispatched_hint="it was never dispatched, so there is nothing to recover",
+    )
 
     validate_current_sender(resolve_endpoint(instruction, "main"))
 

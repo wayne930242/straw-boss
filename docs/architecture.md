@@ -22,11 +22,11 @@ That gap can make a separate workroom worth its coordination cost, whether the w
 
 A single item may also get a separate app-rooted workroom without becoming an orchestrator-worker graph. That is still a single-loop: one lifecycle owner drives one worker's dispatch, checkpoints, and cleanup. A separate workroom is selected for durable interaction, continuation, or an app ownership boundary, not merely because the task reads managed-app files.
 
-所有獨立 workroom 使用 Herdr pane，啟動前驗證服務、目前 pane 與 provider 身分。Claude 與 Codex 共用狀態、checkpoint 與清理流程。安裝、讀取設定與保存狀態的整理可獨立執行。
+Every separate workroom is a Herdr pane, with the service, the current pane, and the provider identity all validated before launch. Claude and Codex share the same status, checkpoint, and cleanup flow. Installing, reading configuration, and tidying persisted state all work on their own.
 
 ## Components
 
-This table is what each skill *does*; see `docs/roles.md` for who's doing it — the user/main agent/dispatched agent/subagent cast, not repeated here.
+This table is what each skill *does*; `skills/i-am-orchestrator/SKILL.md` names who's doing it — the user/main agent/dispatched agent/subagent/coworker cast, not repeated here.
 
 | Component | Kind | Role |
 |---|---|---|
@@ -42,8 +42,8 @@ This table is what each skill *does*; see `docs/roles.md` for who's doing it —
 | `peeking-work` | skill | Read-only peek at one dispatch's actual live content — a Herdr pane's recent output — without joining or interrupting it. Used by `dispatching-work`'s failure diagnosis and `boss-say`'s stalled-batch reporting; every other skill that needs this calls it too, instead of reimplementing the read |
 | `notifying-main-agent` | skill (invoked by a dispatched agent, not the main agent) | Routes integrated/context questions and status through instruction-keyed scripts; the independent worker and user own work details. `done`/`failed` persist before notifying the main-agent Herdr endpoint, and the watcher remains recovery evidence. |
 | `asking-peer-agents` | skill (invoked by a dispatched agent, not the main agent) | Reads a resolved peer's progress first, then uses authenticated question/answer messages with correlation ids; peers exchange facts, never direction or authorization. |
-| `init` | skill (user-invoked, one-time/occasional setup) | Ask which apps to manage, write `apps.json` and sync root `AGENTS.md` 與 `CLAUDE.md`; configure project work routes with provider profile/model/effort and optional Claude Code native advisor; verify Herdr dispatch readiness; check each app for a missing agent system and, on confirmation, dispatch `create-great-harness` into it |
-| `create-great-harness` | skill（由 init 委派或直接使用） | 依專案證據建立或補齊 `AGENTS.md`、`CLAUDE.md`，保留既有指引；可選 hook／rule 依確認範圍建立 |
+| `init` | skill (user-invoked, one-time/occasional setup) | Ask which apps to manage, write `apps.json` and sync root `AGENTS.md` and `CLAUDE.md`; configure project work routes with provider profile/model/effort and optional Claude Code native advisor; verify Herdr dispatch readiness; check each app for a missing agent system and, on confirmation, dispatch `create-great-harness` into it |
+| `create-great-harness` | skill (dispatched by `init`, or used directly) | Write or complete `AGENTS.md` and `CLAUDE.md` from project evidence while keeping existing instructions; an optional hook or rule is created within the confirmed scope |
 | `boss-say` | skill (**the** entry point) | Every request comes here — implementation, audit, research, or diagnosis. Selects the owning skill and smallest sufficient loop for one item, a capped batch, or a self-paced backlog, then carries bounded work or invokes the needed coordination mechanics |
 | `i-am-orchestrator` | injected main-agent skill | Keep dispatched lifecycles event-driven, surface only coordination deltas, and leave work definition to each dispatched agent and the user inside the named reality anchor |
 | `choosing-graph` | skill (a main agent or a dispatched worker invokes it before work starts) | Name the coordination graph — single-loop, sub-agent fan-out/fan-in, or the orchestrator-worker that dispatches more than one app-rooted worker and alone writes `plan.json` — and the reality anchor that will prove the result: testing, pseudo-human, human, or an independent agent's adversarial review. The anchor names the category and its checkpoint; the seam, cases, and tools inside it stay with the worker and the user. A frontend human/pseudo-human anchor gets its port claimed at dispatch |
@@ -56,7 +56,7 @@ This table is what each skill *does*; see `docs/roles.md` for who's doing it —
 
 ## Why one entry point for everything
 
-Per `docs/roles.md`'s cast: the user owns the requested outcome, while the main
+Per `i-am-orchestrator`'s cast: the user owns the requested outcome, while the main
 agent owns routing and coordination. In a bounded single-loop it also owns the
 work. Once work is dispatched, the launched agent and user own its work details
 inside the reality anchor named by the main agent. `boss-say` is the single door
@@ -85,17 +85,17 @@ Both are stated, not asked. A user who disagrees overrides it in one sentence, w
 
 ## Why the app list is project config, not plugin code
 
-`straw_boss/apps.py` 集中設定路徑、舊版 fallback 與讀取驗證。技能透過 `read-apps-config.py` 取得設定與來源，`copy-local-files.py` 直接使用同一 Python 介面。
+`straw_boss/apps.py` owns the config path, the legacy fallback, and read validation in one place. Skills get the configuration and its source through `read-apps-config.py`; `copy-local-files.py` uses the same Python interface directly.
 
-設定讀取優先使用 `.straw-boss/apps.json`；新路徑不存在時相容 `.claude/straw-boss/apps.json`。`init` 將確認後的舊設定寫入新路徑並保留舊檔，回報其已被取代。
+Configuration is read from `.straw-boss/apps.json` first, falling back to `.claude/straw-boss/apps.json` when the new path does not exist. `init` writes the confirmed old configuration to the new path, leaves the old file in place, and reports that it has been superseded.
 
-Everything that used to be hardcoded per app (the routing table, legacy redirects, forbid-direct-commit rules, per-app git-workflow skills, gitignored local files a worktree needs, cross-app coordination pointers) is real knowledge about *your* project, not about straw-boss. `init` asks for it once and writes it to `.straw-boss/apps.json` (schema: `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md`) plus a synced section in your project's root `AGENTS.md` 與 `CLAUDE.md`. Without that config, `work-on` can infer only the root of a repository that clearly contains one app; monorepo routing and per-app policy come from the project's config.
+Everything that used to be hardcoded per app (the routing table, legacy redirects, forbid-direct-commit rules, per-app git-workflow skills, gitignored local files a worktree needs, cross-app coordination pointers) is real knowledge about *your* project, not about straw-boss. `init` asks for it once and writes it to `.straw-boss/apps.json` (schema: `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md`) plus a synced section in your project's root `AGENTS.md` and `CLAUDE.md`. Without that config, `work-on` can infer only the root of a repository that clearly contains one app; monorepo routing and per-app policy come from the project's config.
 
 ## State: project config vs. machine state
 
 - **`.straw-boss/apps.json`** — project-level, checked into git, shared with the team. Which apps exist, how to route to them, their per-app quirks.
 
-- **`~/.straw-boss/dispatch/` 與 `plans/`** — 使用者機器上的委派與排程狀態，可在 Herdr 服務故障時讀取及依證據整理。
+- **`~/.straw-boss/dispatch/` and `plans/`** — dispatch and scheduling state on the user's own machine, readable and tidyable from evidence even when the Herdr service is down.
 
 ## External mutations stay gated
 

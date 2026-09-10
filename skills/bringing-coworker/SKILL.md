@@ -5,6 +5,10 @@ description: Bring one interactive coworker into a dispatched worker's current H
 
 # Bring a coworker
 
+A coworker is one interactive agent you bring into your own Herdr tab and
+worktree for a second opinion or file-disjoint support. You integrate its
+result, and coworker nesting stops at this one level.
+
 ## 1. Scope the second opinion
 
 Give the coworker one outcome that can run beside your current task. Default to

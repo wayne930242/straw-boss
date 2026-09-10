@@ -96,6 +96,43 @@ def resolve_instruction_status_path(
     return standalone_status_path(instruction_path)
 
 
+SUPPORTED_AGENT_KINDS = ("claude", "codex")
+
+
+def load_herdr_pane_instruction(
+    instruction_path: str | Path,
+    *,
+    label: str,
+    requires: str,
+    undispatched_hint: str,
+) -> tuple[Path, dict[str, Any]]:
+    """An instruction file that names a confirmed herdr-pane worker.
+
+    Three preconditions travel together -- the file exists, it is a herdr-pane
+    dispatch of a supported agent kind, and a pane id was recorded for it -- so
+    a caller that checks two of them fails later and less legibly than one that
+    checks none. `requires` and `undispatched_hint` carry what this particular
+    caller needs it for, because "there is nothing to recover" and "was dispatch
+    confirmed?" send an operator to different places.
+    """
+    inst_path = Path(instruction_path)
+    if not inst_path.is_file():
+        raise ValueError(f"no {label} file at {inst_path}")
+    instruction = load_json(inst_path)
+
+    mode = instruction.get("mode")
+    agent_kind = instruction.get("agent_kind")
+    if mode != "herdr-pane" or agent_kind not in SUPPORTED_AGENT_KINDS:
+        raise ValueError(
+            f"{label} {inst_path} is mode={mode!r} agent_kind={agent_kind!r} -- {requires}"
+        )
+    if not instruction.get("herdr_pane_id"):
+        raise ValueError(
+            f"{label} {inst_path} has no herdr_pane_id recorded -- {undispatched_hint}"
+        )
+    return inst_path, instruction
+
+
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 

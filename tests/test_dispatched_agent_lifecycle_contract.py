@@ -345,7 +345,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertNotIn("advisor", coworker.lower())
 
     def test_dispatch_brief_leaves_target_context_discovery_to_worker(self) -> None:
-        roles = (ROOT / "docs" / "roles.md").read_text()
+        orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
         dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
         shipping = (ROOT / "skills" / "shipping-task" / "SKILL.md").read_text()
         boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
@@ -361,7 +361,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         normalize = lambda source: " ".join(source.replace("`", "").split())
         self.assertIn(
             "target-app context discovery belongs to the dispatched agent",
-            normalize(roles).lower(),
+            normalize(orchestrator).lower(),
         )
         self.assertIn(
             "Target-app implementation, precedent, and local-context discovery stays with the worker",
@@ -379,7 +379,6 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         )
 
     def test_target_app_work_uses_the_smallest_sufficient_execution_tier(self) -> None:
-        roles = (ROOT / "docs" / "roles.md").read_text()
         context = (ROOT / "CONTEXT.md").read_text()
         orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
         boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
@@ -417,23 +416,22 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("explanatory", normalized_troubleshooting)
         self.assertNotIn("- **Solo:**", troubleshooting)
 
-        for source in (roles, context, orchestrator):
+        for source in (context, orchestrator):
             self.assertIn("once work is dispatched", normalize(source).lower())
 
     def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:
-        roles = (ROOT / "docs" / "roles.md").read_text()
         context = (ROOT / "CONTEXT.md").read_text()
         orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
         dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
         boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
         contract_source = (ROOT / "scripts" / "straw_boss" / "dispatch" / "state.py").read_text()
 
-        for source in (roles, context, orchestrator):
+        for source in (context, orchestrator):
             self.assertIn("smallest sufficient loop", source.lower())
             self.assertNotIn("adjust an item's spec", source)
-        self.assertIn("accept", roles.lower())
-        self.assertIn("user and dispatched agent", roles)
-        for source in (roles, context, orchestrator, dispatching, boss_say, contract_source):
+        self.assertIn("accept", orchestrator.lower())
+        self.assertIn("user and dispatched agent", orchestrator)
+        for source in (context, orchestrator, dispatching, boss_say, contract_source):
             normalized = " ".join(source.split())
             self.assertIn(
                 "specification, design, implementation, and the verification method",
@@ -706,11 +704,14 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         # main-agent session start had grown to 2,373 characters of restated
         # rules. Keep the trim, or restate a rule somewhere it is not already
         # stated and this fails. The budget buys one line per coordination rule
-        # a main agent actually operates -- it moved from 1,800 to 1,900 when
-        # orchestrator registration became one of them, and the
+        # a main agent actually operates -- 1,800 to 1,900 when orchestrator
+        # registration became one of them, and 1,900 to 2,400 when deleting
+        # docs/roles.md made this the only execution-time home for the naming
+        # rule and the dispatched-agent boundary, and ADAAV stopped being an
+        # acronym with no definition anywhere a session could reach. The
         # each-rule-stated-once assertions above stay the guard against
         # restatement buying that room back.
-        self.assertLessEqual(len(injected), 1900, injected)
+        self.assertLessEqual(len(injected), 2400, injected)
 
     def test_control_message_preserves_the_exact_slash_command(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")

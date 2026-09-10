@@ -5,13 +5,11 @@ description: Determines which of the project's managed apps a request belongs to
 
 ## Overview
 
-See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
-
 App resolution: identify the checkout and return it to the caller. The caller's chosen coordination graph decides whether the current agent works there or opens a separate app-rooted workroom.
 
 An agent working in the app loads its own instructions before acting. A separate workroom is useful when the caller needs the app's full session harness or a durable interactive lifecycle.
 
-從目前目錄以 `git rev-parse --show-toplevel` 解析 repo root，再執行 `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md` 的共用讀取 handler。exit 0 時使用回傳的 `config` 與來源；exit 3 才進入下方無設定分支；exit 1 回報設定錯誤並修復後重試。
+Resolve the repo root from the current directory with `git rev-parse --show-toplevel`, then run the shared read handler in `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md`. On exit 0, use the returned `config` and its source; exit 3 is what takes you to the no-config branch below; exit 1 means a config error to report, fix, and retry.
 
 **If it doesn't exist, that's not a hard stop — `init` is a convenience, not a precondition.** See Task 1's no-config handling below.
 

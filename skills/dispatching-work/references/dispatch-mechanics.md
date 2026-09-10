@@ -5,12 +5,13 @@ files are never modified to inject a dispatch workflow.
 
 ## Resolve mode and work route
 
-兩個指引檔的 routing 區段若不同，呈現差異並由使用者選定本次設定；init Task 3 負責同步確認後的區段。
+Where the two instruction files' routing sections differ, present the difference and let the user pick the setup for this dispatch; `init` Task 3 owns syncing the confirmed section.
 
-Herdr 委派入口先核對服務與目前 pane 的 live record，條件齊備才寫入指令。
+The dispatch entry point checks the Herdr service and the current pane's live record first, and writes the instruction only once both hold.
 
 - Resolve the worker setup independently: explicit per-dispatch override, then
-  a matching work route in root `AGENTS.md`（缺少 routing 區段時讀取 `CLAUDE.md`）, then the app's
+  a matching work route in root `AGENTS.md` (read `CLAUDE.md` when it has no
+  routing section), then the app's
   `apps.json.agentKind`, then Claude with provider defaults. A work route can
   select agent kind, provider profile, model, effort, and a Claude Code native
   advisor. Codex has no native advisor; refuse that combination.

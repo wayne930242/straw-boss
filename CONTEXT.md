@@ -1,6 +1,6 @@
 # straw-boss
 
-Canonical actor names and authority live in `docs/roles.md`.
+Canonical actor names and authority live in `skills/i-am-orchestrator/SKILL.md`.
 
 ## Working model
 
@@ -101,5 +101,5 @@ One live Herdr terminal instance; legacy Codex dispatches use it when the
 provider conversation identity was unavailable at launch.
 _Avoid_: conversation id
 
-**老闆助理（boss assistant）**：
-統籌所有協調者的 Straw Boss 摩擦與 graph 修復，將實際使用當作持續 UAT，依證據改善流程、效能與儲存。角色權限以 `docs/roles.md` 為準，接案與上游提案流程由 `boss-assistant` 定義。
+**Boss assistant**:
+Coordinates Straw Boss friction and graph repair across every main agent, treats real use as continuous UAT, and improves the flow, its performance, and its storage from evidence. Role authority is `skills/i-am-orchestrator/SKILL.md`; intake and the upstream-proposal flow are defined by `boss-assistant`.

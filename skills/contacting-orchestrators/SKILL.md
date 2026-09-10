@@ -41,7 +41,7 @@ coordinator that moved panes.
 Listing and sending also discover live coordinators from the verified main-agent
 fingerprints in current and archived dispatch instructions. Coworker instructions
 identify their root coordinator. These rows carry `discovery_source` and
-`discovery_ref`, with `scope_declared: false` and “自動偵測，未宣告 scope”.
+`discovery_ref`, with `scope_declared: false` and “discovered automatically, no scope declared”.
 Discovery is read-only and preserves registered scope text. A discovered
 coordinator can receive and answer messages before declaring its scope.
 Names and cwd alone leave an agent unattributed; an agent with no registration
@@ -86,6 +86,6 @@ that actually disagree go to the user, per the rule above.
 **Complete when:** this session holds a current record, and each delta it owed
 another orchestrator is delivered or recorded undelivered.
 
-## Straw Boss 摩擦回報
+## Reporting Straw Boss friction
 
-遇到 Straw Boss 阻礙或 coordination graph 摩擦時，使用 `boss-assistant` 的回報流程。目錄中 scope 以 `[boss-assistant]` 開頭且 `live: true` 的協調者是接案對象；助理不存在、多位或不可達的處理也由該 skill 定義。回報後繼續原任務中可執行的工作，依回覆處理協調修復。
+On a Straw Boss blocker or coordination-graph friction, use `boss-assistant`'s reporting flow. The recipient is the directory entry whose scope starts with `[boss-assistant]` and whose `live` is true; that skill also defines what to do when no assistant exists, several do, or none is reachable. After reporting, continue whatever the original task still allows, and handle the coordination repair from the reply.

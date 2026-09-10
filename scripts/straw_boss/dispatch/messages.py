@@ -55,6 +55,23 @@ def normalize_references(
     return tuple(normalized)
 
 
+def validate_note(
+    note: str, references: list[str] | tuple[str, ...]
+) -> tuple[str, tuple[str, ...]]:
+    """A `--note`/`--ref` pair as the status scripts accept it.
+
+    `validate_delta_message` phrases its complaint about "message", which is the
+    right noun for `send-dispatch-message.py` and the wrong one on a status
+    script whose flag is `--note` -- an operator told to shorten "message" goes
+    looking for a flag that is not there.
+    """
+    try:
+        note = validate_delta_message(note)
+    except ValueError as exc:
+        raise ValueError(str(exc).replace("message", "--note", 1)) from exc
+    return note, normalize_references(references)
+
+
 def dispatch_label(path: Path, instruction: dict[str, Any]) -> str:
     app = str(instruction.get("app", "unknown-app"))
     stem = path.name.removesuffix(".json")

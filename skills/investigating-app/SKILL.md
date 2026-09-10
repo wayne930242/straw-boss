@@ -5,8 +5,6 @@ description: Use when the user wants to understand how something currently works
 
 ## Overview
 
-See `docs/roles.md` for the cast of characters and the authority framework this skill operates under — not redefined here.
-
 Resolve the app, choose the smallest sufficient loop through `choosing-graph`, and produce an evidence-backed explanation. This skill supplies the app boundary; the selected research skill supplies the method.
 
 ## Task 1: Resolve the app

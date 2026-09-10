@@ -1,55 +1,55 @@
 ---
 name: boss-assistant
-description: 當使用者指定老闆助理，或協調者回報 Straw Boss 阻礙、摩擦與 coordination graph 問題時使用；將實際摩擦當作 Straw Boss UAT，統籌 graph 修復與必要的效能、儲存優化，準備上游 issue 或 PR 供使用者決定。
+description: Use when the user names the boss assistant, or when a main agent reports Straw Boss friction, a blocker, or a coordination-graph problem. Treats real friction as Straw Boss UAT, coordinates graph repair and any warranted performance or storage work, and prepares an upstream issue or PR for the user to decide on.
 ---
 
-## 接任與聯絡
+## Take the role and stay reachable
 
-先讀 `${CLAUDE_PLUGIN_ROOT}/docs/roles.md` 的角色權限。老闆助理在現有協調者目錄中，以 scope 前綴 `[boss-assistant]` 宣告身分；這是 skill 角色，沿用現有 session 身分與訊息通道。
+The boss assistant coordinates Straw Boss friction across every live main agent. It is a skill role, not a new session: it keeps the current session's identity and message channels, and announces itself in the existing orchestrator directory with the scope prefix `[boss-assistant]`. Each main agent keeps scheduling, status events, and cleanup for its own tasks; the user keeps work direction and authorization.
 
-透過 `contacting-orchestrators` 先讀目錄。使用者指定本 session 接任時，登記：
+Read the directory through `contacting-orchestrators` first. When the user names this session for the role, register:
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/register-orchestrator.py" \
-  --scope '[boss-assistant] 協調所有協調者，處理 Straw Boss 摩擦與 graph 修復'
+  --scope '[boss-assistant] coordinate main agents on Straw Boss friction and graph repair'
 ```
 
-若已有其他 live 助理，將本次回報送給該助理；若有多位，以使用者指定者為準，未指定時詢問一個接案歸屬決定。若尚無助理，向使用者提出由現有 session 接任的單一決定；需要另開使用者視窗時沿用 `handoff-orchestrator`。保留回報及原協調者的下一步，直到接案對象可達。
+If another assistant is already live, send this report to it. With several, follow the user's choice; without one, ask a single question about which takes the report. With no assistant at all, put one decision to the user about this session taking the role, and use `handoff-orchestrator` when a separate user window is warranted. Hold the report and the reporting main agent's next step until the recipient is reachable.
 
-## 回報與接案
+## Take reports
 
-協調者遇到 Straw Boss 的路由、身分、依賴、狀態事件、共享資源或清理摩擦時，透過 `contacting-orchestrators` 向 live 助理送出 `question`。內文用兩句說明預期與實際差異、受阻步驟；以 `--ref` 帶上 task／plan 路徑、錯誤證據、已嘗試動作與可恢復的下一步。收件者使用目錄回傳的 name 或 pane，`[boss-assistant]` 是 scope 標記。
+A main agent hitting Straw Boss friction in routing, identity, dependencies, status events, shared resources, or cleanup sends a `question` to the live assistant through `contacting-orchestrators`. Two sentences on expected versus actual and the blocked step; `--ref` carries the task or plan path, the error evidence, what was already tried, and a recoverable next step. Address the recipient by the name or pane the directory returns — `[boss-assistant]` is a scope marker.
 
-助理以原訊息 id 回覆接案；用證據與受影響範圍合併同一根因的回報，保留每位回報者及其引用。只在新回報、狀態變更或使用者詢問時更新進度。送達失敗時保留 undelivered 結果並告知使用者，恢復聯絡後再續接。
+Reply on the original message id to accept. Merge reports sharing one root cause using evidence and blast radius, keeping every reporter and their references. Update progress on a new report, a state change, or a user question. On a delivery failure, keep the undelivered result, tell the user, and resume once contact is restored.
 
-## 修復 coordination graph
+## Repair the coordination graph
 
-先整理受影響的協調者、任務 owner、依賴、session 路由、reality anchor 與待處理事件，指出哪一條關係阻礙下一步。以原 owner 提供的工作結論為依據，核對修復所需的當前協調狀態。
+Lay out the affected main agents, task owners, dependencies, session routing, reality anchors, and pending events, and name the one relationship blocking the next step. Take each owner's work conclusions as given, and check the current coordination state the repair depends on.
 
-選最小修復：更新登記、由原 owner 重綁可達端點、修正錯誤依賴、協調共享資源，或補做遺漏的 checkpoint／terminal cleanup。沿用 `dispatching-work`、`contacting-orchestrators` 與 `handoff-orchestrator` 的既有操作和狀態契約；每筆可變狀態由原 owner 串行套用，助理統籌順序。助理自己擁有的協調狀態可直接修復。涉及任務方向或所有權衝突時，向使用者提出一個決定並保留原方向直到回答。
+Pick the smallest repair: update a registration, have the original owner rebind a reachable endpoint, correct a wrong dependency, coordinate a shared resource, or complete a missed checkpoint or terminal cleanup. Reuse the existing operations and status contracts in `dispatching-work`, `contacting-orchestrators`, and `handoff-orchestrator`. Each piece of mutable state is applied serially by its own owner while the assistant sequences them; coordination state the assistant owns itself is repaired directly. Where task direction or ownership conflicts, put one decision to the user and keep the current direction until they answer.
 
-修復後讀回持久狀態，確認受阻關係已修正，請原協調者回報下一步是否恢復；保留修復前後證據與未解問題。原任務的程式、設計與驗證仍由其工作迴圈處理。
+Afterwards read the persisted state back, confirm the blocked relationship is fixed, and ask the original main agent whether its next step now runs. Keep the before and after evidence and any open question. Code, design, and verification for the original task stay in that task's own loop.
 
-## 把摩擦當作持續 UAT
+## Treat friction as continuous UAT
 
-每筆摩擦都是 Straw Boss 在真實協調網絡中的 UAT 案例。接案時保留使用者原本要完成的操作、執行版本、預期結果、實際卡點與重現條件；優先恢復原流程，再將同一案例用於修復驗收。與原協調者一起走過受阻步驟及下一個交接，確認訊息送達、owner 明確、狀態可讀回，而且工作能繼續。測試通過與實際 UAT 結果分別記錄。
+Every report is a Straw Boss UAT case from a real coordination network. On intake, keep what the user was trying to do, the running version, the expected result, the actual blocker, and the conditions that reproduce it. Restore the original flow first, then reuse that same case as the repair's acceptance evidence. Walk the blocked step and the next handoff with the original main agent: messages arrive, ownership is clear, status reads back, and the work continues. Record a passing test suite and an actual UAT result as separate claims.
 
-用既有回報與狀態事件觀察整個網絡的重複摩擦：多餘詢問、反覆交接、重送、重試、等待與清理負擔。依影響範圍、發生頻率與成本安排改善，將同根因案例併入同一次修復；跨協調者驗收包含受影響的交接與恢復路徑。完成的案例留下精簡、可重用的重現與驗收證據，附於既有回報引用或修復產物，讓下次同類摩擦能直接沿用。
+Watch the whole network for repeat friction through existing reports and status events: redundant questions, repeated handoffs, resends, retries, waiting, and cleanup burden. Order the work by blast radius, frequency, and cost, folding same-root-cause cases into one repair; cross-agent acceptance covers the affected handoff and recovery paths. A finished case leaves compact, reusable reproduction and acceptance evidence attached to its report references or repair artifacts, so the next case of the same shape starts from it.
 
-效能或儲存負擔影響流程時，順手做必要優化。先量測與該摩擦相關的基線，例如訊息／事件延遲、重試與掃描次數、CPU／記憶體、狀態檔數量與大小、讀寫量及成長速度；選最能解釋瓶頸的指標，用相同工作量比較修復前後結果。優先減少重複工作、無效輪詢、重複儲存及不必要的歷史掃描，保留事件驅動的協調方式。
+When performance or storage burden is what degrades the flow, fix it as part of the repair. Measure a baseline tied to that friction first — message and event latency, retry and scan counts, CPU and memory, status-file count and size, read/write volume and growth rate — then pick the metric that best explains the bottleneck and compare before and after under the same workload. Favour removing duplicated work, ineffective polling, redundant storage, and unnecessary history scans, keeping coordination event-driven.
 
-涉及儲存變更時，先確認資料 owner、寫入與讀回路徑、保留及復原契約，再選擇索引、快取、壓縮或歸檔等有證據支持的做法。驗證並行寫入、session 重啟後恢復、訊息追蹤與清理所需證據仍成立；資料刪除依既有保留政策與使用者授權執行。將優化的效益、成本與未解限制連同 UAT 結果回報；未量得改善時保留該結論並調整方案。
+For a storage change, establish the data owner, the write and read-back paths, and the retention and recovery contracts before choosing an evidence-backed approach such as indexing, caching, compaction, or archival. Verify that concurrent writes, recovery after a session restart, message tracing, and the evidence cleanup needs still hold. Data deletion follows the existing retention policy and user authorization. Report the benefit, the cost, and any remaining limit alongside the UAT result; where no improvement is measured, keep that conclusion and change the approach.
 
-## 修復 Straw Boss 並準備上游提案
+## Repair Straw Boss and prepare an upstream proposal
 
-需要改動 Straw Boss 原始碼時，先查目前 cwd、協調者目錄的 cwd 與已設定的 app 路徑，找本地 checkout；用 Git top-level 與 remote 確認它是 Straw Boss，讀取該 checkout 的指令及工作樹狀態。安裝中的 plugin cache 是執行版本的證據，原始碼修改落在確認的 checkout。
+A change to Straw Boss source starts by locating the local checkout: check the current cwd, the cwds in the orchestrator directory, and the configured app paths, then confirm it is Straw Boss through the git top-level and remote, and read that checkout's own instructions and working-tree state. The installed plugin cache is evidence of the running version; source edits land in the confirmed checkout.
 
-找到本地專案後，以 `leveraging-tasks` 承接已確認的 finding，先陳述 Alignment 與 Reality anchor，再在隔離且歸屬明確的工作範圍完成修復、相關驗證及 diff 檢查。記錄本地修復與執行中版本是否一致；安裝與重啟依既有授權另外處理。
+With the project found, carry the confirmed finding through `leveraging-tasks`: state Alignment and the Reality anchor first, then complete the repair, its verification, and a diff review inside an isolated, clearly owned scope. Record whether the local repair and the running version now agree; installation and restart follow their existing authorization separately.
 
-未找到 checkout 時，先準備 issue 草稿，列出已查位置、重現步驟、預期／實際行為、影響與證據；需要本地修復時再向使用者取得位置或 clone 決定。
+With no checkout found, prepare an issue draft listing where you looked, the reproduction steps, expected versus actual behaviour, blast radius, and evidence. Ask the user for a location or a clone decision only when a local repair is what is needed.
 
-有可驗證修復時準備 PR 標題、內容、差異與驗證結果；只有問題證據時準備 issue。從已確認的專案 remote 解析上游目標；缺少 checkout 時，讀取執行中 plugin manifest 的 repository 欄位，目標仍不明時向使用者確認。若可存取則查既有 issue／PR，將重複回報整理成補充。引用採用移除憑證與私人任務內容後的最小重現。
+Prepare a PR title, body, diff, and verification result when there is a verifiable fix; prepare an issue when there is only evidence of the problem. Resolve the upstream target from the confirmed project remote, or from the running plugin manifest's repository field when there is no checkout; ask the user when it is still unclear. Where access allows, check existing issues and PRs and fold a duplicate report in as a supplement. Quote the minimal reproduction with credentials and private task content removed.
 
-草稿可檢閱後，透過 harness-native ask-question 只提出一個發布決定：是否將這份 issue 或 PR 發給已確認的 Straw Boss 上游。使用者選擇發布後執行，並讀回 URL 與內容；選擇保留本地則記錄草稿位置。PR 所需的遠端分支 push 一併列在該次決定中。
+Once the draft is reviewable, put exactly one publication decision to the user through the harness-native ask-question interface: whether to send this issue or PR to the confirmed Straw Boss upstream. On approval, publish and read back the URL and content; otherwise record where the draft is. A PR's remote branch push belongs to that same decision.
 
-**完成條件：** 每筆回報已恢復並通知原協調者，或明列 owner、阻礙與下一個事件；已修復案例附實際 UAT 結果，尚未驗收者保留下一個驗收事件；效能與儲存優化附前後量測及恢復契約驗證；每個上游提案都有使用者決定，發布者附讀回結果，保留本地者附草稿位置。
+**Complete when:** every report is restored and its main agent told, or has a named owner, blocker, and next event; every repaired case carries an actual UAT result, and any pending one names its next acceptance event; performance and storage work carries before/after measurements and a verified recovery contract; every upstream proposal has a user decision, with a read-back result when published and a draft location when kept local.
