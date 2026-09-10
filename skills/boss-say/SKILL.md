@@ -7,7 +7,12 @@ description: Use to route work through Straw Boss: one task, a small independent
 
 This skill owns routing and capped-batch scheduling. A git lifecycle goes to `shipping-task`; `work-on` resolves the app; `dispatching-work` supplies mechanics only when a separate workroom is useful.
 
-**A reported failure ends fixed, not merely explained.** An **integration preflight** — diagnosis dispatched separately from the fix — is warranted only when both conditions hold: the failure crosses an integration boundary, and its explanatory conclusion is needed to shape or schedule later dispatches. It requires an explanatory, falsifiable root-cause account with evidence references, anchored on an independent agent's adversarial review of that account. A symptom one resolved app can diagnose and repair stays in the same worker.
+**A reported failure ends fixed, not merely explained.** An **integration preflight** — diagnosis dispatched separately from the fix — is warranted only when both conditions hold:
+
+- the failure crosses an integration boundary, and
+- its explanatory conclusion is needed to shape or schedule later dispatches.
+
+It requires an explanatory, falsifiable root-cause account with evidence references, anchored on an independent agent's adversarial review of that account. A symptom one resolved app can diagnose and repair stays in the same worker.
 
 For every other app-level or uncertain failure, diagnosis and repair stay in one `shipping-task` loop. One agent reproduces the failure, explains its mechanism and root cause, and repairs it, keeping the evidence and context it discovers; the fix is anchored on testing, so the reproduction goes red before the repair. Carry any hypothesis the user already eliminated, with its evidence.
 
@@ -97,7 +102,7 @@ reduction to the user.
 4. On a `done`/`failed`/`cancelled` status event for any in-flight task: receive the Herdr notification, auto-detach it, then refill the queue. `cancelled` is coordinator-authored only for an explicit user request or an objectively invalid dispatch.
 5. `awaiting-authorization`/`awaiting-user-input` are not terminal and do not free a slot. Report the coordination delta compactly. For an interactive task, name it and point the user to its pane.
 6. `awaiting-main-agent` is also not terminal and does not free a slot. Resolve it in the same tick only with integrated context or a coordinator-owned action result: an interactive task uses `reply-to-worker.py --worker-instruction-path <path> --reply "<answer or action result>"`. If it asks for a work-content decision, direct it to the user instead.
-7. **A feature-branch push notification is not a plan-status event — it never appears in `read-plan-status.py` or `watch-plan-status.py`.** A team-mode task pushed its own feature branch and opened or updated an MR/PR on its own (`shipping-task`'s Overview, unchanged for a batch item) — it needed no authorization and was never waiting. Relay the script-delivered FYI to the user; a task with no live route records it in the progress trail. Don't treat it as `awaiting-authorization`, obtain authorization, or change slot accounting.
+7. **A feature-branch push notification is not a plan-status event — it never appears in `read-plan-status.py` or `watch-plan-status.py`.** A team-mode task pushed its own feature branch and opened or updated an MR/PR on its own — it needed no authorization and was never waiting. Relay the script-delivered FYI to the user; a task with no live route records it in the progress trail. Don't treat it as `awaiting-authorization`, obtain authorization, or change slot accounting.
 8. **Idle in-flight tasks — peek on entry or change.** When every currently in-flight task first enters `awaiting-authorization`/`awaiting-user-input`, or one of those states or notes changes, invoke `peeking-work` on the changed task. Report that new finding by name. If in-flight also equals the cap, report the newly observed **fully stalled batch**. (`awaiting-main-agent` is resolved by step 6.)
 
 **Don't re-peek or report unchanged idleness.** A later event or `/loop` tick carrying the same state and note is confirmation, not a coordination delta. Retain the prior finding and use quiet pacing until the task changes or the user asks.
@@ -132,7 +137,7 @@ Feature-branch push FYIs remain outside Plan status and are relayed per Task 5 s
 
 ## Task 7: Wrap up
 
-Once every task in the plan is terminal, report a summary: how many `done`, how many `failed` and why (from each failed task's status-file `note`), and how many `cancelled` and why (from each cancelled task's own note — the main agent's own reason for ending it). This is the same completion condition `dispatching-work`'s own plan branch uses — judged across all tasks, never on the first one finishing. Stop the status watcher (one-shot) or send the final `ScheduleWakeup({stop: true})` (self-paced) as the last step, not an afterthought.
+Once every task in the plan is terminal, report a summary: how many `done`, how many `failed` and why (from each failed task's status-file `note`), and how many `cancelled` and why (from each cancelled task's own note — the main agent's own reason for ending it). Completion is judged across all tasks, never on the first one finishing. Then stop the status watcher (one-shot) or send the final `ScheduleWakeup({stop: true})` (self-paced).
 
 For each item that landed a programming change, confirm its completion reference and record the single review disposition defined by `choosing-graph`.
 

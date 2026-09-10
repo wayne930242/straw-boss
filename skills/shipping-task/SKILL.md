@@ -5,7 +5,7 @@ description: Use to carry one task through a managed app's git lifecycle.
 
 ## Overview
 
-straw-boss standardizes two lifecycle shapes across every managed app: **team-mode** (worktree → develop → MR → merge → archive) and **solo-mode** (develop directly in the app's primary checkout, commit straight to the base branch). Which one applies is how the user regards this piece of work, which they can answer before the cause is known, so Task 2 asks them — except where the resolved app's `apps.json` entry sets `forbidDirectCommit: true`, in which case only team-mode is offered. Scoping the task happens before this skill. Picking the app happens as this skill's own first step, via `work-on`.
+straw-boss standardizes two lifecycle shapes across every managed app: **team-mode** (worktree → develop → MR → merge → archive) and **solo-mode** (develop directly in the app's primary checkout, commit straight to the base branch). Which one applies is how the user regards this piece of work, which they can answer before the cause is known, so Task 2 asks them — except where the resolved app's `apps.json` entry sets `forbidDirectCommit: true`, in which case only team-mode is offered.
 
 Invoke `work-on` first when the target app is not established; it returns the app and directory. The execution tier comes from `boss-say`: a bounded single-loop stays with the current agent; work needing a separate durable workroom uses `dispatching-work`, and creates durable task tracking when it spans turns or checkpoints. An app may already own its git lifecycle through `apps.json.gitWorkflowSkill`; otherwise the fallback below applies.
 

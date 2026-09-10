@@ -20,7 +20,7 @@ Exact CLI/JSON syntax lives in `references/`:
 
 For a specific agent's actual live content or progress — not just its status — invoke `peeking-work` instead of reading a pane/transcript inline here.
 
-**Self-compact.** The main agent can compact its own context anytime, on its own judgment, regardless of dispatch mode or whether a plan is involved — `herdr agent prompt "$HERDR_PANE_ID" "/compact [focus]"` types the command into its own pane; no separate tool or permission needed. It never needs to ask the user first. Reach for it once anything the next turn would need is already persisted somewhere durable (`plan.json`, an instruction file) rather than sitting only in this turn's own reasoning — full mechanics, including why this never interrupts work in flight, in `cross-session-coordination.md`'s "Self-compact".
+**Self-compact.** Compact your own context whenever the next turn's needs are already persisted somewhere durable (`plan.json`, an instruction file) rather than sitting only in this turn's reasoning: `herdr agent prompt "$HERDR_PANE_ID" "/compact [focus]"`. This is yours to decide, and it interrupts nothing in flight — mechanics in `cross-session-coordination.md`'s "Self-compact".
 
 ## Task 1: Confirm Herdr and the work route
 

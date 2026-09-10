@@ -13,14 +13,19 @@ Resolve the repo root from the current directory with `git rev-parse --show-topl
 
 **No `apps.json` at all:** which branch applies depends on how the repo itself reads.
 
-- **Reads as single-app** (no `apps/`/`packages/`/`services/`-style directory holding more than one independent codebase at the repo root): treat the repo root itself as the one implicit app — name it from its `package.json` (or equivalent manifest) or, failing that, the repo root's own directory basename; `dir` is the repo root. Proceed exactly as if that were the sole `apps.json` entry. Mention once, briefly, that running `init` is available if they want to customize git-lifecycle behavior, local-only files, etc. — but never require it first.
+- **Reads as single-app** (no `apps/`/`packages/`/`services/`-style directory holding more than one independent codebase at the repo root): treat the repo root itself as the one implicit app — name it from its `package.json` (or equivalent manifest) or, failing that, the repo root's own directory basename; `dir` is the repo root. Mention once, briefly, that running `init` is available if they want to customize git-lifecycle behavior, local-only files, etc. — but never require it first.
 - **Reads as a monorepo** (more than one plausible app directory, and no config to say which is which): that's real ambiguity, not something to guess through — ask the user which directory this specific request targets, or suggest `init` if they'd rather configure it once than get asked every time.
 
 **Exactly one non-redirect app configured:** use it as the target unless the request is explicitly outside that app, such as infrastructure owned elsewhere or a self-contained external lookup. In that case, return the out-of-scope classification to the caller. Otherwise skip matching and proceed.
 
-**More than one:** build a routing table from `apps.json` — one row per entry, `name` + `match` phrases → `dir`, skipping entries with `redirectTo` set. Match the request against this table; if it clearly names or implies one row, that's the target. A request that clearly spans more than one app names every app it touches — don't force a single answer; each app is routed, gated, and later shipped independently, and `shipping-task` runs them as separate per-app worktree/MR/review cycles rather than one blended change. A request matching no row and explicitly outside managed-app work (see Out of scope) falls outside the project's managed-app scope, said plainly; an unmatched app-related request is clarified with the user.
+**More than one:** build a routing table from `apps.json` — one row per entry, `name` + `match` phrases → `dir`, skipping entries with `redirectTo` set — and match the request against it.
 
-**Resolved to a `redirectTo` entry:** redirect to the named app. This is about where *new* work belongs — it does not apply to auditing code that already exists in the legacy app. Surface the entry's `note` if one is set (e.g. an app that doesn't read as deprecated, so there's a real risk of mistakenly starting work there because it looks maintained), and tell the user which active app you're routing to, so they can veto it for a true compat-only fix. The final target is never a `redirectTo` entry unless the user explicitly overrides after being told.
+- Clearly names or implies one row: that's the target.
+- Spans more than one app: name every app it touches. Each ships independently through its own `shipping-task` cycle, so don't force a single answer.
+- Matches no row and is explicitly outside managed-app work (see Out of scope): say so plainly.
+- Matches no row but is app-related: clarify with the user.
+
+**Resolved to a `redirectTo` entry:** redirect to the named app. This is about where *new* work belongs — it does not apply to auditing code that already exists in the legacy app. Surface the entry's `note` if one is set, and tell the user which active app you're routing to, so they can veto it for a true compat-only fix. The final target is never a `redirectTo` entry unless the user explicitly overrides after being told.
 
 **Resolved to more than one app:** check each pair against the resolved apps' `crossAppSkills` entries. Where one exists for the pair, point to it explicitly; otherwise represent each app's work as its own task. App ownership alone establishes no ordering — Task 2 confirms any dependency relationship with the user.
 

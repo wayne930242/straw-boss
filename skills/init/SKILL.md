@@ -55,7 +55,9 @@ For every new or edited route:
 
 1. Get the work description used for matching.
 2. Get the agent kind (`claude` or `codex`) and optional provider profile — Claude's named `--agent` preset or Codex's named `--profile` configuration.
-3. Recommend model and reasoning effort. Check that provider's local config, relevant installed routing guidance, and the user's personal root `AGENTS.md` and `CLAUDE.md` before proposing values. Use current official guidance only when local evidence gives no clear preference. For bounded investigation, audit, or diagnosis routes, offer a lower-tier model such as Haiku or a lower-tier Codex model when it remains capable of returning an explanatory result with evidence; never trade away the evidence requirement for a binary answer.
+3. Recommend model and reasoning effort.
+   - Check that provider's local config, relevant installed routing guidance, and the user's personal root `AGENTS.md` and `CLAUDE.md` first; use current official guidance only when local evidence gives no clear preference.
+   - For bounded investigation, audit, or diagnosis routes, offer a lower-tier model such as Haiku or a lower-tier Codex model when it remains capable of returning an explanatory result with evidence; never trade away the evidence requirement for a binary answer.
 4. For a Claude route only, ask whether to use a Claude Code native advisor and, if so, recommend its model. Sonnet with Opus is one documented pairing; availability and accepted pairings still depend on the installed Claude Code account/provider. Codex has no native advisor, so a Codex route records `advisor: none` without offering a coworker or subagent as a substitute.
 5. Present the whole route and get explicit confirmation or correction before recording it. Then offer another route.
 

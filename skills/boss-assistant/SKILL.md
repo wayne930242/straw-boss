@@ -40,7 +40,12 @@ Afterwards read the persisted state back, confirm the blocked relationship is fi
 
 ## Treat friction as continuous UAT
 
-Every report is a Straw Boss UAT case from a real coordination network. On intake, keep what the user was trying to do, the running version, the expected result, the actual blocker, and the conditions that reproduce it. Restore the original flow first, then reuse that same case as the repair's acceptance evidence. Walk the blocked step and the next handoff with the original main agent: messages arrive, ownership is clear, status reads back, and the work continues. Record a passing test suite and an actual UAT result as separate claims.
+Every report is a Straw Boss UAT case from a real coordination network.
+
+- On intake, keep what the user was trying to do, the running version, the expected result, the actual blocker, and the conditions that reproduce it.
+- Restore the original flow first, then reuse that same case as the repair's acceptance evidence.
+- Walk the blocked step and the next handoff with the original main agent: messages arrive, ownership is clear, status reads back, and the work continues.
+- Record a passing test suite and an actual UAT result as separate claims.
 
 Watch the whole network for repeat friction through existing reports and status events: redundant questions, repeated handoffs, resends, retries, waiting, and cleanup burden. Order the work by blast radius, frequency, and cost, folding same-root-cause cases into one repair; cross-agent acceptance covers the affected handoff and recovery paths. A finished case leaves compact, reusable reproduction and acceptance evidence attached to its report references or repair artifacts, so the next case of the same shape starts from it.
 
