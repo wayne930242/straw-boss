@@ -361,8 +361,24 @@ def resolve_target(address: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not matches:
         raise ValueError(f"no registered orchestrator matches {address!r}")
     if len(matches) > 1:
+        # A name outlives the session that registered it, and a pane is reused
+        # by whatever agent occupies it next, so both collide with dead rows.
+        # A dead orchestrator cannot receive anything, so it is not a real
+        # candidate: when exactly one match is live, that one is the target.
+        live_matches = [row for row in matches if row["live"]]
+        if len(live_matches) == 1:
+            return live_matches[0]
+        candidates = ", ".join(
+            f"{row['name']!r} pane={row['herdr_pane_id']} session={row['session_id']}"
+            f"{'' if row['live'] else ' (not live)'}"
+            for row in matches
+        )
+        # Address by session id, not pane id: panes are reused and collide,
+        # session ids do not.
         raise ValueError(
-            f"{address!r} matches {len(matches)} registered orchestrators; address one by pane id"
+            f"{address!r} matches {len(matches)} registered orchestrators "
+            f"({len(live_matches)} live); address one by its session id. "
+            f"Candidates: {candidates}"
         )
     return matches[0]
 
@@ -488,7 +504,20 @@ def send(
         references=normalized_references,
         message=text,
     )
-    run_herdr(prompt_delivery_args(endpoint.pane_id, envelope, pre_send_status))
+    try:
+        run_herdr(prompt_delivery_args(endpoint.pane_id, envelope, pre_send_status))
+    except HerdrCommandError as exc:
+        # A live pane can still refuse the hand-off -- `agent_blocked` while it
+        # waits on interactive input is the common one. That is recoverable and
+        # worth resending, so the body has to survive: without this the message
+        # is lost outright, which is a worse outcome than the unrecoverable
+        # "agent is gone" path above, where it is at least recorded.
+        record_undelivered(str(exc))
+        raise EndpointUnavailableError(
+            f"the target orchestrator did not accept the hand-off ({exc}); the message "
+            f"is recorded undelivered in its delivery ledger as {message_id} and can be "
+            f"resent once that pane is free"
+        ) from exc
     append_delivery_record(
         target_path,
         source,

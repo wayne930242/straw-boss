@@ -65,6 +65,7 @@ def reply_to_worker(
         raise ValueError(
             f"status file {status_path} reports status={status_payload.get('status')!r}, "
             f"not 'awaiting-main-agent' -- refusing to reply to a checkpoint that isn't open"
+            + stale_status_hint(inst_path, status_path)
         )
 
     normalized_references = normalize_references(references)
@@ -106,6 +107,32 @@ def reply_to_worker(
 
     return {"resolved": True, "status_path": str(status_path)}
 
+
+def stale_status_hint(instruction_path: Path, status_path: Path) -> str:
+    """Say so when the progress trail is newer than the status file.
+
+    A worker whose user answered an `awaiting-user-input` checkpoint in its own
+    pane resumes work without writing a status transition, so the status file
+    keeps reporting a checkpoint that is no longer open. The refusal above is
+    correct, but without this the caller cannot tell a finished task from a
+    running one and goes looking for the wrong problem.
+    """
+    stem = instruction_path.name.removesuffix(".json")
+    progress_path = instruction_path.with_name(f"{stem}.progress.jsonl")
+    try:
+        status_mtime = status_path.stat().st_mtime
+        progress_mtime = progress_path.stat().st_mtime
+    except OSError:
+        return ""
+    if progress_mtime <= status_mtime:
+        return ""
+    gap = int(progress_mtime - status_mtime)
+    return (
+        f". Note: {progress_path.name} is {gap}s newer than the status file, so the "
+        f"worker most likely resumed without writing a transition -- a user answering "
+        f"in its pane does that. Read the progress trail for its real state, and use "
+        f"send-dispatch-message.py --to worker --intent inform to reach it."
+    )
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)

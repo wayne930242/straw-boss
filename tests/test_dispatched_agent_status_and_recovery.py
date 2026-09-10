@@ -322,7 +322,9 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         )
 
         self.assertNotEqual(answer.returncode, 0)
-        self.assertIn("unknown peer question", answer.stderr)
+        # An id nothing recorded is its own failure, distinct from an id that
+        # exists but is not a question -- each names what the caller must fix.
+        self.assertIn("no delivery record carries that id", answer.stderr)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         self.assertFalse(any(call[:2] == ["agent", "prompt"] for call in calls))
 

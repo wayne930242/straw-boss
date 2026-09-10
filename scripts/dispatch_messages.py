@@ -81,17 +81,41 @@ def validate_peer_reply(
         ]
     except (OSError, json.JSONDecodeError):
         records = []
-    if not any(
-        record.get("message_id") == in_reply_to
-        and record.get("intent") == "question"
+    matches = [
+        record
+        for record in records
+        if isinstance(record, dict) and record.get("message_id") == in_reply_to
+    ]
+    if any(
+        record.get("intent") == "question"
         and record.get("source_session_id") == endpoint.expected_session_id
         and record.get("target_session_id") == source.expected_session_id
-        for record in records
-        if isinstance(record, dict)
+        for record in matches
     ):
+        return
+    # The id exists but does not answer: say which of the three conditions it
+    # failed, so the caller fixes the right thing instead of re-sending a
+    # correct id that keeps being rejected.
+    if not matches:
         raise ValueError(
-            f"unknown peer question {in_reply_to!r} for this sender/receiver pair"
+            f"unknown peer message {in_reply_to!r}: no delivery record carries that id. "
+            f"Only an id this ledger recorded can be answered; ids quoted from elsewhere "
+            f"do not resolve."
         )
+    record = matches[0]
+    intent = record.get("intent")
+    if intent != "question":
+        raise ValueError(
+            f"{in_reply_to!r} is a recorded {intent!r}, not a question, so it cannot "
+            f"be answered -- only 'question' carries --in-reply-to. "
+            f"Send --intent inform without --in-reply-to instead."
+        )
+    raise ValueError(
+        f"peer question {in_reply_to!r} belongs to a different sender/receiver pair "
+        f"(recorded {record.get('source_session_id')!r} -> {record.get('target_session_id')!r}, "
+        f"this reply is {endpoint.expected_session_id!r} -> {source.expected_session_id!r}). "
+        f"Answer it from the session it was addressed to."
+    )
 
 
 def append_delivery_record(

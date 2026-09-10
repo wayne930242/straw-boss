@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -192,6 +193,7 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         }
         if pane_id is not None:
             env["HERDR_PANE_ID"] = pane_id
+        env.update(getattr(self, "extra_herdr_env", {}))
         return self.run_script(script_name, *args, extra_env=env)
 
     def register(
@@ -589,6 +591,92 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         self.assertFalse(recorded[0]["delivered"])
         self.assertEqual(recorded[0]["message"], "This session owns the plugin repair.")
 
+    def test_a_blocked_pane_records_the_message_instead_of_losing_it(self) -> None:
+        # A pane that is merely busy is recoverable, unlike an agent that is
+        # gone -- so losing the body here would be a worse outcome than the
+        # unreachable case, which records it. The sender needs something to
+        # resend once the pane frees up.
+        self.register("Coordinating the billing app.", pane_id=BETA)
+        self.register("Repairing this plugin.", pane_id=ALPHA)
+        self.extra_herdr_env = {
+            "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps({BETA: "agent_blocked"})
+        }
+
+        result = self.send(
+            "--to",
+            "orchestrator-beta",
+            "--intent",
+            "inform",
+            "--message",
+            "The lane is yours; I cancelled my pipeline.",
+            pane_id=ALPHA,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertFalse(payload["submitted"])
+        self.assertTrue(payload["recorded"])
+        self.assertIn("can be resent once that pane is free", result.stderr)
+        recorded = self.ledger("orchestrator-b")
+        self.assertEqual(len(recorded), 1)
+        self.assertFalse(recorded[0]["delivered"])
+        self.assertEqual(recorded[0]["message"], "The lane is yours; I cancelled my pipeline.")
+
+    def test_a_name_shared_with_a_dead_row_resolves_to_the_live_one(self) -> None:
+        # A name outlives the session that registered it and a pane is reused by
+        # whatever occupies it next, so both collide with rows that can no
+        # longer receive anything. Only one candidate is reachable.
+        gamma = "wG:p1"
+        stale = agent(gamma, "orchestrator-g", name="orchestrator-beta")
+        self.register("An earlier session that has since exited.", pane_id=gamma, agents=[stale])
+        self.register("Coordinating the billing app.", pane_id=BETA)
+        self.register("Repairing this plugin.", pane_id=ALPHA)
+
+        delivered = self.send(
+            "--to",
+            "orchestrator-beta",
+            "--intent",
+            "inform",
+            "--message",
+            "The plugin repair landed.",
+            pane_id=ALPHA,
+            agents=[ALPHA_AGENT, BETA_AGENT],
+        )
+
+        self.assertEqual(delivered.returncode, 0, delivered.stderr)
+        self.assertTrue(json.loads(delivered.stdout)["submitted"])
+        # A delivered record keeps only the body hash, so match on that.
+        expected = hashlib.sha256("The plugin repair landed.".encode()).hexdigest()
+        recorded = self.ledger("orchestrator-b")
+        self.assertEqual([record["message_sha256"] for record in recorded], [expected])
+        self.assertEqual(self.ledger("orchestrator-g"), [])
+
+    def test_an_ambiguous_address_with_no_live_row_names_its_candidates(self) -> None:
+        gamma = "wG:p1"
+        first = agent(gamma, "orchestrator-g", name="orchestrator-beta")
+        second = agent(gamma, "orchestrator-h", name="orchestrator-beta")
+        self.register("One exited session.", pane_id=gamma, agents=[first])
+        self.register("Another exited session.", pane_id=gamma, agents=[second])
+        self.register("Repairing this plugin.", pane_id=ALPHA)
+
+        result = self.send(
+            "--to",
+            "orchestrator-beta",
+            "--intent",
+            "inform",
+            "--message",
+            "Nobody is home.",
+            pane_id=ALPHA,
+            agents=[ALPHA_AGENT],
+        )
+
+        self.assertEqual(result.returncode, 1)
+        # Panes collide, session ids do not -- the refusal points at the field
+        # that can actually disambiguate, and lists what to choose between.
+        self.assertIn("address one by its session id", result.stderr)
+        self.assertIn("orchestrator-g", result.stderr)
+        self.assertIn("orchestrator-h", result.stderr)
+
     def test_an_answer_names_the_question_it_replies_to(self) -> None:
         self.register("Coordinating the billing app.", pane_id=BETA)
         self.register("Repairing this plugin.", pane_id=ALPHA)
@@ -616,7 +704,38 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
             pane_id=BETA,
         )
         self.assertEqual(invented.returncode, 1)
-        self.assertIn("unknown peer question", invented.stderr)
+        # An id nothing recorded is a different failure from an id that exists
+        # but is not answerable; each names what the caller has to change.
+        self.assertIn("no delivery record carries that id", invented.stderr)
+
+        # An inform is recorded like any other delivery, so its id resolves --
+        # but only a question can be answered, and the refusal says so instead
+        # of claiming the id is unknown.
+        informed = self.send(
+            "--to",
+            "orchestrator-alpha",
+            "--intent",
+            "inform",
+            "--message",
+            "The billing app finished its migration.",
+            pane_id=BETA,
+        )
+        self.assertEqual(informed.returncode, 0, informed.stderr)
+        inform_id = json.loads(informed.stdout)["message_id"]
+        not_a_question = self.send(
+            "--to",
+            "orchestrator-beta",
+            "--intent",
+            "answer",
+            "--in-reply-to",
+            inform_id,
+            "--message",
+            "Acknowledged.",
+            pane_id=ALPHA,
+        )
+        self.assertEqual(not_a_question.returncode, 1)
+        self.assertIn("is a recorded 'inform', not a question", not_a_question.stderr)
+        self.assertIn("--intent inform without --in-reply-to", not_a_question.stderr)
 
         answered = self.send(
             "--to",
