@@ -81,9 +81,9 @@ $straw-boss:init
 | Skill | 說明 |
 |-------|-------------|
 | `init` | 問要管哪些 app、寫設定、同步 root `AGENTS.md` 與 `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、檢查 Herdr 委派需求 |
-| `boss-say` | **所有事情的入口。**為單一任務、獨立批次或 backlog 選擇 owner skill 與最小充分迴圈 |
+| `boss-say` | **工作入口。**選擇 owner 與執行層級，統一規劃及排程獨立或相依任務 |
 | `handoff-orchestrator` | 經明確同意後，把一個 scope 與最小延續狀態交給新的 orchestrator tab |
-| `boss-assistant` | 老闆助理：將各協調者的摩擦當作 Straw Boss UAT，修復 graph 並依量測優化效能與儲存；先查本地專案，再準備 issue／PR 並詢問是否發布 |
+| `boss-assistant` | 處理協調摩擦，與回報者驗證恢復結果，將原始碼問題交回開發流程 |
 | `contacting-orchestrators` | 登記本 orchestrator 的身分與一句話 scope、查看還有哪些 orchestrator 活著、送出帶著自己 herdr pane id 的事實 delta |
 | `i-am-orchestrator` | 依狀態事件維持協調迴圈；worker 與你負責 reality anchor 內的工作細節 |
 | `work-on` | 把請求對應到某個 app，處理 legacy redirect |

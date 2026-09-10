@@ -1,60 +1,39 @@
 # Dispatch mechanics
 
-Operational state lives under `Path.home() / ".straw-boss"`; target project
-files are never modified to inject a dispatch workflow.
+Operational state lives under `Path.home() / ".straw-boss"`. [dispatching-work](../SKILL.md) owns the lifecycle; this reference supplies CLI contracts and recovery details.
 
 ## Resolve mode and work route
 
-Where the two instruction files' routing sections differ, present the difference and let the user pick the setup for this dispatch; `init` Task 3 owns syncing the confirmed section.
+Dispatch uses `herdr-pane`. Confirm the service and current pane's live record before writing an instruction. Resolve a complete worker setup in this order:
 
-The dispatch entry point checks the Herdr service and the current pane's live record first, and writes the instruction only once both hold.
+1. Explicit per-dispatch override.
+2. Matching root `AGENTS.md` work route; consult `CLAUDE.md` when no route section exists there.
+3. The app's `apps.json.agentKind`.
+4. Claude with provider defaults.
 
-- Resolve the worker setup independently: explicit per-dispatch override, then
-  a matching work route in root `AGENTS.md` (read `CLAUDE.md` when it has no
-  routing section), then the app's
-  `apps.json.agentKind`, then Claude with provider defaults. A work route can
-  select agent kind, provider profile, model, effort, and a Claude Code native
-  advisor. Codex has no native advisor; refuse that combination.
-
-Resolve `<app_dir>` from the app configuration; never assume `apps/<app>`.
+A setup includes provider, profile, model, effort, and Claude's optional native advisor. Codex records no advisor; report an incompatible combination. If both instruction files carry conflicting routes, resolve the user's choice for this dispatch; [init](../../init/SKILL.md#configure-work-routes) owns synchronization.
 
 ## Write the instruction and contract
 
-Before launching anything, call:
-
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
-  --app <app> --slug <slug> --task "<task>" \
-  --mode herdr-pane --repo-root <repo_root> \
+  --app <app> --slug <slug> --task "<brief>" \
+  --mode herdr-pane --repo-root <verified-cwd> \
   [--batch <batch>] [--plan <plan> --task-id <task>] [--role <workroom>] \
   --agent-kind claude|codex --main-agent-kind claude|codex \
   [--agent-profile <profile>] [--agent-model <model>] \
   [--agent-effort <effort>] [--advisor-model <claude-model>] \
-  [--main-agent-pane-id <pane>] \
-  [--main-agent-session-id <session> | --main-agent-terminal-id <terminal>]
+  --main-agent-pane-id <pane> \
+  [--main-agent-session-id <session>] [--main-agent-terminal-id <terminal>]
 ```
 
-Pass `--role` when the brief already names a short workroom the task belongs to
-(e.g. `database`, `frontend`, `api`) — distinct from `--app` when several tasks
-share one app but work different concerns. The launcher's derived agent name
-prefers it over `--app`; omit it only when no such label is actually known.
+Supply the required provider fingerprint from [Record the main agent before launch](cross-session-coordination.md#record-the-main-agent-before-launch). `--role` is an already-known workroom label such as `database` or `frontend`; it distinguishes tasks sharing an app.
 
-For `herdr-pane`, obtain the main-agent pane and provider fingerprint from the
-current live Herdr record: both providers use `agent_session.value` when
-available; Codex also records `terminal_id` for older Herdr compatibility. The command creates:
-
-- `<app>--<slug>.json`: pending instruction and receiver fingerprints;
-- `<app>--<slug>.contract.md`: mandatory workflow text;
-- a SHA-256 contract digest recorded in the instruction.
-
-The contract contains the exact instruction-keyed progress, question, and
-status commands. The task prompt carries work semantics, not a hand-copied
-workflow.
+The command creates a pending `<app>--<slug>.json`, immutable `.contract.md`, and recorded SHA-256 digest. It generates identity and reporting mechanics. The brief follows [Write the brief](../SKILL.md#write-the-brief).
 
 ## Permission mapping
 
-Mirror the main agent's restriction tier; the dispatched agent must never be
-more permissive.
+Mirror the main agent's restriction tier within the current authorization; the dispatched agent must never be more permissive.
 
 | Tier | Claude | Codex |
 |---|---|---|
@@ -62,262 +41,75 @@ more permissive.
 | guarded-write | default/`auto`/`acceptEdits`/`dontAsk` | `--sandbox workspace-write --ask-for-approval on-request` |
 | read-only | `plan`/`manual` | `--sandbox read-only` |
 
-Detect explicit Claude mode from `ps -p "$CLAUDE_PID" -ww -o args=`. Preserve
-each flag as one argument; do not depend on shell word splitting.
+Read the main provider's active configuration and process arguments; for Claude, use `ps -p "$CLAUDE_PID" -ww -o args=`. Preserve each flag as one argument. An uncertain restriction tier must be resolved before launch.
 
 ## Interactive herdr launch
 
-Omit `--name` and the launcher derives a unique operator-visible handle itself
-from the instruction's `role` when `write` recorded one, else its `app`
-(`<workroom>-worker`, or `<workroom>-coworker` for a dispatch with a
-`parent_instruction_path`) — so two tasks sharing one `app` but different
-`--role`s (e.g. `database`, `frontend`) still read as distinct at a glance, not
-as `<app>-worker`/`<app>-worker-2`. It checks `herdr agent list` first and, if
-`herdr agent start` still rejects the chosen name as `agent_name_taken` (a
-sibling task in the same wave won the race), retries with the next
-collision-suffixed candidate, up to a bounded number of attempts. An explicit
-`--name` overrides derivation and is used as given with no retry — a
-collision on it is the caller's to fix; validate one first with
-`check-agent-name.py` if hand-picking. The launcher resolves the instruction's
-recorded main pane and splits the worker into that same tab with `repo_root`
-as cwd. Internally it runs
-`herdr pane split <main-pane> --direction right --cwd <repo_root> --no-focus`.
-Run only:
-
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/launch-dispatched-agent.py" \
-  --instruction-path <instruction path> \
-  [--name <agent name>] \
-  [--agent-arg=<one provider argument>]...
+  --instruction-path <instruction-path> \
+  [--name <agent-name>] [--agent-arg=<one-provider-argument>]...
 ```
 
-The launcher derives provider arguments from the recorded worker setup, then:
+Run in the foreground through completion. The launcher derives a unique name from `role`, then `app`, and splits a pane in the recorded main pane's tab with the instruction's `repo_root` as cwd. Omit `--name` for automatic collision handling; an explicit name is used as given.
 
-1. verifies the instruction is pending and the contract digest matches;
-2. resolves the worker's name as above;
-3. injects Claude with `--append-system-prompt-file`, or Codex with
-   `developer_instructions`;
-4. resolves the main pane and splits a worker pane in the same tab;
-5. starts the provider through herdr, then applies the final collision-resolved
-   agent name to the worker pane before task delivery. Pane naming retries once;
-   a second failure returns a warning and keeps the dispatch path active;
-6. settles on herdr's own state wait
-   before reading the agent — a single read straight after `agent start`
-   catches a Claude worker still reporting `idle`/`interactive_ready` while a
-   first-run gate is mid-render;
-7. handles a startup gate by provider. Codex's own startup trust prompt is
-   confirmed with `enter`. **A blocked Claude worker is never answered
-   blindly**: Claude Code's startup gates — folder trust first among them —
-   render as a select list whose highlighted option is `No, exit`, so `enter`,
-   or the task itself which ends in one, exits the worker herdr had just
-   reported healthy. The launcher reports the gate with what the pane is
-   showing and leaves the pane standing for whoever answers it;
-8. submits the recorded task; when the pane was idle, already done, or
-   blocked (not yet already working) just before sending, also requires
-   herdr's own `--wait`/`agent_prompt_stalled` lifecycle gate to confirm a
-   turn actually started, not merely that the text reached the composer;
-   either way polls until its whitespace-normalized text appears in the
-   provider-appropriate transcript view; retries a herdr-confirmed stall or a
-   complete transcript miss on a backoff, and a booted worker whose prompt
-   still never lands keeps its pane;
-9. records the live provider fingerprint: Claude waits for
-   `agent_session.value` and cross-checks its preassigned id; Codex records
-   `terminal_id` and any available session id from the same snapshot;
-10. writes `<app>--<slug>.launch.json` with the worker pane and shared tab, and
-   clears any `<app>--<slug>.launch-failure.json` an earlier run left;
-11. on a top-level dispatch (never a coworker's), best-effort-names the
-    coordinator's own still-unnamed pane `<app>-coordinator` — an already-named
-    coordinator pane is left alone, and a failure here never fails the launch
-    that already succeeded;
-12. scans the live agent list for any other pane still carrying the retired
-    `straw-boss-orchestrator*` name or terminal title — a leftover from the
-    old `/rename straw-boss-orchestrator` convention that never clears itself
-    once its session ends — and folds a non-blocking warning naming that pane
-    into the launch result; this never delays or fails the dispatch, and a
-    worker still finds its own main agent only through the instruction's
-    recorded pane and session ids, never by pattern-matching a name.
+Provider profile/model/effort and Claude advisor come from the instruction. Use `--agent-arg=<value>` for additional provider options, with `=` so a leading dash remains the value. Instruction-owned options are validated against duplication.
 
-Provider profile/model/effort are instruction-owned. Claude receives
-`--agent`/`--model`/`--effort`; Codex receives
-`--profile`/`--model`/`model_reasoning_effort`. Claude additionally receives
-`--advisor <advisor_model>` when recorded. `--agent-arg` carries permission or
-other provider options; duplicating an instruction-owned option is refused.
-Write it with `=` — a value that itself starts with `-` (every permission
-flag does) is read as the next option otherwise, and argparse rejects the
-call with `expected one argument`.
+The launcher verifies the contract digest, injects the contract before the first turn, confirms task delivery through the provider transcript and Herdr lifecycle gate, writes `.launch.json`, and confirms the instruction as `in-progress`. Inspect `confirmed: true` before reporting dispatch success.
 
-The launcher confirms the dispatch itself against the receipt it just wrote:
-it refuses any instruction, contract, provider, pane, or provider-fingerprint
-mismatch, records the receipt values, and moves the instruction to
-`in-progress`. Its result carries `"confirmed": true`.
-
-A launch that reports `"confirmed": false` carries the reason in its warning
-and leaves the worker running an unreachable instruction — its status reports
-fail with "dispatch instruction has no worker herdr pane" until you run the
-confirm the warning names:
+For `confirmed: false`, keep the running worker and execute the confirmation repair named by the warning:
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" confirm \
   --app <app> --slug <slug>
 ```
 
-Confirming an already-confirmed dispatch is a no-op that reports
-`already_confirmed`, so a stale habit of always running it costs nothing.
+The receipt and live identity must match. Already-confirmed instructions return `already_confirmed`. Claude's assigned session id is retained with a warning when Herdr cannot expose it; `STRAW_BOSS_AGENT_SESSION_WAIT_SECONDS` bounds the lookup (default 15s).
 
-Claude's own session fingerprint is not part of that gate. herdr reads it off
-the pane's terminal title, and some panes never carry one; the agent was
-started with `--session-id`, so the launcher records the id it assigned and
-warns, rather than discarding a task the worker already accepted.
-`STRAW_BOSS_AGENT_SESSION_WAIT_SECONDS` bounds that wait (default 15s).
+## When a launch fails
 
-### When a launch fails
+Read the returned classification, pane excerpt, and `.launch-failure.json`. The launcher owns bounded retries for transient missing/busy pane or agent errors, and refreshes a spent Claude session id while the instruction remains pending. A configuration, identity, tab, or startup-gate failure requires resolving its reported cause before retrying.
 
-The launcher retries the whole sequence itself, bounded and backed off, so a
-transient trip never becomes four hand-run relaunches. It retries only what a
-second attempt can clear — herdr reporting the agent or pane gone
-(`agent_not_running`, `agent_not_found`, `pane_not_found`, `agent_pane_busy`).
-A refused start, a mismatched identity, a pane in the wrong tab, or a startup
-gate is a standing condition of this cwd or configuration: those are reported
-at once, because a fourth identical attempt only burns another pane and delays
-the answer.
+Retained panes have actionable live state: a startup gate, an undelivered opening prompt, or delivered work whose bookkeeping failed. Continue recovery in that pane. For a provider gate, use its observed choices and the user/provider's authorization; the launcher reports an unrecognized blocked state with its actual output.
 
-Every failure carries the worker pane's own visible output. herdr's error code
-says the agent is gone and never says why; the agent's last words — a trust
-gate, a refused session id, a crash — exist only on that pane, and the cleanup
-closes it. A failing attempt reads the pane first and reports the excerpt.
-
-A pane is closed on failure unless its agent is still alive and someone can act
-on it there: a startup gate awaiting an answer, a booted worker whose opening
-prompt never landed, or one whose task was already confirmed delivered and only
-this launcher's own identity bookkeeping then failed. Those keep their pane and
-the error says so — the worker in the last case is doing the task while its
-instruction stays `pending`, which is the `launched-unconfirmed` row the roll
-call reports.
-
-A Claude startup gate is only described as a trust dialog when the pane
-actually shows its preselected option; a worker that is merely `blocked` before
-its first turn is reported as that, with the pane's contents and no prescribed
-keystrokes for a dialog the launcher has not recognised.
-
-Every failed launch writes `<app>--<slug>.launch-failure.json` beside the
-instruction: one entry per attempt with its pane, session id, classification,
-error, and pane excerpt. Without it a failed launch leaves the instruction
-`pending` with no receipt and no pane id — indistinguishable from a dispatch
-nobody ever started. `wrap-up-task.py` archives this file with the instruction,
-and `roll-call.py` reads it to say why a `never-launched` row is stuck.
-
-`claude --session-id` refuses an id it has already seen and exits at once, so
-each retry — and any rerun whose recorded attempt trail shows the id already
-spent — mints a fresh session id into the still-`pending` instruction before
-starting. Reusing a spent id guarantees a startup death, so relaunching a
-dispatch whose first attempt booted an agent would otherwise be impossible.
+A successful launch clears the prior failure artifact. Wrap-up archives it otherwise.
 
 ## Roll call
-
-`roll-call.py` is the read-only reconciliation of live herdr state against
-`~/.straw-boss/dispatch/`. It starts nothing, closes nothing, writes nothing.
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/roll-call.py" [--mine] [--json]
 ```
 
-**Liveness is decided by `agent_session.value` (Claude) or `terminal_id`
-(Codex) together with `agent_status` — never by a pane's terminal title.** A
-title only reflects whatever the foreground program last set, so an idle
-worker's pane reads back as a plain shell prompt while the agent is perfectly
-alive. Reading that as death is what let one coordinator declare another's live
-worker an orphan and dispatch the same task a second time. The same rule makes
-the recorded pane id secondary: a closed pane's id can be reissued to somebody
-else's agent later, so matching on it would report a stranger as this
-dispatch's worker.
+This is a pure read. It reconciles instructions, launch receipts/failures, and live provider fingerprints plus `agent_status`. Codex uses the recorded session when present and exact terminal matching for legacy instructions. A pane title or cwd supplies context, not identity.
 
-Per-dispatch verdicts: `running`, `checkpoint` (waiting at an `awaiting-*`
-status), `awaiting-collection` (its own status record is terminal),
-`orphaned` (no live agent carries this worker's fingerprint), `never-launched`
-(still `pending`, with the launch-failure reason when one was recorded),
-`launched-unconfirmed` (an agent carries the dispatch's fingerprint but
-`dispatch-task.py confirm` never recorded it — a half-landed launch, never a
-free slot to dispatch into again), and `awaiting-startup-gate` (a failed launch
-deliberately kept its pane and it is still open, waiting on a human).
+| Verdict | Meaning |
+|---|---|
+| `running` / `checkpoint` | A matching live worker is working or waiting. |
+| `awaiting-collection` | The worker's recorded status is terminal. |
+| `orphaned` | No live agent matches the recorded worker fingerprint. |
+| `never-launched` | Pending instruction, with any recorded failure reason. |
+| `launched-unconfirmed` | A matching worker exists but confirmation is incomplete. |
+| `awaiting-startup-gate` | The failed launch retained a pane awaiting action. |
 
-The worker fingerprint is read from the instruction **and its launch receipt**,
-because the instruction carries no usable one until `confirm` runs — for Codex
-none at all (`herdr_terminal_id` is written only at confirm), for Claude only
-the preassigned id. A pane a launch kept on purpose is matched through the
-launch-failure record instead: that worker has not taken its first turn, so
-herdr exposes no `agent_session` for it yet, and the record is the only thing
-tying the pane back to its dispatch. Both windows exist precisely where a
-worker looks absent while it is not.
-Every row names the coordinator pane and session that dispatched it, and says
-when that coordinator's own session is no longer live.
+Rows identify the main agent and any loss of its liveness. Live agents in the same cwd are reported as context, without attributing them to the instruction. Unmatched agents are `coordinator` when dispatch identity establishes that role, otherwise `unattributed` (ownership unresolved).
 
-A dispatch nothing is matched to also reports any live agent sitting in its
-`repo_root`, and those agents carry the reverse pointer in the section below.
-That is a caution, never an attribution, and it never changes a verdict: a
-coworker shares its parent's worktree, and a worker started by hand outside
-`launch-dispatched-agent.py` carries a session id no instruction ever recorded.
-It is still the one fact that stops "nothing carries this fingerprint" being
-read as "nothing is running for this dispatch" — which is the duplicate
-dispatch again.
-
-A second section lists live agents with no instruction of their own, split into
-`coordinator` (its session appears as some instruction's
-`main_agent_session_id`) and `unattributed`. **`unattributed` means "not
-attributable from this data", never "ownerless".** A coordinator pane has no
-instruction by design, and a freshly split worker pane has none until its
-dispatch reaches `dispatch-task.py write` — closing one of those on the "no
-instruction" reading is the second half of the same incident.
-
-`--mine` narrows the dispatch list to the ones this pane dispatched, for a
-machine running several coordinators at once, matching on this pane's own
-recorded session value, or terminal id for legacy Codex instructions. It
-refuses when neither resolves rather than falling back to "everything is
-mine" — that fallback would answer the one question `--mine` exists to answer,
-wrongly and silently. It never narrows attribution either: every instruction is
-still read, or filtering would manufacture exactly the ownerless-looking agent
-this script exists to prevent anyone acting on.
-
-Herdr accepting `agent prompt` is not delivery proof -- text can land in an
-agent's composer without ever starting a turn. The launcher writes the
-receipt only after herdr's own lifecycle gate (where the pane's pre-send
-state makes it available) confirms a turn started and the transcript shows
-the delivered text, so `confirm` cannot advance a task whose startup flow
-only wrote its prompt into the composer or swallowed both task submissions.
+`--mine` requires this session's verified identity and narrows the dispatch list while retaining machine-wide attribution.
 
 ## Reporting and communication
 
-- Progress: `report-progress.py --instruction-path ... --note ...`
-- Checkpoint/outcome: `report-task-status.py --instruction-path ... --status ... [--ref ...]`
-- Generic question/FYI: `send-dispatch-message.py --instruction-path ... [--ref ...]`
-- Checkpoint reply: `reply-to-worker.py --worker-instruction-path ... [--ref ...]`
+Worker reports use [notifying-main-agent](../../notifying-main-agent/SKILL.md); coordinator replies, redirects, cancellation, and rebind use [cross-session coordination](cross-session-coordination.md). Public scripts validate the instruction's provider fingerprint and record delivery. Persisted status remains available after a notification failure.
 
-Only these public scripts send cross-session messages. They resolve endpoints
-from the instruction and validate provider-specific live fingerprints. The Plan
-watcher observes durable content revisions and remains scheduling authority.
+## Recover a closed worker
 
-## Closing an instruction
+When [wrap-up](../SKILL.md#wrap-up) finds a closed worker with missing or non-terminal status:
 
-Close only the worker pane created for the dispatch; the shared tab belongs to
-the coordinator. Then call `wrap-up-task.py`; it
-archives the instruction and its contract, receipt, status, progress, and
-delivery artifacts, and synchronizes terminal Plan status. Never archive a
-non-terminal checkpoint or a task with a same-task continuation pending.
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/recover-task-status.py" \
+  --instruction-path <path> --status done|failed --note "<evidence-backed outcome>"
+```
 
-If the worker pane already closed before it wrote its own terminal status,
-`report-task-status.py`'s sender validation makes it impossible for the
-coordinator to write `done`/`failed` on its behalf while posing as the
-worker — by design, so a live worker is never overridden.
-`recover-task-status.py --instruction-path ... --status done|failed --note
-...` is the one explicit exception: it confirms the caller is the genuine
-live main agent, then confirms the worker pane is actually unreachable (a
-herdr probe, not an assumption), then writes the status file itself with a
-`recovered_by_main_agent` marker. It refuses if the worker pane still
-answers, or if a terminal status is already on file. This is recovery for a
-pane that already closed, not a substitute for the normal reply-then-
-self-report order — see `SKILL.md`'s Wrap-up branch Step 4.
+The command validates the live main agent, confirms the worker pane is unreachable, and records `recovered_by_main_agent`. It refuses a reachable worker or an existing terminal status. Determine the outcome from work evidence; pane closure alone establishes only reachability.
 
 ## Worker-owned coworker
 
-An interactive dispatched worker that needs a human-facing second opinion uses
-`bringing-coworker`. Its facade derives identity and placement from the parent
-instruction; the top-level dispatch flow does not recreate those mechanics.
+Use [bringing-coworker](../../bringing-coworker/SKILL.md) for an interactive worker's second opinion or disjoint support. Its facade owns parent identity, placement, and delivery.

@@ -56,20 +56,19 @@ Relative to the git repo root, `.straw-boss/apps.json` is read first; the old lo
 | `name` | string | yes | Unique identifier, matches how the team refers to the app. Kebab-case recommended. |
 | `dir` | string | yes | Path to the app's own checkout, relative to repo root. |
 | `match` | array of strings | yes | Phrases a request might use to name this app. `work-on`'s routing table is built from these. |
-| `redirectTo` | string \| `null` | no | Another entry's `name`. When set, this entry is a legacy/retired source — new work redirects to the named app instead (`work-on` Task 1). Omit or `null` for a live app. |
+| `redirectTo` | string \| `null` | no | Another entry's `name`. When set, this entry is a legacy/retired source — new work redirects to the named app instead ([work-on](../../work-on/SKILL.md#resolve-the-app)). Omit or `null` for a live app. |
 | `note` | string \| `null` | no | Free-text caveat surfaced whenever this app is resolved or redirected — e.g. "still looks actively maintained, but new feature work belongs in `api` instead" for a `redirectTo` entry that doesn't read as deprecated. |
-| `forbidDirectCommit` | boolean | no | Default `false`. When `true`, `shipping-task` only offers team-mode (worktree→MR) for this app, never a direct commit to its base branch. Solo-mode's commit needs no user authorization, so this field is the only gate standing between an autonomous agent and this app's shared base branch. |
+| `forbidDirectCommit` | boolean | no | Default `false`. When `true`, `shipping-task` only offers team-mode (worktree→MR) for this app, never a direct commit to its base branch. The selected mode follows the established lifecycle authorization. |
 | `agentKind` | string \| `null` | no | Which agent CLI a dispatch into this app defaults to (`"claude"`, `"codex"`, ...). `null`/omitted means `"claude"`. `dispatching-work` can still override it for one dispatch (an explicit `--agent-kind`, or a task judged against the agent-routing policy in root `AGENTS.md` and `CLAUDE.md` if one exists) without changing this stored default. Applies equally to standalone, batch, and Plan tasks. |
 | `gitWorkflowSkill` | string \| `null` | no | Name of a project-level skill (in this app's own `.claude/skills/`) that already drives commit/MR/release mechanics. When set, `shipping-task` tells the agent to run that skill's steps instead of its own fallback. |
 | `localFiles` | array of objects | no | Gitignored files `git worktree add` won't check out, that a fresh worktree needs. Each entry: `path` (string, relative to `dir`), `sensitive` (boolean, default `false`), `optional` (boolean, default `false`; set `true` only when the app remains operable without it), `note` (string, optional). |
 | `crossAppSkills` | array of objects | no | Pointers to an existing project skill that already handles this app depending on another. Each entry: `withApp` (the other app's `name`), `skill` (the skill's name), `note` (string, optional). |
 
-## Reading and writing this file
+## Owners
 
-- **`init`** writes it (its "Resolve the managed apps" task) and keeps it in sync with the managed-apps section of root `AGENTS.md` and `CLAUDE.md` (its "Sync the root AGENTS.md and CLAUDE.md" task) — see `init`'s `SKILL.md`, numbered tasks whose order can shift as the skill grows.
-- **`work-on`** reads `apps` to build its routing table, `redirectTo` for the legacy redirect, and `crossAppSkills` for cross-app coordination — all in its Task 1.
-- **`shipping-task`** reads `forbidDirectCommit` and `gitWorkflowSkill` per resolved app.
-- **`dispatching-work`**'s `references/plan-mechanics.md` reads `localFiles` for the worktree local-file-copy step.
-- **`dispatching-work`** reads `agentKind` per resolved app as the default agent CLI for any dispatch (`references/dispatch-mechanics.md`'s "Resolving the agent kind").
+- [init](../SKILL.md) writes configuration and synchronizes root instruction summaries.
+- [work-on](../../work-on/SKILL.md) reads app matching, redirects, and cross-app skill pointers.
+- [shipping-task](../../shipping-task/SKILL.md) reads lifecycle options; [worktree preparation](../../dispatching-work/references/plan-mechanics.md#worktree-ownership) reads `localFiles`.
+- [dispatching-work](../../dispatching-work/SKILL.md) resolves provider setup using the app default and work routes.
 
-A skill whose shared handler returns exit 3 never guesses a *multi*-app list — but a single-app-looking repo still resolves and proceeds without one, via `work-on`'s no-config handling (an implicit single app, not a config file). `init` is what makes that app's config durable/customizable; it's not a precondition for a single-app repo to work at all.
+A missing configuration uses `work-on`'s implicit single-app branch or an unresolved multi-app question.

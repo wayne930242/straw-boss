@@ -84,9 +84,9 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | Skill | Description |
 |-------|-------------|
 | `init` | Configure managed apps, work routes, and Herdr dispatch; sync the root `AGENTS.md` and `CLAUDE.md`, and offer to fill in each app's instruction files |
-| `boss-say` | **The entry point for everything.** Selects the owning skill and smallest sufficient loop for one task, an independent batch, or a backlog |
+| `boss-say` | **The entry point.** Resolves the owner and execution tier, and plans/schedules independent or dependent tasks |
 | `handoff-orchestrator` | After explicit approval, transfer one scope and its minimal continuity state to a new orchestrator tab |
-| `boss-assistant` | The boss assistant: treat every main agent's friction as Straw Boss UAT, repair the coordination graph, and optimize performance and storage against measurements; locate the local project first, then prepare an issue or PR and ask whether to publish |
+| `boss-assistant` | Resolve coordination friction, verify recovery with the reporting main agent, and carry source findings into the development workflow |
 | `contacting-orchestrators` | Register this orchestrator's identity and one-line scope, read which other orchestrators are live, and send one a factual delta carrying this session's herdr pane id |
 | `i-am-orchestrator` | Keep coordination event-driven while workers and the user own work details inside the named reality anchor |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |

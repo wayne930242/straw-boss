@@ -3,92 +3,26 @@ name: create-great-harness
 description: Use when an app is missing AGENTS.md or CLAUDE.md, or the user asks for a minimal agent system.
 ---
 
-## Overview
+## Establish the scope
 
-Build a minimal agent system for an app, or fill in whichever instruction file is missing. `AGENTS.md` and `CLAUDE.md` are both required outputs. A guard hook or skill-authoring rule is included only when concrete project evidence or explicit confirmed scope calls for it.
+Build or fill the app's `AGENTS.md` and `CLAUDE.md`. Reuse authorization from the user request or dispatch instruction. Optional hooks and authoring rules require concrete project evidence and authorization covering that addition.
 
-Runs either inline (a user asked for this directly) or as a dispatched agent rooted in `<app-dir>` (`init`'s own bootstrap step dispatches it via `dispatching-work`). The dispatch instruction, when present, states that scope was already confirmed and how to report completion — Task 1 and Task 6 both branch on whether that's the case.
+Carry source changes through the target's `leveraging-tasks` workflow when available, retaining the confirmed scope and findings.
 
-## Task 1: Confirm scope before writing anything
+## Read and write
 
-State the confirmed scope before writing: `<app-dir>/AGENTS.md` and `<app-dir>/CLAUDE.md`, plus any optional hook or rule the user or dispatch instruction explicitly requested. The survey may support a recommendation for another artifact, but extending the confirmed scope remains a user-owned decision.
+Read existing instructions, manifests, lockfiles, and relevant project documentation. Retain project-specific conventions and boundaries a fresh agent cannot readily derive from those sources. A near-empty instruction file is valid for an idiomatic app.
 
-- **Invoked directly by a user in this session:** get explicit confirmation before proceeding — this writes into the app's own checkout, not just plugin state.
-- **Invoked as a dispatched agent:** the dispatch instruction already states the scope was confirmed — that confirmation *is* `init`'s own per-app yes/skip ask. Don't ask again; there's no user in this session to answer, and the worker proceeds within the confirmed scope. State the scope for the record and proceed straight to Task 2.
+Create missing files from the applicable shared instructions; preserve existing text within the authorized scope. Use relevant sections such as Role, Scope, and Standards, omitting empty sections. Keep each instruction actionable and grounded in project evidence.
 
-**Verification:** either the user confirmed in this session or the dispatch instruction carried the confirmed scope before any file was written.
+## Optional guard or authoring rule
 
-## Task 2: Survey the app for non-obvious content
+For an authorized guard, inspect the provider's existing hook configuration and resolve a conflicting event/matcher before writing. Test both a blocking input and an allowed input using the provider's actual hook payload and decision contract. Merge the configuration, read it back, and report any activation or restart requirement. Use the installed provider's current contract for paths and hook behavior.
 
-Read what's actually there: `package.json`/`pyproject.toml`/`Cargo.toml`/`go.mod`/equivalent manifest, lockfile (which package manager — `bun.lock` vs `package-lock.json` vs `pnpm-lock.yaml` matters), top-level directory listing, existing README if short. Filter everything through one question: **can a fresh agent session derive this from reading the code, the manifest, or running `ls`?** If yes, it doesn't belong in `AGENTS.md` and `CLAUDE.md`.
+For an authorized skill-authoring rule, verify the provider's current skill and rule specifications. Scope the rule to its skill directory, record the source and date, and preserve existing rules. If the specification cannot be verified, report that unresolved artifact.
 
-Look specifically for non-default tooling (`bun` rather than the ecosystem default, a custom build/test script), the actual build/test/dev commands, and documented project-specific risks that could justify an optional guard or rule.
+## Report
 
-**If nothing non-obvious turns up** (a fully idiomatic, default-tooling setup):
-Report that plainly: a near-empty `AGENTS.md` and `CLAUDE.md` can be the evidence-backed answer.
+Check both instruction files and any optional artifacts against the confirmed scope. Report the written files, their line counts, and outstanding recommendations or activation steps. A dispatched worker reports its outcome through [notifying-main-agent](../notifying-main-agent/SKILL.md#report-status).
 
-**Verification:** every fact that ends up in `AGENTS.md` and `CLAUDE.md` (Task 3) traces to something read here, not to general knowledge about the language/framework.
-
-## Task 3: Write AGENTS.md and CLAUDE.md
-
-Read both files first. Create whichever is missing from the same shared project instructions; where one already exists, keep its text and take the applicable shared instructions from it. With both present, keep the existing instructions and hand any difference that needs changing back to the confirmed scope.
-
-Use up to three relevant sections: **Role** (what this app is), **Scope** (what is in or out when that boundary is non-obvious), and **Standards** (the non-default commands or conventions Task 2 found). Omit empty sections. Keep the file concise by removing material a fresh session can derive from the manifest, repository layout, or existing focused documentation.
-
-Every `MUST`/`NEVER` line needs a concrete reason, not aspiration — "use `bun`, not `npm`" is fine; "write clean code" is not.
-
-**Verification:** every retained instruction is non-obvious, evidence-backed, and useful to future work in this app; report the final line count without imposing an arbitrary cap.
-
-## Task 4: Construct an evidence-backed guard hook, when scoped
-
-Run this task only when the confirmed scope names a guard, or Task 2 finds an app-specific irreversible risk already documented or enforced by the project and the user confirms adding a guard. A dispatched worker reports a newly discovered recommendation for later confirmation instead of expanding its own write scope.
-
-Follow this protocol in order — an unverified hook that silently doesn't fire is worse than no hook:
-
-1. **Dedup check.** Read `<app-dir>/.claude/settings.json` if it exists. If a hook already covers the same event+matcher:
-   - **Invoked directly by a user in this session:** tell them and ask whether to keep, replace, or add alongside — don't silently double up.
-   - **Invoked as a dispatched agent:** record the conflict for Task 6 and leave the existing configuration unchanged.
-2. **Construct the raw command** — a `PreToolUse` hook on `Bash`, matching the destructive pattern (e.g. `git push --force`/`git push -f` to the primary branch, or `git reset --hard`) and returning a blocking decision. No `|| true`, no stderr suppression yet — that comes after the pipe-test passes.
-3. **Pipe-test it** with a synthesized stdin payload matching the real hook-input shape (`{"tool_name":"Bash","tool_input":{"command":"<the exact destructive command this should block>"}}`) piped directly into the constructed command. A blocking `PreToolUse` hook signals via its **output**, not its exit code or any side effect, so test both directions:
-
-   - **The blocking case** — confirm its stdout actually contains a deny decision (`hookSpecificOutput.permissionDecision: "deny"`, or the command exits 2 per the exit-code contract, whichever this hook uses).
-   - **A command it should not block** (e.g. a plain `git push`) — confirm that case's output has no deny decision.
-
-   An exit-0 "it ran without erroring" is not evidence either direction on its own.
-4. **Merge into `<app-dir>/.claude/settings.json`** — read-then-merge, never overwrite existing hooks/permissions/settings already in the file. Create the file (and `.claude/`) only if neither exists.
-5. **Validate:** `jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.type == "command") | .command' <app-dir>/.claude/settings.json` — exits 0 and prints the command, or the write is wrong.
-6. **Note the watcher caveat** for Task 6's report: a hook added to a `.claude/` directory that didn't exist when the current session started won't fire until `/hooks` is opened once or the session restarts — this skill cannot trigger that itself.
-
-**Verification:** when Task 4 was in scope, the hook was pipe-tested against both a blocking and a non-blocking case before writing and `jq -e` confirms the merged JSON; a conflict or newly discovered recommendation is reported without an unconfirmed write.
-
-## Task 5: Write a skill-authoring rule, when scoped
-
-Run this task only when the confirmed scope explicitly requests skill-authoring guidance or the app already has an app-owned skill system whose current rules establish that need. Resolve the current provider specification at execution time:
-
-1. **Resolve both component pages from the live index**, not memory:
-   ```
-   WebFetch
-     url: https://code.claude.com/docs/llms.txt
-     prompt: "Return all entries related to: skill, rule. Include reference and guide URLs for each. Quote the URLs verbatim."
-   ```
-2. **Fetch each resolved reference page** (frontmatter/schema, not the usage guide):
-   - Skill reference → `WebFetch` prompt: "Extract frontmatter fields, naming/description conventions, and discovery mechanics. Return verbatim excerpts, not a summary."
-   - Rule reference → `WebFetch` prompt: "Extract frontmatter fields and the path-scoping mechanism — how a rule auto-injects only for matching files. Return verbatim excerpts, not a summary."
-
-   On a non-2xx or empty result from either fetch, re-fetch `llms.txt` once (bypassing cache if possible) to confirm the URL didn't move. If it still fails, skip this task, tell whoever's listening why (inline or via Task 6's reporting channel), and don't write a rule guessed from memory instead.
-3. **Write `<app-dir>/.claude/rules/skill-writing.md`** using the rule frontmatter/path-scoping the second fetch just returned — scope it to `.claude/skills/**` so it only auto-injects when someone's actually touching a skill — with the skill-writing content distilled from the first fetch, quoted or closely paraphrased from what was actually fetched, not general knowledge. Note the source URL and fetch date in the file so a later reader knows how stale it might be.
-
-**Verification:** both the file's own frontmatter/scoping and its skill-writing content trace to this task's live fetches, not memory; the rule auto-injects only under `.claude/skills/**`, never globally; a failed fetch was reported, never papered over with a guessed rule.
-
-## Task 6: Report
-
-Report the line count and section summary of `AGENTS.md` and `CLAUDE.md` separately, plus whichever optional artifacts were actually created. Report evidence-backed recommendations, conflicts, fetch failures, and any `/hooks`-or-restart caveat separately from completed writes.
-
-- **Invoked directly by a user in this session:** report inline, in this conversation.
-- **Invoked as a dispatched agent:** state it as this turn's own final text output and run `report-task-status.py --instruction-path <path> --status done --note "<one-line summary>"`. That command writes durable state before notifying the recorded main-agent herdr pane. Follow `notifying-main-agent` only for a valid Claude-to-Claude fallback if herdr is unavailable or fails.
-
-**Verification:** the report distinguishes written artifacts from recommendations; under dispatch, the shared terminal-status command succeeded or its preserved-status notification failure was surfaced.
-
-## References
-
-None outside this plugin, deliberately — this skill doesn't depend on any other plugin being installed. Task 5's `WebFetch` calls go to a public URL (`code.claude.com`), not to another plugin's skill — that keeps the same zero-plugin-dependency guarantee while still pulling live spec content instead of stale memory.
+**Complete when:** scoped artifacts are verified and the result distinguishes completed writes from remaining work.

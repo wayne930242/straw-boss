@@ -32,22 +32,7 @@ The task author does not reproduce communication prose in `--task`.
 
 ## Worker to main agent
 
-Integrated/context questions and FYIs use:
-
-```bash
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
-  --instruction-path <worker instruction path> \
-  --to main --intent question|inform --message "<delta>" \
-  --ref "<source or artifact when needed>"
-```
-
-Checkpoints and outcomes use `report-task-status.py --instruction-path`; it
-writes durable state before calling the same transport. If live delivery fails,
-the written state remains authoritative.
-
-Work-detail discussion and authorization go directly to the user in an
-interactive task. The Herdr worker is independent after launch, and the main
-agent accepts user–worker decisions.
+Use [notifying-main-agent](../../notifying-main-agent/SKILL.md) for questions, checkpoints, progress, and outcomes.
 
 ## Main agent to worker
 
@@ -91,14 +76,6 @@ dependency.
 Self-compact is not cross-session communication. Once all next-turn state is
 durable, the main agent may submit `/compact <focus>` to its own pane. This does
 not replace any worker/main transport rule.
-
-## Verification
-
-- Every cross-session send names an instruction path, direction, intent, and
-  delta; longer material is a reference, never repeated prose.
-- A provider fingerprint mismatch is a hard failure before delivery.
-- Every checkpoint and terminal outcome has durable status independent of live
-  notification.
 
 ## Resume an older Codex dispatch
 

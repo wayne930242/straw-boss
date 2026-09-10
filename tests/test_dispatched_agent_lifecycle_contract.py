@@ -272,37 +272,13 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("unsupported Straw Boss script", rejected.stderr)
 
     def test_task_authoring_leaves_work_definition_to_worker_and_user(self) -> None:
-        shipping = (ROOT / "skills" / "shipping-task" / "SKILL.md").read_text()
-        plan_mechanics = (
-            ROOT / "skills" / "dispatching-work" / "references" / "plan-mechanics.md"
-        ).read_text()
-
-        for source in (shipping, plan_mechanics):
-            normalized = " ".join(source.split())
-            self.assertIn("user requirement", normalized)
-            self.assertIn("requested outcome", normalized)
-            self.assertIn("already-known coordination facts", normalized)
-            self.assertIn(
-                "specification, design, implementation, and the verification method",
-                normalized,
-            )
-            # Scoped to the anchor the main agent named, so the brief boundary
-            # and the generated contract cannot contradict each other.
-            self.assertRegex(normalized, r"verification method[^.]{0,60}anchor")
-            self.assertIn("generic lifecycle prose", source.lower())
-            self.assertNotIn("possible implementation", source)
-            self.assertNotIn("concrete deliverable and proof", source)
-
-        self.assertNotIn(
-            "selected lifecycle/worktree, mutation gates, tracker boundary, checkpoints",
-            shipping,
-        )
-        self.assertNotIn(
-            "Task-specific prose adds only tracker boundaries",
-            plan_mechanics,
-        )
-
-        self.assertIn("non-overlapping requirement scopes", plan_mechanics)
+        source = (ROOT / "skills/dispatching-work/SKILL.md").read_text()
+        for requirement in ("user requirement", "requested outcome", "verified coordination facts",
+                            "Target-app context discovery", "verification method inside that anchor"):
+            self.assertIn(requirement, source)
+        self.assertIn("generated contract supplies lifecycle", source)
+        shipping = (ROOT / "skills/shipping-task/SKILL.md").read_text()
+        self.assertIn("../dispatching-work/SKILL.md", shipping)
 
     def test_communication_skills_keep_user_routing_concise(self) -> None:
         peer = (ROOT / "skills" / "asking-peer-agents" / "SKILL.md").read_text()
@@ -312,137 +288,50 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("--sender-instruction-path", peer)
         self.assertIn("--in-reply-to", peer)
         self.assertIn("directly with the user", notify)
-        self.assertIn("directly in the dispatched agent's session", shipping)
+        self.assertIn("worker asks in its own pane", shipping)
         self.assertLessEqual(len(peer.splitlines()), 55)
         self.assertLessEqual(len(notify.splitlines()), 60)
         self.assertIn("at most two sentences", peer)
         self.assertIn("at most two sentences", notify)
 
-    def test_dispatch_profile_guidance_is_route_centric_and_provider_accurate(
-        self,
-    ) -> None:
-        init = (ROOT / "skills" / "init" / "SKILL.md").read_text()
-        dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
-        mechanics = (
-            ROOT
-            / "skills"
-            / "dispatching-work"
-            / "references"
-            / "dispatch-mechanics.md"
-        ).read_text()
-        coworker = (ROOT / "skills" / "bringing-coworker" / "SKILL.md").read_text()
-
-        for source in (init, dispatching, mechanics):
-            normalized = " ".join(source.lower().split())
-            self.assertIn("work route", normalized)
-            self.assertIn("provider profile", normalized)
-        self.assertIn("Claude Code native advisor", init)
-        self.assertIn("Claude Code native advisor", dispatching)
-        self.assertIn("--agent-profile", mechanics)
-        self.assertIn("--advisor-model", mechanics)
-        self.assertIn("--advisor <advisor_model>", mechanics)
-        self.assertIn("Codex has no native advisor", mechanics)
-        self.assertNotIn("advisor", coworker.lower())
+    def test_dispatch_profile_guidance_is_route_centric_and_provider_accurate(self) -> None:
+        init = (ROOT / "skills/init/SKILL.md").read_text()
+        dispatch = (ROOT / "skills/dispatching-work/SKILL.md").read_text()
+        mechanics = (ROOT / "skills/dispatching-work/references/dispatch-mechanics.md").read_text()
+        self.assertIn("local provider configuration and the user's model preferences", init)
+        self.assertIn("references/dispatch-mechanics.md#resolve-mode-and-work-route", dispatch)
+        for flag in ("--agent-profile", "--agent-model", "--agent-effort", "--advisor-model"):
+            self.assertIn(flag, mechanics)
+        self.assertIn("Codex records no advisor", mechanics)
+        self.assertIn("Claude's optional native advisor", mechanics)
+        self.assertIn("must never be more permissive", mechanics)
 
     def test_dispatch_brief_leaves_target_context_discovery_to_worker(self) -> None:
-        orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
-        dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
-        shipping = (ROOT / "skills" / "shipping-task" / "SKILL.md").read_text()
-        boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
-        plan_mechanics = (
-            ROOT
-            / "skills"
-            / "dispatching-work"
-            / "references"
-            / "plan-mechanics.md"
-        ).read_text()
-        contract_source = (ROOT / "scripts" / "straw_boss" / "dispatch" / "state.py").read_text()
-
-        normalize = lambda source: " ".join(source.replace("`", "").split())
-        self.assertIn(
-            "target-app context discovery belongs to the dispatched agent",
-            normalize(orchestrator).lower(),
-        )
-        self.assertIn(
-            "Target-app implementation, precedent, and local-context discovery stays with the worker",
-            normalize(dispatching),
-        )
-        self.assertIn("dispatching-work Task 3's brief boundary", normalize(shipping))
-        self.assertIn("dispatching-work Task 3's brief boundary", normalize(boss_say))
-        self.assertIn(
-            "dispatching-work Task 3's brief boundary",
-            normalize(plan_mechanics),
-        )
-        self.assertIn(
-            "Investigate the target app's implementation and precedent yourself",
-            normalize(contract_source),
-        )
+        dispatch = (ROOT / "skills/dispatching-work/SKILL.md").read_text()
+        contract = (ROOT / "scripts/straw_boss/dispatch/state.py").read_text()
+        self.assertIn("Target-app context discovery and work decisions stay with the worker", dispatch)
+        self.assertIn("Investigate the target app's implementation and precedent yourself", " ".join(contract.split()))
+        for skill in ("boss-say", "shipping-task"):
+            source = (ROOT / "skills" / skill / "SKILL.md").read_text()
+            self.assertIn("../dispatching-work/SKILL.md", source)
 
     def test_target_app_work_uses_the_smallest_sufficient_execution_tier(self) -> None:
-        context = (ROOT / "CONTEXT.md").read_text()
-        orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
-        boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
-        work_on = (ROOT / "skills" / "work-on" / "SKILL.md").read_text()
-
-        normalize = lambda source: " ".join(source.replace("`", "").split())
-        self.assertIn("smallest sufficient execution tier", normalize(boss_say))
-        self.assertIn("current agent carries a bounded single-loop", normalize(boss_say))
-        self.assertNotIn(
-            "Any item that must read under a managed app root uses a dispatched agent",
-            normalize(boss_say),
-        )
-        self.assertIn(
-            "bounded investigation may use a confirmed lower-tier work route",
-            normalize(boss_say).lower(),
-        )
-        self.assertIn("returns the resolved app to its caller", normalize(work_on))
-        self.assertNotIn("managed-app files makes dispatch mandatory", normalize(work_on))
-        self.assertNotIn("Reads/explanations that don't change code — answer inline", work_on)
-        graph = (ROOT / "skills" / "choosing-graph" / "SKILL.md").read_text()
-        self.assertIn("evidence references", normalize(graph))
-        self.assertIn("smallest sufficient", normalize(boss_say))
-        self.assertNotIn("- **Solo:**", graph)
-
-        normalized_boss_say = normalize(boss_say)
-        self.assertIn("integration preflight", normalized_boss_say)
-        self.assertIn("only when both conditions hold", normalized_boss_say)
-        self.assertIn("stays in the same worker", normalized_boss_say)
-        self.assertIn("evidence references", normalized_boss_say)
-        self.assertIn("explanatory", normalized_boss_say)
-        self.assertNotIn("- **Solo:**", boss_say)
-
-        for source in (context, orchestrator):
-            self.assertIn("once work is dispatched", normalize(source).lower())
+        boss = (ROOT / "skills/boss-say/SKILL.md").read_text()
+        work_on = (ROOT / "skills/work-on/SKILL.md").read_text()
+        self.assertIn("Carry bounded work here", boss)
+        self.assertIn("when app ownership, interaction, or continuity warrants one", boss)
+        self.assertIn("this skill only resolves targets", work_on)
+        self.assertIn("../choosing-graph/SKILL.md", boss)
+        self.assertIn("Keep diagnosis and repair in the same worker", boss)
 
     def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:
-        context = (ROOT / "CONTEXT.md").read_text()
-        orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
-        dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
-        boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
-        contract_source = (ROOT / "scripts" / "straw_boss" / "dispatch" / "state.py").read_text()
-
-        for source in (context, orchestrator):
-            self.assertIn("smallest sufficient loop", source.lower())
-            self.assertNotIn("adjust an item's spec", source)
-        self.assertIn("accept", orchestrator.lower())
-        self.assertIn("user and dispatched agent", orchestrator)
-        for source in (context, orchestrator, dispatching, boss_say, contract_source):
-            normalized = " ".join(source.split())
-            self.assertIn(
-                "specification, design, implementation, and the verification method",
-                normalized,
-            )
-            self.assertRegex(normalized, r"verification method[^.]{0,60}anchor")
-        normalized_contract = " ".join(contract_source.split())
-        self.assertIn(
-            "supplies the user requirement, necessary hints, and known coordination facts",
-            normalized_contract,
-        )
-        self.assertIn(
-            "Investigate the target app's implementation and precedent yourself",
-            normalized_contract,
-        )
-        self.assertNotIn('--reply "<the decision>"', boss_say)
+        for path in ("CONTEXT.md", "skills/i-am-orchestrator/SKILL.md", "scripts/straw_boss/dispatch/state.py"):
+            source = " ".join((ROOT / path).read_text().split())
+            self.assertIn("specification, design, implementation, and the verification method", source)
+            self.assertRegex(source, r"verification method[^.]{0,60}anchor")
+        dispatch = (ROOT / "skills/dispatching-work/SKILL.md").read_text()
+        self.assertIn("worker and user choose the verification method inside that anchor", dispatch)
+        self.assertIn("Route a work decision to the user", dispatch)
 
     def test_dispatch_guidance_never_creates_or_closes_worker_tabs(self) -> None:
         sources = [
@@ -468,8 +357,8 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         for source in sources:
             self.assertNotIn("herdr tab create", source)
             self.assertNotIn("herdr tab close", source)
-        self.assertIn("same tab", sources[1].lower())
-        self.assertIn("pane split", sources[1])
+        self.assertIn("recorded main pane's tab", sources[1])
+        self.assertIn("splits a pane", sources[1])
 
     def test_herdr_dispatch_requires_main_agent_session_fingerprint(self) -> None:
         result = self.run_script(

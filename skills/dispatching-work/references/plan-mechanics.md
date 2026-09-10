@@ -1,283 +1,123 @@
 # Plan mechanics
 
-Exact file formats, scripts, and command sequences for plan-aware dispatch. Extends `dispatch-mechanics.md` (single-instruction dispatch is unchanged and still the mechanism each plan task ultimately uses) — read that file too, this one only covers what's new for plans. `<app_dir>` below is defined there ("Resolving the app directory") — never assume it looks like `<repo_root>/apps/<app>`.
+[boss-say](../../boss-say/SKILL.md#plan-and-schedule) owns planning and scheduling. This reference defines its persisted formats, queries, and app-rooted task preparation. Single-task launch syntax lives in [dispatch mechanics](dispatch-mechanics.md).
 
 ## Plan file
 
-`<home>/.straw-boss/plans/<plan-slug>/plan.json`. Written once by `work-on` after the decomposition is confirmed with the user via `grilling`; afterward only the main agent updates per-task `status` fields — never a dispatched agent's own session.
+The main agent writes `~/.straw-boss/plans/<plan-slug>/plan.json` from resolved tasks and dependencies. Create sibling `status/` and `artifacts/` directories at the same time.
 
 ```json
 {
   "plan_id": "p-<slug>",
-  "created_at": "2026-08-16T10:00:00+08:00",
+  "created_at": "2026-09-11T10:00:00+08:00",
   "status": "planning",
   "tasks": [
-    {
-      "task_id": "t1",
-      "app": "api",
-      "description": "One high-level sentence — what, not how. No detailed spec here.",
-      "depends_on": [],
-      "status": "planned"
-    },
-    {
-      "task_id": "t2",
-      "app": "web",
-      "description": "...",
-      "depends_on": ["t1"],
-      "status": "planned"
-    }
+    {"task_id": "t1", "app": "api", "description": "Required outcome", "depends_on": [], "status": "planned"},
+    {"task_id": "t2", "app": "web", "description": "Dependent outcome", "depends_on": ["t1"], "status": "planned"}
   ]
 }
 ```
 
-`plan.status`: `planning` (being confirmed) → `in-progress` (at least one task dispatched) → `done` (every task terminal: `done`/`failed`/`cancelled`). Each `tasks[].status`: `planned` → `dispatched` → `done`/`failed`/`cancelled`. A task's `depends_on` lists other `task_id`s in the same plan — empty means it's part of the first ready wave.
+`plan.status` moves from `planning` to `in-progress` to `done` once every task is terminal. Each task moves from `planned` to `dispatched` to `done`/`failed`/`cancelled`. `dispatch-task.py write` records dispatch and `wrap-up-task.py` synchronizes terminal status. The main agent owns plan mutations.
 
-## Cross-task artifacts (when a dependent task needs its prerequisite's output)
+## Cross-task artifacts
 
-A `depends_on` edge is only meaningful if the dependent task can actually get at what its prerequisite produced — `plan.json`'s `description` field is high-level prose, not a place to point at a file. Use `<home>/.straw-boss/plans/<plan-slug>/artifacts/` (a sibling of `status/`, created the same way — empty directory at plan-write time) for any file one task's output and a later task's input both need to reference. Name files `<task-id>-<short-label>.<ext>` so origin is obvious without cross-referencing `plan.json`. State the exact path in both tasks' dispatch instructions explicitly — the producing task's instruction says where to write it, the consuming task's instruction says where to read it from and that it's real required input, not optional context. Confirmed live: a dependent task's agent correctly treated a prerequisite's artifact file as authoritative input and produced output that genuinely depended on its content.
+When a dependent task requires its prerequisite's output, name a file under `artifacts/<task-id>-<label>.<ext>`. Put the exact path in both briefs: the producer writes it, the consumer reads it as required input. A dependency edge alone carries ordering, not file content.
 
-## Status directory (per-task completion reports)
+## Status directory
 
-`<home>/.straw-boss/plans/<plan-slug>/status/<task-id>.json`, created empty (directory only) when the plan is written, populated one file per task as each one finishes. Single-writer: only the dispatched task with that `task_id` ever writes its own file.
+Each worker reports through `report-task-status.py --instruction-path <path>`. A plan task's status lives in `status/<task-id>.json`; the standalone equivalent is the instruction's `.status.json` sibling.
 
 ```json
-{"status": "done", "note": "optional free text", "timestamp": "2026-08-16T10:30:00+08:00"}
+{"status": "done", "note": "Outcome and evidence", "timestamp": "2026-09-11T10:30:00+08:00"}
 ```
-or
-```json
-{"status": "failed", "note": "what went wrong, and whether it looks like a permission denial", "timestamp": "..."}
-```
-or, for a team-mode task that reached a merge or other-branch-push checkpoint (see "Authorization checkpoints" below):
-```json
-{"status": "awaiting-authorization", "note": "what it's ready to do -- e.g. \"ready to merge branch fix-foo into main\"", "timestamp": "..."}
-```
-or, for a task that hit a substantive work-content question, not a git mutation (see "User-clarification checkpoints" below):
-```json
-{"status": "awaiting-user-input", "note": "the question it's asking -- e.g. \"which of two existing approaches should this follow?\"", "timestamp": "..."}
-```
-or, for a dispatch the user explicitly cancelled, or one that is objectively invalid, duplicate, or unreachable (mechanics in `cross-session-coordination.md`):
-```json
-{"status": "cancelled", "note": "why the dispatch itself was wrong, not what the agent did", "timestamp": "..."}
-```
-`cancelled` is written by the main agent itself, never the dispatched task -- the only status value in this file with that property, since every other value is the dispatched task reporting on itself.
 
-`awaiting-authorization`, `awaiting-user-input`, and `awaiting-main-agent` are all not terminal — the task's own `plan.json` entry stays `dispatched`, none joins or leaves the ready wave. All three exist so `watch-plan-status.py` can emit the checkpoint the same way it emits `done`/`failed`, instead of a task sitting silently idle with no signal that it's actually waiting on someone.
+Terminal values are `done`, `failed`, and coordinator-authored `cancelled`. Checkpoints `awaiting-authorization`, `awaiting-user-input`, and `awaiting-main-agent` remain `dispatched` in the plan and hold their slot. Worker status is single-writer except for the explicit cancellation and closed-worker recovery operations. [Handle events](../SKILL.md#handle-events) defines the response to each status.
 
-## Authorization checkpoints (team-mode only)
-
-Before a merge, or a push landing on any branch other than the task's own, the worker reports `awaiting-authorization` and the user answers directly in the pane. Commits and pushes of its own feature branch keep their existing authorization. The checkpoint stays non-terminal and holds its slot; once the user answers, the worker continues and reports its status.
-
-## User-clarification checkpoints
-
-`awaiting-user-input` means a work detail needs the user's judgement: the worker asks in its own pane and waits, and the answer alone grants no authorization for a mutation.
-
-**Escalation order.** Work detail and judgement go to the user; integration direction, cross-task facts, and coordinator-owned actions go to the main agent; peers exchange facts only.
-
-On an interactive `awaiting-user-input` notification, the main agent names the task and its worker pane so the user answers there directly. The plan loop keeps the task attached and non-terminal.
-
-## Main-agent-action checkpoints
-
-`awaiting-main-agent` carries integration context or the result of a coordinator-owned action. Work content and authorization for a mutation stay with the user and the worker.
-
-An interactive checkpoint is resolved through `reply-to-worker.py`:
-```bash
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/reply-to-worker.py" \
-  --worker-instruction-path <path> --reply "<text>"
-```
-It delivers the reply, confirms it landed, then records the resolution. The worker's next status update closes the checkpoint.
-
-For an interactive task, if resolving takes more than a couple of tool calls, an optional `send-dispatch-message.py --to worker --intent inform` nudge lets the worker know it is being handled. `reply-to-worker.py` still resolves that interactive checkpoint.
-
-On this status event (also delivered live through Herdr when recorded), the main
-agent supplies the owned fact or action result. Route work-content judgment to
-the user instead.
-
-The direct reply script supports both Claude and Codex in `herdr-pane`.
-
-## Reporting status (script given to every dispatched task)
+## Read plan state
 
 ```bash
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
-  --instruction-path <path> --status done --note "..."
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <slug> --task <task-id>
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <slug> --not-done
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <slug> --in-flight
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <slug> --ready
 ```
-The generated contract tells every dispatched task to run this on completion or failure — it resolves to `status/<task-id>.json` the same as the older `--plan <plan-slug> --task <task-id>` form (both still work; `--instruction-path` is preferred since the agent already has that path and doesn't need to separately track its own plan slug/task_id). The script writes only that one status file — it must never touch `plan.json` or another task's status file.
 
-This command is the provider-neutral reporting seam. For `done` and `failed`, it
-writes durable state first and then notifies the recorded main-agent Herdr
-endpoint. `watch-plan-status.py` observes each revision and re-emits persisted
-state for recovery. Any task may report intermediate progress beforehand.
+- `--task`: one task's status.
+- `--not-done`: all unfinished tasks, including the planned queue.
+- `--in-flight`: dispatched tasks with non-terminal status; use for slot accounting.
+- `--ready`: planned tasks whose prerequisites are all `done`; use as the scheduler's candidates.
 
-## Reading plan/task status (targeted, not full-file dumps)
+## Monitor plan status
 
 ```bash
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan-slug> --task <task-id>
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan-slug> --not-done
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan-slug> --in-flight
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan-slug> --ready
-```
-`--task` returns one task's status only. `--not-done` lists every task not yet terminal (`done`/`failed`/`cancelled`), including ones still `planned` (never dispatched) — this answers "what's left in this plan," not "what's currently occupying a slot." `--in-flight` is the narrower one for that: only tasks that are actually dispatched (not `planned`) and not yet terminal — use this, never `--not-done`, for any concurrency-cap/slot-counting math (e.g. `boss-say`'s batch dispatch), since `--not-done`'s count also includes the ready queue itself and overcounts in-flight by exactly its size. `--ready` computes and returns the current ready wave (every task whose `depends_on` are all `done` and whose own status is still `planned`) — use this instead of recomputing the graph by hand each time. None of these dump the full plan or the full status directory unless explicitly asked to (a `--full` flag, used rarely, e.g. when the user asks to see the whole plan).
-
-## Computing and dispatching a wave
-
-1. Run `read-plan-status.py --plan <slug> --ready` to get the current ready wave.
-2. For every task in the wave: call `dispatch-task.py write --plan <slug> --task-id <task_id> ...` (per `dispatch-mechanics.md`), then dispatch — **all of them, not one at a time**. The script marks `plan.json`'s task `dispatched` as part of the same call, not a separate manual edit.
-3. Every team-mode task in the wave gets its worktree created first — see the worktree-ownership section below — before the `herdr-pane` dispatch itself.
-4. The generated dispatch contract supplies the universal progress, communication, checkpoint, and terminal-report workflow. Author every brief within `dispatching-work` Task 3's brief boundary: carry the user requirement, requested outcome, necessary hints/constraints, and already-known coordination facts while leaving target-app context discovery to the worker. The worker and user choose the **specification, design, implementation, and the verification method inside the reality anchor the brief names**. Parallel tasks need non-overlapping requirement scopes; otherwise add a dependency instead of sharing a wave. Generic lifecycle prose stays out.
-
-## Monitoring Plan status (provider-neutral scheduling signal)
-
-Start one long-running watcher for the Plan:
-
-```bash
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/watch-plan-status.py" \
-  --plan <plan-slug>
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/watch-plan-status.py" --plan <slug>
 ```
 
-Run it through the harness's `Monitor`/background mechanism and name the Plan in
-the description. It emits one JSON line for every valid status-file *content
-revision*, not merely the first appearance of a filename. Therefore
-`awaiting-main-agent` → `done`, `awaiting-authorization` → `done`, and an
-explicit `cancelled` overwrite are all observable transitions.
+Run one watcher through the harness's supported background/monitor facility. It emits each valid status-file content revision and, on startup, the current persisted states for recovery. Malformed or partial JSON is retried on the next scan. Live transport notifications supplement this persisted scheduling signal.
 
-A newly started watcher intentionally emits every currently persisted task
-status once. This is recovery behavior: after compaction or a restarted main
-agent, current Plan state becomes visible without depending on an earlier
-provider mailbox message. Malformed/partially-written JSON is skipped and
-retried on the next scan.
-
-On every `done`/`failed` event, recompute `read-plan-status.py --ready` and
-dispatch newly unblocked tasks. `awaiting-authorization`,
-`awaiting-user-input`, and `awaiting-main-agent` remain non-terminal and never
-free a slot; handle them through their authority branches above. The status
-command's shared-transport call is the primary live notice. Plan correctness
-still depends on the watcher plus persisted status.
-
-## Auto-detach on terminal state
-
-**A task_id getting a live same-task continuation isn't finished yet — don't call `wrap-up-task.py` for it ("Same-task continuation" below).**
-
-Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization`, `awaiting-user-input`, or `awaiting-main-agent`, none of which is terminal. Tasks keep their pane.
-
-When the status watcher emits `done`/`failed`, or the main agent has just written `cancelled` itself (Cancel may also emit through the watcher, but the authoring main agent already knows synchronously):
-1. Close the worker pane only; its tab is shared with the coordinator. For a team-mode task, then remove the worktree with plain git. Release any shared-resource lock still held on this instruction, whatever the terminal status — `shared-resource-coordination.md`'s "Releasing every lock on a wrapped-up instruction".
-2. For a landed programming change whose review is not recorded yet, confirm the completion reference and apply `choosing-graph`'s single review checkpoint before Step 3 archives it.
-3. Call `wrap-up-task.py --app <app> --slug <slug> --plan <slug> --task-id <task_id>` — it archives the instruction and syncs `plan.json`'s `tasks[].status` to the terminal status it reads from the status file, in one call. Do not `mv`/`Edit` these by hand.
-4. Do **not** touch `plan.json.status` here — that only becomes `done` once every task in the plan is terminal (check across all tasks, not per-event).
-
-**Once every task is terminal and `plan.json.status` is set to `done`, stop the status watcher** (`TaskStop`/the harness equivalent on its background task) — it does not self-terminate. This is the last step of marking a Plan done.
+Send events to [boss-say's scheduler](../../boss-say/SKILL.md#plan-and-schedule). Terminal cleanup uses [dispatching-work wrap-up](../SKILL.md#wrap-up), followed by the item's [git lifecycle completion](../../shipping-task/SKILL.md#complete-the-lifecycle) when applicable. Stop the watcher when every plan task is terminal; it does not stop itself.
 
 ## Same-task continuation
 
-**Checked before "Auto-detach on terminal state" above ever runs, not after** — once `wrap-up-task.py` has archived the instruction and synced `plan.json`, there's nothing left to reuse. Continue only when the already user-confirmed plan defines a later phase of the same logical task_id. A different task gets a fresh agent, and the main agent does not invent a new phase.
+Before wrap-up, check for a later phase of the same logical task already established by the user or plan. Keep that instruction and pane for continuation. A different task receives a fresh dispatch.
 
-For a Claude herdr pane, compact and continue through the instruction-keyed script:
+For Claude, compact first:
+
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
   --instruction-path <path> --to worker --intent control \
-  --message "/compact <optional focus text>"
+  --message "/compact <focus>"
+```
+
+Then continue using the same instruction; Codex uses only this call:
+
+```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
   --instruction-path <path> --to worker --intent redirect \
-  --message "Continue phase 2 from the referenced instruction." \
-  --ref "<phase-2 instruction artifact>"
+  --message "Continue from the referenced instruction." --ref "<next-phase artifact>"
 ```
-Two calls preserve queue order. Codex uses only the phase-2 message.
 
-**Phase 2's artifact contains the full instruction and its own report command.**
-This isn't a fresh dispatch instruction, so the referenced content must include
-`report-task-status.py --instruction-path <path>`. The command writes the later
-status revision; the watcher emits the overwrite for recovery.
+The artifact contains the next phase and `report-task-status.py --instruction-path <path>`. The watcher observes the later rewrite of the same status file.
 
-## Agent naming
+## Worktree ownership
 
-No plan-specific rule: each task dispatches through the same
-`launch-dispatched-agent.py` as a standalone task and gets the same
-automatically derived handle (`dispatch-mechanics.md`'s "Interactive herdr
-launch"). Pass `--role` on `dispatch-task.py write` with the task's short
-workroom label when `plan.json`'s task `description` (or already-known
-coordination context) names one — e.g. a `database` task and a `frontend` task
-sharing `app: "api"` still name apart as `database-worker`/`frontend-worker`
-rather than collapsing to `api-worker`/`api-worker-2`. Only fall back to a bare
-`<app>-worker` when the wave genuinely gives no per-task role signal.
-
-## Worktree ownership (every managed app, uniformly)
-
-**Do not use `herdr worktree create`.** It opens a separate workspace and breaks
-the shared-tab invariant. Create the worktree with plain git; the launcher later
-uses that path as the cwd of a pane split from the coordinator:
+The main agent creates and verifies each team-mode worktree with plain git, including apps with their own git workflow skill. Resolve `<app_dir>` from the app configuration.
 
 ```bash
 git -C "<app_dir>" worktree add "<app_dir>-<slug>" -b "<branch>" "<base_branch>"
+git -C "<app_dir>-<slug>" rev-parse --show-toplevel
 ```
-Applies regardless of whether the target app has its own git-workflow skill.
 
-**Mandatory verification after every call** (confirmed necessary live, not a hypothetical — and confirmed to reproduce identically whether the worktree was created via `git worktree add` or the old `herdr worktree create`, so this step stays mandatory regardless of creation method):
-```bash
-cd "<app_dir>-<slug>" && git rev-parse --show-toplevel
-```
-If this does not equal `<app_dir>-<slug>` exactly, the worktree is broken (confirmed root cause: repos with `extensions.worktreeConfig = true` don't get a per-worktree `core.worktree` override written automatically). Repair:
-```bash
-cat > "<git-common-dir>/worktrees/<worktree-name>/config.worktree" <<EOF
+Require the returned top-level path to be the new worktree. If a repository using `extensions.worktreeConfig` resolves to the primary checkout, inspect the worktree's actual git directory and merge these overrides into its `config.worktree`, preserving existing settings:
+
+```ini
 [core]
-	worktree = <app_dir>-<slug>
-	bare = false
-EOF
+    worktree = <absolute-worktree-path>
+    bare = false
 ```
-(`<git-common-dir>` is `git -C <app_dir> rev-parse --git-common-dir`; `<worktree-name>` is usually the branch/slug name — confirm via `ls <git-common-dir>/worktrees/`.) Re-run the verification command after writing the repair file. Do not dispatch into a worktree that still fails verification after one repair attempt — stop and report it. `git worktree repair` does **not** fix this class of problem — do not reach for it.
 
-**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree. Read the resolved app's `localFiles` through the shared read handler in `skills/init/references/apps-config-schema.md`. If an entry has `sensitive: true`, ask the user once before copying it; a config entry records that the file is expected, while the copy of live credentials remains user-approved.
+Verify the top-level path again. A failed repair remains a dispatch blocker. The verified path becomes instruction `repo_root`; the launcher creates its worker pane in the coordinator's shared tab.
 
-Run the validated copy seam once, before dispatch:
+### Local files
+
+Read declared `localFiles` through the [apps configuration](../../init/references/apps-config-schema.md). Copy only after worktree verification:
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/copy-local-files.py" \
-  --repo-root "<repo-root>" --app "<app>" --worktree "<app_dir>-<slug>"
+  --repo-root "<repo-root>" --app "<app>" --worktree "<absolute-worktree-path>"
 ```
 
-Add `--allow-sensitive` only after the user approves every sensitive entry. The command reads no file contents into the agent context, validates the complete list before copying anything, and reports copied or skipped paths as JSON. A missing entry is an error by default: stop before launching the worker and report the app-relative path plus its `note`. It skips and reports a missing source only when that exact entry has `optional: true`; omission of `optional` means required for compatibility with existing configs. A project with no `localFiles` entries succeeds with empty result lists.
+A missing entry is an error by default: stop before launching the worker and report its path and note. Skip a missing source only when that exact entry has `optional: true`. Add `--allow-sensitive` only with user authorization covering the sensitive entries. The script validates the list before copying and reports copied/skipped paths without exposing file contents.
 
-**Same-tab worker panes (herdr-pane mode only).** Record the verified worktree as
-the instruction's `repo_root`. `launch-dispatched-agent.py` resolves the recorded
-main pane and runs `herdr pane split <main-pane> --direction right --cwd
-<repo_root> --no-focus`. It rejects a split whose returned `tab_id` differs from
-the main pane. Every ready-wave worker therefore appears beside the coordinator
-inside one tab; no task owns a tab lifecycle.
+### Moving base and removal
 
-The launcher starts a team-mode task in the verified worktree, so the task brief does not narrate worktree creation or warn the worker not to repeat it. Everything after worktree creation (commit, MR/release mechanics) still follows the target app's own conventions where one exists — only the worktree-creation step moved.
+When parallel tasks target the same moving base or the remote base advanced, have the worker refresh through the app's established merge/rebase workflow before pushing or opening the MR, resolve conflicts, and verify the resulting change. Otherwise the app owns its usual pre-push sequence.
 
-**Removal closes only the worker pane:**
+After [dispatch cleanup](../SKILL.md#wrap-up), the git lifecycle owner removes the worktree:
+
 ```bash
-herdr pane close <pane_id>
-git -C "<app_dir>" worktree remove "<app_dir>-<slug>"
+git -C "<app_dir>" worktree remove "<absolute-worktree-path>"
 ```
-The coordinator pane and shared tab remain open. `herdr worktree remove` and
-workspace-level removal are outside this lifecycle; plain git owns the worktree.
 
-## Rebase before push (parallel sibling tasks against the same base)
-
-A team-mode task's worktree is created once, at wave-dispatch time, from whatever the base branch's tip was then (`references/plan-mechanics.md`'s "Worktree ownership" `git worktree add ... "<base_branch>"` above). If other tasks in the same plan target the same base branch and merge into it while this task is still working — the common case for any wave with more than one team-mode task — this task's worktree silently falls behind. Pushing from a stale base risks a merge (or, worse, a fast-forward) that reintroduces already-merged sibling files as deletions.
-
-**Confirmed live, twice in one plan round** (two different team-mode tasks, each caught only because the main agent independently diffed against the live remote branch before authorizing the push): `git diff --stat origin/<base_branch>..HEAD` showed a sibling task's already-merged files listed as deletions — the tell that this worktree's base predates that merge, not that this task's own change actually deletes anything.
-
-When parallel tasks target the same moving base or the remote base advanced
-since worktree creation, the dispatch instruction tells the worker to refresh
-immediately before pushing or opening the MR:
-```bash
-git fetch origin && git merge --ff-only origin/<base_branch>
-```
-(or use the app's equivalent rebase workflow) and resolve to a clean,
-non-diverged state first. The confirmed incident above grounds this instruction
-for moving-base concurrency; otherwise the app's established git workflow owns
-the pre-push sequence.
-
-## Failure handling
-
-On a watcher event reporting `status: failed` for a task, read that task's status file's `note` field, and if it isn't conclusive, invoke `peeking-work` on that task to judge whether the failure looks like a permission denial (Claude Code declining an action rather than the task failing on its own merits) — don't read the transcript inline here. If it does, tell the user plainly and ask whether to retry that task with a permission bypass (`claude --dangerously-skip-permissions`/`--allow-dangerously-skip-permissions`, per `claude --help`) — **every time, never applied automatically**. A retry uses a fresh dispatch instruction through the normal flow. A non-permission failure is reported to the user as a failure; retrying it is the user's call.
-
-## Shared-resource coordination (ports, DB migrations — cross-main-agent, not just cross-task)
-
-Worktree isolation covers files. When user input, a dependency report, or
-verified coordination state identifies a port or database shared by concurrent
-tasks, carry that constraint into the brief and point the worker to
-`references/shared-resource-coordination.md`. The worker resolves the app-local
-resource identity and exact command immediately before use, with this dispatch's
-instruction path as requester identity.
+Plain git owns worktree creation/removal; the launcher and wrap-up flow own worker panes. The coordinator's shared tab stays open.

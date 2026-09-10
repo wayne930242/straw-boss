@@ -10,7 +10,7 @@ authorization directly with the user; the main agent accepts those decisions.
 Ask it only for integrated context or a coordinator-owned action result. Address
 every operation by your instruction path.
 
-Live bodies are delta-only and at most two sentences. Put detailed context or
+Live bodies carry one delta in at most two sentences. Put detailed context or
 evidence in repeatable `--ref`; transport adds identity, intent, and correlation.
 
 ## Ask the main agent
@@ -37,8 +37,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
   --note "<outcome or exact unblock>" --ref "<proof when needed>"
 ```
 
-For `done` and `failed`, the command writes first and then notifies the recorded
-main-agent Herdr endpoint. Delivery failure is surfaced and leaves durable state
+The command persists status before notifying the recorded main-agent Herdr endpoint. Delivery failure is surfaced and leaves durable state
 for watcher recovery.
 
 ## Report a feature-branch push
