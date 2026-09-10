@@ -1178,15 +1178,9 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         archive = self.home / ".straw-boss" / "dispatch" / "archive"
         self.assertFalse((archive / f"{stem}.json").exists())
 
-    def test_wrap_up_still_archives_a_pending_or_headless_dispatch_with_no_status_record(
+    def test_wrap_up_archives_pending_but_requires_status_for_legacy_running_dispatch(
         self,
     ) -> None:
-        """The guard covers a launched herdr-pane worker, nothing wider.
-
-        `pending` was never confirmed, so nothing was launched to protect, and a
-        `claude-p` dispatch has no live pane to talk to -- its process exit is its
-        own completion evidence. Both stay archivable with no status record.
-        """
         pending_path, _ = self.write_dispatch("claude", slug="never-launched")
         result = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "never-launched")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -1199,8 +1193,8 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         headless_path.write_text(json.dumps(instruction, indent=2) + "\n")
 
         result = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "headless")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertFalse(headless_path.is_file())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(headless_path.is_file())
 
     def test_recover_task_status_refuses_to_overwrite_an_existing_terminal_status(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")

@@ -26,7 +26,7 @@
 
 - Claude Code（plugins 要開），或支援 plugin 的 Codex CLI。
 - Python 3，用來執行內附的生命週期與安裝腳本。
-- [herdr](https://github.com/herdrdev/herdr)（建議裝，非必要）。啟用後，派出的 Claude Code 與 Codex CLI workroom 都能旁觀及加入；沒有可用的 herdr session 時，獨立 workroom 會以 headless 模式執行。
+- [Herdr](https://github.com/herdrdev/herdr)（委派必要需求）。Claude Code 與 Codex CLI worker 都在可查看、可加入的 Herdr pane 執行。安裝、讀取設定與整理已保存狀態可獨立執行；開始委派前須有可用的 Herdr 服務與目前 pane。
 
 ## 安裝
 
@@ -72,15 +72,15 @@ $straw-boss:init
 
 也可以先啟動 `codex`，再輸入 `/plugins`，以互動介面瀏覽或管理 plugin。Codex IDE extension 目前不支援 plugins。
 
-`init` 會詢問要管理哪些 app、設定 work route、寫入 `.straw-boss/apps.json`、同步 root `AGENTS.md` 與 `CLAUDE.md`，為缺少 agent system 的 app 提議建立一套，並記錄是否啟用 herdr-backed dispatch。
+`init` 會詢問要管理哪些 app、設定 work route、寫入 `.straw-boss/apps.json`、同步 root `AGENTS.md` 與 `CLAUDE.md`，為缺少 agent system 的 app 提議建立一套，並檢查 Herdr 委派需求。
 
-單一 app 的話 `init` 只是加分，裝好 plugin 就能直接用 `boss-say`。想開 herdr、設定 `forbidDirectCommit`/`localFiles` 這類選項、或設定 monorepo 多個 app，才需要跑。
+單一 app 的話 `init` 只是加分，裝好 plugin 就能直接用 `boss-say`。檢查 Herdr、設定 `forbidDirectCommit`/`localFiles` 這類選項、或設定 monorepo 多個 app，才需要跑。
 
 ## Skills
 
 | Skill | 說明 |
 |-------|-------------|
-| `init` | 問要管哪些 app、寫設定、同步 root `AGENTS.md` 與 `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
+| `init` | 問要管哪些 app、寫設定、同步 root `AGENTS.md` 與 `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、檢查 Herdr 委派需求 |
 | `boss-say` | **所有事情的入口。**為單一任務、獨立批次或 backlog 選擇 owner skill 與最小充分迴圈 |
 | `handoff-orchestrator` | 經明確同意後，把一個 scope 與最小延續狀態交給新的 orchestrator tab |
 | `boss-assistant` | 老闆助理：將各協調者的摩擦當作 Straw Boss UAT，修復 graph 並依量測優化效能與儲存；先查本地專案，再準備 issue／PR 並詢問是否發布 |

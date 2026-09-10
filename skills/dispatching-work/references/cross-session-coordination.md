@@ -46,9 +46,7 @@ the written state remains authoritative.
 
 Work-detail discussion and authorization go directly to the user in an
 interactive task. The Herdr worker is independent after launch, and the main
-agent accepts user–worker decisions. Headless Codex relays through its recorded
-thread; headless Claude reports terminal `failed` and starts a fresh attempt
-after the user answers.
+agent accepts user–worker decisions.
 
 ## Main agent to worker
 
@@ -67,9 +65,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
 
 Resolve an interactive `awaiting-main-agent` through `reply-to-worker.py --reply
 "<delta>" --ref "<instruction/context when needed>"`; it validates, sends, and
-records the resolution. Headless Codex resumes its recorded thread with the
-result. Headless Claude carries the result into a fresh attempt after terminal
-`failed`.
+records the resolution.
 
 Redirect carries an explicit user change or repairs an objectively wrong
 dispatch/dependency instruction. Interrupt the recorded worker pane, confirm it
@@ -85,7 +81,6 @@ duplicate, or unreachable—not that the main agent dislikes the worker's choice
 
 - Interactive: interrupt and close the recorded pane, then call
   `report-task-status.py --instruction-path ... --status cancelled`.
-- Headless: stop the tracked process, then write the same cancelled status.
 
 Inspect dependent Plan tasks immediately; `cancelled` does not satisfy a
 dependency.

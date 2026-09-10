@@ -26,7 +26,7 @@ Bounded work should stay bounded. When a task benefits from its own workroom, st
 
 - Claude Code with plugins enabled, or Codex CLI with plugin support.
 - Python 3 for the bundled lifecycle and installation scripts.
-- [herdr](https://github.com/herdrdev/herdr) (recommended, optional). With it, dispatched Claude Code and Codex CLI workrooms are visible and joinable. Without a live herdr session, separate workrooms run headlessly.
+- [Herdr](https://github.com/herdrdev/herdr)（委派必要需求）。Claude Code 與 Codex CLI worker 都在可查看、可加入的 Herdr pane 執行。安裝、讀取設定與整理已保存狀態可獨立執行；開始委派前須有可用的 Herdr 服務與目前 pane。
 
 ## Install
 
@@ -75,9 +75,9 @@ $straw-boss:init
 
 You can also browse or manage the installed plugin interactively by starting `codex` and entering `/plugins`. Plugins are not available in the Codex IDE extension.
 
-`init` 會確認 managed apps 與 work routes，寫入 `.straw-boss/apps.json`，同步根目錄的 `AGENTS.md` 與 `CLAUDE.md`，提議補齊各 app 缺少的指引檔，並記錄是否啟用 herdr dispatch。
+`init` 會確認 managed apps 與 work routes，寫入 `.straw-boss/apps.json`，同步根目錄的 `AGENTS.md` 與 `CLAUDE.md`，提議補齊各 app 缺少的指引檔，並檢查 Herdr 委派需求。
 
-For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it when you want herdr, per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
+For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it to check Herdr readiness, configure per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 
 ## Skills
 

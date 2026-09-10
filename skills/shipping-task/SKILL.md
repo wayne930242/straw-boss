@@ -68,19 +68,19 @@ The generated contract supplies exact progress, message, checkpoint, and termina
 
 Applies to team-mode only — solo-mode's commit needs no authorization and reaches no checkpoint here (Task 2/Task 3).
 
-For a current-agent single-loop, ask the user here. For an interactive task, authorization happens directly in the dispatched agent's session. Headless Codex resumes its recorded thread with the answer. Headless Claude reports terminal `failed`; after the answer, wrap that attempt and start a fresh-slug dispatch carrying the answer, using `--retry-failed-plan-task` for a plan task.
+For a current-agent single-loop, ask the user here. For an interactive task, authorization happens directly in the dispatched agent's session.
 
-For an interactive or headless Codex task, `awaiting-authorization` remains non-terminal until the user answers. Plan tasks expose it through `watch-plan-status.py`; a standalone task persists the checkpoint to its own `.status.json` sibling and notifies this session from the same call, and the answer arrives as its next status event.
+For an interactive task, `awaiting-authorization` remains non-terminal until the user answers. Plan tasks expose it through `watch-plan-status.py`; a standalone task persists the checkpoint to its own `.status.json` sibling and notifies this session from the same call, and the answer arrives as its next status event.
 
 **A feature-branch push notification is not this checkpoint.** The agent pushes its own feature branch and opens or updates an MR/PR on its own — no authorization to obtain and no session to resume. Relay the herdr FYI when it arrives; if no live route exists, read the progress trail. Never convert it into `awaiting-authorization`.
 
-`awaiting-user-input` follows the same interactive or headless Codex route, but grants no mutation authorization. A headless Claude user decision uses its terminal failed-and-retry route.
+`awaiting-user-input` follows the same interactive route, but grants no mutation authorization.
 
-`awaiting-main-agent` is reserved for integrated context or a coordinator-owned action result. Interactive tasks resolve it with `reply-to-worker.py`; headless Codex resumes its thread with the result, while headless Claude uses its terminal failed-and-retry route. A work-content decision returns to the user.
+`awaiting-main-agent` is reserved for integrated context or a coordinator-owned action result. Interactive tasks resolve it with `reply-to-worker.py`. A work-content decision returns to the user.
 
 If the target app is itself a submodule of a monorepo root and a pointer-bump push at the root is also needed once its commit lands, that's a separate mutation, gated the same way merge is — ask about it separately, don't fold it into the feature-branch push's no-authorization exemption.
 
-**Verification:** every gated mutation has direct user authorization in the interactive task or a faithfully relayed user answer for headless mode; feature-branch pushes remain FYIs.
+**Verification:** every gated mutation has direct user authorization in the interactive task or the current-agent single-loop; feature-branch pushes remain FYIs.
 
 ## Task 6: Confirm and wrap up
 

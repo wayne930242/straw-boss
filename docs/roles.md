@@ -90,7 +90,7 @@ the next decision. If that interface is unavailable, it asks one concise
 plain-text question and waits.
 
 Interactive work-detail questions and authorization stay in the dispatched
-agent's pane. The main agent relays them only for a headless task. Peer messages
+agent's pane.  Peer messages
 are factual and carry no direction or authorization.
 
 Every dispatched agent reports terminal `done` or `failed` through

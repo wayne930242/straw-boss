@@ -29,10 +29,9 @@ If the trail (plus, for a plan task, the status file) already answers "what's it
 
 ## Task 3: Peek live, only when the trail doesn't answer it
 
-Follow `references/peek-mechanics.md` for the exact command — don't improvise the transcript path encoding or the `herdr agent read` flags from memory.
+Follow `references/peek-mechanics.md` for the exact command — don't improvise the `herdr agent read` flags from memory.
 
 - `herdr-pane` → `herdr agent read`, read-only, doesn't interrupt.
-- `claude-p` → tail the agent's own transcript jsonl; there's no pane to read.
 
 **Verification:** the mechanism used matches the dispatch's actual mode; nothing was typed or sent into the target pane; this task only ran because Task 2's trail genuinely didn't answer the question (empty, stale, or too vague), not out of habit.
 
@@ -44,4 +43,4 @@ Summarize what the agent is currently doing in plain language — not a raw dump
 
 ## References
 
-- `references/peek-mechanics.md` — exact `herdr agent read` syntax, transcript path encoding, and extraction for `claude-p`.
+- `references/peek-mechanics.md` — exact `herdr agent read` syntax.

@@ -7,9 +7,8 @@ files are never modified to inject a dispatch workflow.
 
 兩個指引檔的 routing 區段若不同，呈現差異並由使用者選定本次設定；init Task 3 負責同步確認後的區段。
 
-- `capability.json` explicitly says `claude-p-only`: use headless mode.
-- Otherwise use `herdr-pane` when `HERDR_ENV=1`; use headless only when no live
-  herdr session exists.
+Herdr 委派入口先核對服務與目前 pane 的 live record，條件齊備才寫入指令。
+
 - Resolve the worker setup independently: explicit per-dispatch override, then
   a matching work route in root `AGENTS.md`（缺少 routing 區段時讀取 `CLAUDE.md`）, then the app's
   `apps.json.agentKind`, then Claude with provider defaults. A work route can
@@ -25,9 +24,8 @@ Before launching anything, call:
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --app <app> --slug <slug> --task "<task>" \
-  --mode claude-p|herdr-pane --repo-root <repo_root> \
+  --mode herdr-pane --repo-root <repo_root> \
   [--batch <batch>] [--plan <plan> --task-id <task>] [--role <workroom>] \
-  [--retry-failed-plan-task] \
   --agent-kind claude|codex --main-agent-kind claude|codex \
   [--agent-profile <profile>] [--agent-model <model>] \
   [--agent-effort <effort>] [--advisor-model <claude-model>] \
@@ -52,22 +50,16 @@ The contract contains the exact instruction-keyed progress, question, and
 status commands. The task prompt carries work semantics, not a hand-copied
 workflow.
 
-`--retry-failed-plan-task` applies only after a headless Claude plan attempt has
-reported terminal `failed`, been wrapped, and received its user-owned answer.
-Preserve its team-mode worktree, reuse the same `repo_root`, use a fresh dispatch
-slug, and carry the answer in the new brief. The write
-removes the old failed status and returns that same plan task to `dispatched`.
-
 ## Permission mapping
 
 Mirror the main agent's restriction tier; the dispatched agent must never be
 more permissive.
 
-| Tier | Claude | Codex interactive | Codex headless |
-|---|---|---|---|
-| unrestricted | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | same |
-| guarded-write | default/`auto`/`acceptEdits`/`dontAsk` | `--sandbox workspace-write --ask-for-approval on-request` | `--sandbox workspace-write` |
-| read-only | `plan`/`manual` | `--sandbox read-only` | `--sandbox read-only` |
+| Tier | Claude | Codex |
+|---|---|---|
+| unrestricted | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` |
+| guarded-write | default/`auto`/`acceptEdits`/`dontAsk` | `--sandbox workspace-write --ask-for-approval on-request` |
+| read-only | `plan`/`manual` | `--sandbox read-only` |
 
 Detect explicit Claude mode from `ps -p "$CLAUDE_PID" -ww -o args=`. Preserve
 each flag as one argument; do not depend on shell word splitting.
@@ -290,37 +282,6 @@ receipt only after herdr's own lifecycle gate (where the pane's pre-send
 state makes it available) confirms a turn started and the transcript shows
 the delivered text, so `confirm` cannot advance a task whose startup flow
 only wrote its prompt into the composer or swallowed both task submissions.
-
-## Headless launch
-
-Headless mode has no live receiver. Start it through the provider-aware runner,
-which injects the generated contract in the same invocation:
-
-```bash
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/run-headless-dispatched-agent.py" \
-  start --instruction-path <path> [--agent-arg=<permission-flag>]...
-```
-
-Codex has no native advisor. `dispatch-task.py write` refuses its
-`--advisor-model` before creating an instruction; never emulate one with a
-coworker or subagent.
-
-The process must write status through `report-task-status.py
---instruction-path` before exit. With no live main-agent endpoint, that
-persisted status plus the process's own exit is what the main agent reads. The
-runner holds one instruction-level claim across provider start or resume, so a
-duplicate command cannot launch or continue the same task concurrently. It
-captures Codex's `thread.started` event before accepting a checkpoint.
-Continue it with:
-
-```bash
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/run-headless-dispatched-agent.py" \
-  resume --instruction-path <path> --answer "<answer>"
-```
-
-That command uses the recorded provider thread id with `codex exec resume`,
-reinjects the contract, and requires a new status revision. The interactive Herdr session identifies the live conversation; headless
-resume still uses the provider thread recorded by the headless runner.
 
 ## Reporting and communication
 

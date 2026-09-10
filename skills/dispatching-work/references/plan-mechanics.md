@@ -65,37 +65,26 @@ or, for a dispatch cancelled under `docs/roles.md`'s explicit user/objective-inv
 
 ## Authorization checkpoints (team-mode only)
 
-An agent must stop and report readiness rather than execute a merge, or a push landing outside its own feature branch. In an interactive pane the user answers directly. For headless Codex, the main agent presents that authorization as one decision through the harness-native ask-question interface, waits for the answer, and resumes the recorded thread with it. Headless Claude reports `failed` with the required authorization in its note; the main agent presents that decision, wraps the failed attempt, then writes a fresh-slug attempt carrying the answer with `--retry-failed-plan-task`. Commit and a push of the task's own feature branch need no authorization. The generated contract supplies the checkpoint; task prose states only a material task-specific boundary absent from target-project instructions.
-
-The plan loop leaves `awaiting-authorization` attached and non-terminal. Its caller points the user to an interactive pane or resumes a headless Codex continuation with the answer. The task later reports a terminal state.
+合併或推送至任務以外的分支前，worker 回報 `awaiting-authorization`，由使用者在 pane 直接回答。自己的 feature branch commit／push 維持既有授權規則。checkpoint 保持非終態並占用原有 slot，使用者回答後由 worker 繼續並回報狀態。
 
 ## User-clarification checkpoints
 
-Different from an authorization checkpoint on every axis that matters: it isn't a mutation gate, and the main agent never guesses the answer. The generated contract tells an interactive or headless Codex task to use `awaiting-user-input` when a substantive question about the *work itself* needs user judgment. A herdr-pane task asks and waits in its own pane so the user answers directly. For headless Codex, the main agent presents one user-owned decision through the harness-native ask-question interface and waits before presenting another; after the user answers, it resumes the recorded thread through `codex exec resume`. Headless Claude reports terminal `failed` with the question in its note; the main agent presents that decision, wraps the attempt, then uses `--retry-failed-plan-task` with a fresh slug and the answer in the new brief. Task prose supplies the context needed to avoid preventable questions; it does not restate this generic checkpoint.
+`awaiting-user-input` 表示工作細節需要使用者判斷；worker 在自己的 pane 提問並等待，回覆本身不授予變更授權。
 
-**Escalation order.** Discuss work details and judgment with the user directly. Headless Codex persists `awaiting-user-input`; headless Claude reports terminal `failed` with its question. Ask the main agent only for integrated instructions, cross-task context, or a coordinator-owned action. Ask peers only for factual progress or conclusions.
+**Escalation order.** 工作細節與判斷直接詢問使用者；整合指示、跨任務資訊與協調者操作詢問主 agent；peer 僅交換事實。
 
-On an interactive `awaiting-user-input` notification, the main agent's job is narrow: tell the user which task is asking and which worker pane to answer (from `herdr_pane_id`), then leave it alone. On a headless Codex notification, present that task's one decision through the ask-question interface and resume its recorded thread with the answer. The plan loop does not treat either checkpoint as done, failed, or ready for another wave. The task continues and later reports another state.
-
-**Not every mid-task question needs the user.** For an interactive task, integrated context or a coordinator action uses the instruction-keyed message script. Headless Codex persists `awaiting-main-agent`; headless Claude puts that exact need in its terminal `failed` note. Delivery is not authorization.
-
-**Interactive answering is preferred through `herdr-pane`.** A headless Claude process cannot pause and resume: it reports `failed` with the question, then a wrapped attempt is replaced through `--retry-failed-plan-task` after the user answers. A headless Codex task persists `awaiting-user-input`, exits, and later continues the recorded thread through `codex exec resume`; in that mode the main agent relays the user's answer because there is no live pane. Use `herdr-pane` whenever available so the user can answer directly and no relay is needed.
+On an interactive `awaiting-user-input` notification, 主 agent 指出任務與 worker pane，讓使用者直接回答。plan loop 保持任務 attached 與非終態。
 
 ## Main-agent-action checkpoints
 
-Use `awaiting-main-agent` only for integrated context or a coordinator-owned
-action result in an interactive or headless Codex task. Headless Claude reports
-terminal `failed` with that need. Work-content decisions and mutation gates stay
-with the user and dispatched agent.
+`awaiting-main-agent` 用於整合資訊或協調者操作結果。工作內容與變更授權由使用者及 worker 決定。
 
 An interactive checkpoint is resolved through `reply-to-worker.py`:
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/reply-to-worker.py" \
   --worker-instruction-path <path> --reply "<text>"
 ```
-It delivers the reply, confirms it landed, then records the resolution. Headless
-Codex instead resumes its recorded thread with the coordination result. The
-worker's next status revision closes either checkpoint.
+It delivers the reply, confirms it landed, then records the resolution. worker 的下一次狀態更新完成 checkpoint。
 
 For an interactive task, if resolving takes more than a couple of tool calls, an optional `send-dispatch-message.py --to worker --intent inform` nudge lets the worker know it is being handled. `reply-to-worker.py` still resolves that interactive checkpoint.
 
@@ -103,7 +92,7 @@ On this status event (also delivered live through Herdr when recorded), the main
 agent supplies the owned fact or action result. Route work-content judgment to
 the user instead.
 
-The direct reply script requires `herdr-pane`, but supports both Claude and Codex. A headless Codex checkpoint continues through the recorded thread id using `codex exec resume` as documented in `dispatch-mechanics.md`; a headless Claude attempt is wrapped and replaced through `--retry-failed-plan-task` when applicable.
+The direct reply script supports both Claude and Codex in `herdr-pane`.
 
 ## Reporting status (script given to every dispatched task)
 
@@ -132,7 +121,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/read-plan-status.py" --plan <plan
 
 1. Run `read-plan-status.py --plan <slug> --ready` to get the current ready wave.
 2. For every task in the wave: call `dispatch-task.py write --plan <slug> --task-id <task_id> ...` (per `dispatch-mechanics.md`), then dispatch — **all of them, not one at a time**. The script marks `plan.json`'s task `dispatched` as part of the same call, not a separate manual edit.
-3. Every team-mode task in the wave gets its worktree created first — see the worktree-ownership section below — before the `claude-p`/`herdr-pane` dispatch itself.
+3. Every team-mode task in the wave gets its worktree created first — see the worktree-ownership section below — before the `herdr-pane` dispatch itself.
 4. The generated dispatch contract supplies the universal progress, communication, checkpoint, and terminal-report workflow. Author every brief within `dispatching-work` Task 3's brief boundary: carry the user requirement, requested outcome, necessary hints/constraints, and already-known coordination facts while leaving target-app context discovery to the worker. The worker and user choose the **specification, design, implementation, and the verification method inside the reality anchor the brief names**. Parallel tasks need non-overlapping requirement scopes; otherwise add a dependency instead of sharing a wave. Generic lifecycle prose stays out.
 
 ## Monitoring Plan status (provider-neutral scheduling signal)
@@ -165,12 +154,12 @@ still depends on the watcher plus persisted status.
 
 ## Auto-detach on terminal state
 
-**A task_id getting a live same-task continuation isn't finished yet — don't call `wrap-up-task.py` for it ("Same-task continuation" below).** Headless Claude is different: its process has ended with terminal `failed`, so its user-answer retry wraps only that attempt's dispatch record and writes a new instruction identity through `--retry-failed-plan-task`. Preserve the existing team-mode worktree and reuse its `repo_root`; it may contain uncommitted progress needed by the retry.
+**A task_id getting a live same-task continuation isn't finished yet — don't call `wrap-up-task.py` for it ("Same-task continuation" below).**
 
-Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization`, `awaiting-user-input`, or `awaiting-main-agent`, none of which is terminal. Interactive tasks keep their pane; headless Codex keeps its recorded thread identity. Headless Claude emits terminal `failed` instead.
+Auto-detach triggers on `done`/`failed`/`cancelled` — **never** on `awaiting-authorization`, `awaiting-user-input`, or `awaiting-main-agent`, none of which is terminal. Tasks keep their pane.
 
 When the status watcher emits `done`/`failed`, or the main agent has just written `cancelled` itself (Cancel may also emit through the watcher, but the authoring main agent already knows synchronously):
-1. Close the worker pane only; its tab is shared with the coordinator. For a team-mode task, then remove the worktree with plain git. A headless Claude decision-required `failed` attempt keeps that worktree for its fresh-slug retry. Release any shared-resource lock still held on this instruction, whatever the terminal status — `shared-resource-coordination.md`'s "Releasing every lock on a wrapped-up instruction".
+1. Close the worker pane only; its tab is shared with the coordinator. For a team-mode task, then remove the worktree with plain git. Release any shared-resource lock still held on this instruction, whatever the terminal status — `shared-resource-coordination.md`'s "Releasing every lock on a wrapped-up instruction".
 2. For a landed programming change whose review is not recorded yet, confirm the completion reference and apply `choosing-graph`'s single review checkpoint before Step 3 archives it.
 3. Call `wrap-up-task.py --app <app> --slug <slug> --plan <slug> --task-id <task_id>` — it archives the instruction and syncs `plan.json`'s `tasks[].status` to the terminal status it reads from the status file, in one call. Do not `mv`/`Edit` these by hand.
 4. Do **not** touch `plan.json.status` here — that only becomes `done` once every task in the plan is terminal (check across all tasks, not per-event).
@@ -191,7 +180,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
   --message "Continue phase 2 from the referenced instruction." \
   --ref "<phase-2 instruction artifact>"
 ```
-Two calls preserve queue order. Codex uses only the phase-2 message. Headless Codex uses its recorded thread id per `dispatch-mechanics.md`.
+Two calls preserve queue order. Codex uses only the phase-2 message.
 
 **Phase 2's artifact contains the full instruction and its own report command.**
 This isn't a fresh dispatch instruction, so the referenced content must include
@@ -282,7 +271,7 @@ the pre-push sequence.
 
 ## Failure handling
 
-On a watcher event reporting `status: failed` for a task, read that task's status file's `note` field, and if it isn't conclusive, invoke `peeking-work` on that task to judge whether the failure looks like a permission denial (Claude Code declining an action rather than the task failing on its own merits) — don't read the transcript inline here. If it does, tell the user plainly and ask whether to retry that task with a permission bypass (`claude --dangerously-skip-permissions`/`--allow-dangerously-skip-permissions`, per `claude --help`) — **every time, never applied automatically**. A wrapped headless Claude plan attempt uses a fresh slug plus `--retry-failed-plan-task`; other retry shapes follow their normal fresh-dispatch mechanics. A non-permission failure is reported to the user as a failure; retrying it is the user's call.
+On a watcher event reporting `status: failed` for a task, read that task's status file's `note` field, and if it isn't conclusive, invoke `peeking-work` on that task to judge whether the failure looks like a permission denial (Claude Code declining an action rather than the task failing on its own merits) — don't read the transcript inline here. If it does, tell the user plainly and ask whether to retry that task with a permission bypass (`claude --dangerously-skip-permissions`/`--allow-dangerously-skip-permissions`, per `claude --help`) — **every time, never applied automatically**. 重試採用新的委派指令與正常派工流程。 A non-permission failure is reported to the user as a failure; retrying it is the user's call.
 
 ## Shared-resource coordination (ports, DB migrations — cross-main-agent, not just cross-task)
 

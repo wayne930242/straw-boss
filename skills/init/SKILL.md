@@ -1,17 +1,17 @@
 ---
 name: init
-description: One-time (or occasional) setup for straw-boss in a project. Use when the user says "straw-boss init", runs it for the first time in a repo, or another straw-boss skill reports no apps config or no capability record exists yet.
+description: One-time (or occasional) setup for straw-boss in a project. Use when the user says "straw-boss init", runs it for the first time in a repo, or another straw-boss skill reports no apps config .
 ---
 
 ## Overview
 
-Three independent one-time decisions, all persisted so no other skill has to ask again: which apps this project manages (project-level, checked into git, shared with the team), which work routes should select each provider profile/model/effort and optional Claude Code native advisor (project-level, written into root `AGENTS.md` 與 `CLAUDE.md`), and whether `herdr-pane` dispatch is available on this machine (per-user, per-machine, lives under the user's home directory). A project can be re-`init`'d to change any one of these without touching the other two.
+設定專案 managed apps 與 work routes，並檢查委派所需的 Herdr。設定與指引同步可獨立完成；啟動委派時需要可用的 Herdr 服務及目前 pane。
 
 ## Task 1: Check for an existing apps config
 
 Locate the repo root with `git rev-parse --show-toplevel` — never assume the current directory is the root. 執行 `references/apps-config-schema.md` 的共用讀取 handler，依 exit code 區分有設定、缺設定與設定錯誤。以回傳的 `config` 作為後續修改基礎，`path` 與 `legacy` 作為遷移證據。 If it exists, show the current app list and ask whether the user wants to keep it, add/remove apps, or redo it from scratch — do not silently overwrite it.
 
-- **Keep, no changes:** 保留 app 清單，略過 Task 2 的確認對話；若來源為舊路徑，依 schema 的遷移規則寫入新路徑。 The rest of the skill still runs in full: Task 3's agent-routing question, Tasks 4-8's capability/herdr decisions are independent of the apps list, Task 9 still checks each app for a missing agent system, and Task 10 still re-syncs `AGENTS.md` 與 `CLAUDE.md`, in case that file drifted independently of the config.
+- **Keep, no changes:** 保留 app 清單，略過 Task 2 的確認對話；若來源為舊路徑，依 schema 的遷移規則寫入新路徑。 The rest of the skill still runs in full: Task 3's agent-routing question, Tasks 4-8 的 Herdr 檢查 are independent of the apps list, Task 9 still checks each app for a missing agent system, and Task 10 still re-syncs `AGENTS.md` 與 `CLAUDE.md`, in case that file drifted independently of the config.
 - **Add/remove apps, or redo from scratch:** Task 2 runs for real, scoped to what the user asked to change (e.g. only the new apps, not re-confirming ones the user didn't mention).
 - **No existing config:** Task 2 runs fresh, as normal.
 
@@ -63,45 +63,35 @@ Write confirmed routes as canonical prose between the routing markers, one line 
 
 **Verification:** every written route was confirmed as a whole; recommendations used local preferences before current official guidance; only Claude routes can name an advisor; existing routes were presented before replacement; multiple work routes can reuse the same agent kind with different profiles/models; 結果僅寫入根目錄 `AGENTS.md` 與 `CLAUDE.md` 的 agent-routing markers 內。
 
-## Task 4: Check for an existing capability record
+## Task 4: 檢查 Herdr CLI 與服務
 
-Resolve the home directory with `python3 -c "from pathlib import Path; print(Path.home() / '.straw-boss')"` — never write a literal `~/.straw-boss/...` into a command (shell `~` expansion is unreliable across the platforms this tool's users are on). Read `<home>/.straw-boss/capability.json` (schema: `${CLAUDE_PLUGIN_ROOT}/skills/dispatching-work/references/dispatch-mechanics.md`). If it already exists, show its current state (`herdr-enabled` or `claude-p-only`) and ask whether the user wants to keep it or change it — do not silently overwrite it, and do not silently skip re-running the rest of this skill just because a record exists.
+以 `command -v herdr` 與 `herdr status` 檢查委派依賴。缺少時回報安裝或啟動 Herdr 的需求，仍可完成本地設定與 Task 10 指引同步；待服務就緒再進行 Task 9 的 app 委派。
 
-**Verification:** you either found no record and proceeded to Task 5, or found one and got an explicit keep/change answer before touching it.
+**Verification:** 實際觀察 CLI 與服務狀態，回報尚未滿足的委派條件。
 
-## Task 5: Create the dispatch-instruction directory
+## Task 5: 建立委派狀態目錄
 
-Create `<home>/.straw-boss/dispatch/` and `<home>/.straw-boss/dispatch/archive/` if they don't exist. Nothing here needs `.gitignore` handling — it's outside any git checkout entirely.
+以 Python `Path.home()` 解析使用者目錄，建立 `.straw-boss/dispatch/` 與 `.straw-boss/dispatch/archive/`。
 
-**Verification:** both directories exist under the user's home directory, not under the project checkout.
+**Verification:** 狀態目錄位於使用者 home。
 
-## Task 6: Ask whether to enable herdr
+## Task 6: 檢查目前 Herdr session
 
-Ask the user whether to enable herdr-backed dispatch (`herdr-pane` mode). Explain briefly what it buys them (a visible, interactive pane the user can join, real synchronous wait for mid-task questions) versus the always-available `claude-p` fallback.
+以 `$HERDR_PANE_ID` 取得目前 Herdr live agent record，核對 provider 身分。缺少 pane 時，請使用者在 Herdr session 繼續委派；本地設定與 Task 10 指引同步仍可完成。
 
-- **Declines:** 記錄 `{"mode": "claude-p-only"}`，略過 Tasks 7–8，接續 Task 9 與 Task 10。
-- **Enables:** continue to Task 7.
+**Verification:** 委派前已取得目前 pane 與 provider fingerprint。
 
-**Verification:** the user made an explicit choice; you did not default to enabling herdr without asking.
+## Task 7: 檢查 provider integration
 
-## Task 7: Verify herdr and its claude integration (enable branch only)
+執行 `herdr integration status`，核對此次 worker provider 所需的整合。若 Claude integration 缺少，說明 `herdr integration install claude` 會寫入全域 Claude hook 與 settings，取得使用者授權後安裝並核對結果。Codex 依 Herdr live record 的 provider session／terminal 身分進行驗證。
 
-1. Run `herdr status`. If it doesn't report a running server, tell the user plainly and ask whether to proceed `claude-p-only` for now instead — do not persist `herdr-enabled` against a herdr that isn't actually reachable.
-2. Run `herdr integration status` and check the `claude` line.
-   - **Already installed:** continue.
-   - **Not installed:** tell the user plainly that `herdr integration install claude` writes `~/.claude/hooks/herdr-agent-state.sh` and registers a global `SessionStart` hook in `~/.claude/settings.json` — this affects **every** Claude Code session on this machine, not just straw-boss dispatches. This is a hard prerequisite for `herdr-pane` mode's session tracking, not optional. Get explicit confirmation before running it. On decline, fall back to persisting `claude-p-only` rather than half-enabling herdr without the integration.
-3. Persist `{"mode": "herdr-enabled"}`.
+**Verification:** 需要的整合已就緒，或明確回報待完成條件。
 
-**Verification:** `herdr-enabled` is only persisted after both the server and the claude integration were actually confirmed working — not assumed from the user having said "yes" to the general question in Task 6.
+## Task 8: 完成就緒檢查
 
-## Task 8: Check `crossSessionInbound` (enable branch only)
+依 CLI、服務、session 與 provider integration 的實際結果判斷能否委派。模式固定為 `herdr-pane`，就緒狀態在每次委派入口重新檢查。Task 9 有未滿足條件時，回報待執行的 app inventory／bootstrap，再完成 Task 10。
 
-`herdr-pane` tasks can message the main agent directly for coordination questions (see `dispatching-work`'s `references/cross-session-coordination.md`) — but only if incoming cross-session messages actually deliver. Read `~/.claude/settings.json`'s top-level `crossSessionInbound` key.
-
-- **Already `"accept"`:** nothing to do.
-- **Unset or anything else:** explain what it does (without it, a message from a session whose permission-mode class doesn't match the main agent's — e.g. a `herdr-pane` agent running in auto/bypass mode messaging a normal interactive session — gets held pending manual review instead of delivering) and ask whether to set it to `"accept"` in the user's global `~/.claude/settings.json`. This is a Claude Code CLI setting, not straw-boss's own — say so, and that `"accept"` only automates delivery, it does not change the standing rule that a peer's message is never treated as authorization for anything.
-
-**Verification:** the user was told what the setting does and asked explicitly before it was changed — this skill never flips it silently.
+**Verification:** 設定完成與委派就緒分別回報；尚未執行的 app 工作保持未完成。
 
 ## Task 9: Offer to bootstrap a missing agent system, per app
 
@@ -154,4 +144,4 @@ Full config (routing, redirects, per-app rules): `.straw-boss/apps.json`.
 ## References
 
 - `references/apps-config-schema.md` — exact `apps.json` field names, types, and how other skills read it.
-- `${CLAUDE_PLUGIN_ROOT}/skills/dispatching-work/references/dispatch-mechanics.md` — `capability.json` schema.
+- `${CLAUDE_PLUGIN_ROOT}/skills/dispatching-work/references/dispatch-mechanics.md` — Herdr 委派介面。

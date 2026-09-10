@@ -14,7 +14,7 @@ Runs either inline (a user asked for this directly) or as a dispatched agent roo
 State the confirmed scope before writing: `<app-dir>/AGENTS.md` 與 `<app-dir>/CLAUDE.md`, plus any optional hook or rule the user or dispatch instruction explicitly requested. The survey may support a recommendation for another artifact, but extending the confirmed scope remains a user-owned decision.
 
 - **Invoked directly by a user in this session:** get explicit confirmation before proceeding — this writes into the app's own checkout, not just plugin state.
-- **Invoked as a dispatched agent:** the dispatch instruction already states the scope was confirmed — that confirmation *is* `init`'s own per-app yes/skip ask. Don't ask again; there's no user in this session to answer, and re-asking just stalls a `claude -p` dispatch. State the scope for the record and proceed straight to Task 2.
+- **Invoked as a dispatched agent:** the dispatch instruction already states the scope was confirmed — that confirmation *is* `init`'s own per-app yes/skip ask. Don't ask again; there's no user in this session to answer, and the worker proceeds within the confirmed scope. State the scope for the record and proceed straight to Task 2.
 
 **Verification:** either the user confirmed in this session or the dispatch instruction carried the confirmed scope before any file was written.
 

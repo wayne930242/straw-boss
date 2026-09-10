@@ -90,12 +90,7 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
                 f"or main-agent action"
             )
     else:
-        # A standalone dispatch's own report-task-status.py --instruction-path record
-        # (see dispatch-mechanics.md's "Reporting scripts") -- same non-terminal guard
-        # as the plan-task case above. A missing record is legitimate for an older
-        # dispatch or a claude-p one confirmed done by process exit, but not for a
-        # confirmed herdr-pane worker: that one has a live pane and writes its own
-        # status, so silence means it never reported, not that it finished.
+        # 執行中的委派以終態紀錄作為歸檔依據。
         status_record = standalone_status_path(src)
         if status_record.is_file():
             standalone_status = str(load_json(status_record)["status"])
@@ -105,7 +100,7 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
                     f"to wrap up a dispatch that's still awaiting authorization, user input, "
                     f"or main-agent action"
                 )
-        elif payload.get("mode") == "herdr-pane" and payload.get("status") == "in-progress":
+        elif payload.get("status") == "in-progress":
             # This call cannot tell a running worker from a closed one, so it
             # refuses rather than archiving the instruction out from under a live
             # agent -- including one dispatched by a different main-agent session,

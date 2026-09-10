@@ -122,9 +122,18 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("exit 3", schema)
         self.assertIn("exit 1", schema)
 
+    def test_live_skills_support_only_herdr_dispatch(self) -> None:
+        for path in prose_surfaces():
+            source = path.read_text().lower()
+            self.assertNotIn("headless", source, str(path))
+            self.assertNotIn("claude-p", source, str(path))
+        for name in ("README.md", "README.zh-TW.md"):
+            self.assertIn("委派必要需求", (ROOT / name).read_text())
+        self.assertFalse((ROOT / "scripts/run-headless-dispatched-agent.py").exists())
+
     def test_init_reaches_guidance_sync_without_herdr(self) -> None:
         source = normalized(ROOT / "skills/init/SKILL.md")
-        self.assertIn("略過 Tasks 7–8，接續 Task 9 與 Task 10", source)
+        self.assertIn("本地設定與 Task 10 指引同步仍可完成", source)
         self.assertIn("補齊缺檔並保留既有指引", source)
         self.assertIn("保留兩檔各自的區段外內容", source)
         self.assertIn("routing 區段在兩檔一致", source)
@@ -297,27 +306,14 @@ class SkillInstructionQualityTests(unittest.TestCase):
             boss_say.index("one** batch-wide"),
             boss_say.index("one plan-confirmation decision"),
         )
-        self.assertIn("For headless Codex", boss_say)
-        self.assertIn("headless Claude failed note", boss_say)
-        self.assertIn("--retry-failed-plan-task", boss_say)
         self.assertNotIn("every progress report from here on", boss_say)
         self.assertNotIn("repeat the prior finding instead", boss_say)
         self.assertIn("Don't re-peek or report unchanged idleness", boss_say)
         self.assertIn("unchanged idleness stays quiet", boss_say)
 
-        self.assertIn("Present any later decision in a later ask-question interaction", dispatching)
-        self.assertIn("For headless Codex", dispatching)
-        self.assertIn("headless Claude user decision arrives as terminal failed", dispatching)
-        self.assertIn("fresh-slug answer retry", dispatching)
         self.assertNotIn("point the user at the pane for the other checkpoints", dispatching)
 
-        self.assertIn("presents one user-owned decision", plan_mechanics)
-        self.assertIn("waits before presenting another", plan_mechanics)
-        self.assertIn("Headless Claude reports failed", plan_mechanics)
-        self.assertIn("--retry-failed-plan-task", plan_mechanics)
-        self.assertIn("fresh slug and the answer in the new brief", plan_mechanics)
         self.assertIn("On an interactive awaiting-user-input notification", plan_mechanics)
-        self.assertIn("On a headless Codex notification", plan_mechanics)
         self.assertNotIn(
             "tell the user which task is asking and which worker pane to answer (from herdr_pane_id), then leave it alone. The plan loop",
             plan_mechanics,
@@ -890,21 +886,13 @@ class SkillInstructionQualityTests(unittest.TestCase):
             sys.path.pop(0)
 
         path = Path("/home/boss/.straw-boss/dispatch/app--slug.json")
-        interactive = dispatch_state.render_dispatch_contract(path)
-        headless_codex = dispatch_state.render_dispatch_contract(
-            path, mode="claude-p", agent_kind="codex"
-        )
-        headless_claude = dispatch_state.render_dispatch_contract(
-            path, mode="claude-p", agent_kind="claude"
-        )
-
-        for contract in (interactive, headless_codex):
+        for kind in ("claude", "codex"):
+            contract = dispatch_state.render_dispatch_contract(path, agent_kind=kind)
             self.assertIn("name the anchor when this dispatch does not", contract)
             self.assertIn("awaiting-main-agent", contract)
-        self.assertIn("does not name the anchor", headless_claude)
-        self.assertIn("report terminal `failed`", headless_claude)
-        fallback = headless_claude.split("does not name the anchor", 1)[1].split("\n-", 1)[0]
-        self.assertNotIn("awaiting-main-agent", fallback)
+            self.assertIn("directly with the user", contract)
+            with self.assertRaises(ValueError):
+                dispatch_state.render_dispatch_contract(path, mode="claude-p", agent_kind=kind)
 
     def test_the_brief_source_rule_governs_what_the_brief_says_about_the_work(
         self,

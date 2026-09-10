@@ -60,7 +60,6 @@ INSTRUCTION_SIBLING_SUFFIXES = (
     ".contract.md",
     ".launch.json",
     ".launch-failure.json",
-    ".headless.lock",
     ".messages.jsonl",
     ".progress.jsonl",
     ".status.json",
@@ -138,7 +137,7 @@ def render_dispatch_contract(
     mode: str = "herdr-pane",
     agent_kind: str = "claude",
 ) -> str:
-    if mode not in {"herdr-pane", "claude-p"}:
+    if mode != "herdr-pane":
         raise ValueError(f"unsupported dispatch mode {mode!r}")
     if agent_kind not in {"claude", "codex"}:
         raise ValueError(f"unsupported agent kind {agent_kind!r}")
@@ -185,16 +184,10 @@ def render_dispatch_contract(
   integration and cleanup. Complete this task directly rather than coordinating
   another coworker.
 """
-    if mode == "claude-p" and agent_kind == "claude":
-        anchor_fallback = """- If this dispatch does not name the anchor, report terminal `failed` asking the
-  main agent to name it before work begins.
-"""
-    else:
-        anchor_fallback = """- When needed, ask the main agent to name the anchor when this dispatch does not name one,
+    anchor_fallback = """- When needed, ask the main agent to name the anchor when this dispatch does not name one,
   through `awaiting-main-agent` before work begins.
 """
-    if mode == "herdr-pane":
-        interaction_rules = f"""
+    interaction_rules = f"""
 - Discuss work details and authorization directly with the user. Ask the main
   agent only for integrated instructions/context:
   `{message} --instruction-path {shlex.quote(str(instruction_path))} --to main --intent question --message '<delta>' [--ref '<source>']`
@@ -204,31 +197,8 @@ def render_dispatch_contract(
 - After a checkpoint reply, continue. Do not replace a live checkpoint with a
   terminal status.
 """
-        terminal_rule = """- Before stopping after completed work, report terminal `done` or `failed` with
+    terminal_rule = """- Before stopping after completed work, report terminal `done` or `failed` with
   the same status script; after persistence it notifies the main agent through Herdr.
-"""
-    elif agent_kind == "codex":
-        interaction_rules = f"""
-- This headless session has no direct user channel. If blocked, persist exactly
-  one `awaiting-user-input`, `awaiting-main-agent`, or `awaiting-authorization`
-  checkpoint with:
-  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status <checkpoint> --note '<what you need>' [--ref '<proof>']`
-- End this run after the checkpoint. The main agent resumes this recorded Codex thread
-  with the answer; do not overwrite the checkpoint with `done` or `failed`.
-"""
-        terminal_rule = """- When work finishes without a checkpoint, report terminal `done` or `failed`
-  before this run ends.
-"""
-    else:
-        interaction_rules = f"""
-- This headless Claude session cannot resume after it exits. If blocked by a
-  user decision, main-agent action, or authorization, report terminal `failed`
-  with the exact single unblock needed:
-  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status failed --note '<what you need>' [--ref '<proof>']`
-- Do not write an `awaiting-*` checkpoint; the main agent asks the decision and
-  starts a fresh dispatch carrying the answer.
-"""
-        terminal_rule = """- Before this run ends, report terminal `done` or `failed`.
 """
     return f"""# Straw Boss dispatched-agent contract
 
