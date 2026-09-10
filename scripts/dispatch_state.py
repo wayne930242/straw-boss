@@ -222,9 +222,10 @@ This contract is mandatory for this dispatched session.
   agent names for cross-session communication.
 - Report progress with:
   `{progress} --instruction-path {shlex.quote(str(instruction_path))} --note '<summary>'`
-- Live agent messages are delta-only and at most two sentences. Do not repeat
-  identity, intent, history, or detailed evidence; add repeatable
-  `--ref '<artifact/source>'` arguments for detail.
+- Live agent messages -- the question and status commands below -- are
+  delta-only and at most two sentences. Do not repeat identity, intent,
+  history, or detailed evidence; add repeatable `--ref '<artifact/source>'`
+  arguments for detail.
 {interaction_rules}
 - Status notes follow the same two-sentence limit: state the outcome or exact
   unblock, and put verification detail in `--ref`.
