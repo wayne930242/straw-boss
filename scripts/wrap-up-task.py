@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dispatch_state import (
+from straw_boss.dispatch.state import (
     dump_json,
     instruction_sibling_paths,
     load_json,

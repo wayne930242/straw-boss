@@ -27,7 +27,7 @@ import json
 import sys
 from pathlib import Path
 
-from dispatch_state import straw_boss_root
+from straw_boss.dispatch.state import straw_boss_root
 
 
 def dispatched_instruction(session_id: str) -> dict[str, object] | None:

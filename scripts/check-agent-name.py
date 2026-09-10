@@ -25,7 +25,7 @@ import json
 import sys
 from typing import Any
 
-from agent_naming import NAME_PATTERN, live_names
+from straw_boss.naming import NAME_PATTERN, live_names
 
 
 def check(name: str, agent_list_payload: dict[str, Any]) -> None:

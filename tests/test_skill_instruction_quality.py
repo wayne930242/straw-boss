@@ -45,10 +45,8 @@ def instruction_lines(path: Path) -> list[tuple[int, str]]:
 def prose_surfaces(include_scripts: bool = False) -> list[Path]:
     """Live instruction surfaces -- what an agent actually reads to act.
 
-    `docs` is deliberately non-recursive. `docs/specs/` and `docs/adr/` are
-    dated records of what one change decided and how it was verified; a
-    superseded ADR keeps its era's wording on purpose, so scanning them for
-    current vocabulary would report history as drift.
+    `docs` is deliberately non-recursive: only its top-level files
+    (`roles.md`, `architecture.md`) are live instruction surfaces.
     """
     paths = [
         *(ROOT / "skills").glob("**/*.md"),
@@ -386,7 +384,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
-            import dispatch_state
+            from straw_boss.dispatch import state as dispatch_state
         finally:
             sys.path.pop(0)
 
@@ -616,22 +614,9 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("It owns the mode decision", troubleshooting)
 
     def test_the_deleted_allowed_list_exception_is_actually_gone(self) -> None:
-        """A record of a deletion has to be true of the tree it describes.
-
-        `969e0bd`'s commit message, this change's `design.md`, and its
-        `verification.md` all state that `dispatching-work` Task 3's "or the
-        reality anchor" allowed-list exception was deleted rather than
-        reworded. The diff only appended a second clause after it, so three
-        records -- two of them the change's own acceptance evidence -- disagree
-        with the file they describe.
-        """
-        spec = ROOT / "docs" / "specs" / "2026-08-28-anchor-authority-boundary"
-        self.assertIn("That clause is gone", normalized(spec / "design.md"))
-        self.assertIn(
-            "allowed-list exception is deleted, not rewritten",
-            normalized(spec / "verification.md"),
-        )
-
+        """`dispatching-work` Task 3's "or the reality anchor" allowed-list
+        exception was deleted rather than reworded, so the allowed-source list
+        names one set of sources and the anchor is required separately."""
         dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
         allowed = [
             sentence
@@ -655,7 +640,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
-            import dispatch_state
+            from straw_boss.dispatch import state as dispatch_state
         finally:
             sys.path.pop(0)
 
@@ -830,7 +815,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
-            import dispatch_state
+            from straw_boss.dispatch import state as dispatch_state
         finally:
             sys.path.pop(0)
 
@@ -881,7 +866,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """Every provider gets an executable anchor fallback for its lifecycle."""
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
-            import dispatch_state
+            from straw_boss.dispatch import state as dispatch_state
         finally:
             sys.path.pop(0)
 
@@ -996,29 +981,6 @@ class SkillInstructionQualityTests(unittest.TestCase):
         ):
             self.assertIn("Releasing every lock on a wrapped-up instruction", source, name)
             self.assertNotIn("Releasing a dispatch-time claim", source, name)
-
-    def test_a_superseded_spec_bullet_carries_its_forward_marker(self) -> None:
-        """A later spec declares one earlier bullet superseded; the bullet
-        itself carried no marker, so a reader arriving at the earlier spec
-        reads a description the tree no longer matches.
-
-        The repo's own convention is a forward marker on the superseded record
-        -- inline for one bullet, per `docs/qa/discover-qa-2026-08-26-launcher.md`.
-        """
-        superseding = "2026-08-28-close-rereview-findings"
-        declaration = re.search(
-            r"This supersedes the ([0-9a-z-]+) bullet",
-            normalized(ROOT / "docs" / "specs" / superseding / "spec.md"),
-        )
-        self.assertIsNotNone(declaration, "the superseding claim is still stated")
-        superseded = ROOT / "docs" / "specs" / declaration.group(1) / "spec.md"
-        marked = [
-            line
-            for line in normalized(superseded).split(". ")
-            if "Superseded on" in line
-        ]
-        self.assertNotEqual(marked, [], f"{superseded.name} carries no forward marker")
-        self.assertIn(superseding, " ".join(marked))
 
     def test_every_path_that_lands_a_change_checks_the_review(self) -> None:
         """`shipping-task` is not the only path an ordinary programming change
@@ -1172,7 +1134,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
-            import dispatch_state
+            from straw_boss.dispatch import state as dispatch_state
         finally:
             sys.path.pop(0)
 
@@ -1212,7 +1174,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
-            import dispatch_state
+            from straw_boss.dispatch import state as dispatch_state
         finally:
             sys.path.pop(0)
 
@@ -1238,24 +1200,6 @@ class SkillInstructionQualityTests(unittest.TestCase):
         ):
             nested = review_bullet(coworker_context)
             self.assertNotIn("coworker", nested)
-
-    def test_the_superseded_marker_is_its_own_block(self) -> None:
-        """A marker appended to the end of the claim it retires reads as part
-        of that claim. It has to be separable from the sentence it marks."""
-        superseded = (
-            ROOT
-            / "docs"
-            / "specs"
-            / "2026-08-28-anchor-authority-boundary"
-            / "spec.md"
-        )
-        blocks = [
-            block
-            for block in paragraphs(superseded.read_text())
-            if block.startswith("Superseded on")
-        ]
-        self.assertEqual(len(blocks), 1, "the marker stands on its own")
-        self.assertIn("2026-08-28-close-rereview-findings", blocks[0])
 
     def test_the_dispatch_files_are_the_lifecycle_record_not_a_plan_on_both_surfaces(
         self,

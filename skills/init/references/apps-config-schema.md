@@ -4,7 +4,7 @@ The managed-apps list lives at `.straw-boss/apps.json`, relative to the project'
 
 ## 共用讀取 handler
 
-Python 呼叫端使用 `scripts/apps_config.py` 的 `read_apps_config(repo_root)`，取得 `path`、`payload`、`legacy`。技能在解析 git repo root 後執行：
+Python 呼叫端使用 `scripts/straw_boss/apps.py` 的 `read_apps_config(repo_root)`，取得 `path`、`payload`、`legacy`。技能在解析 git repo root 後執行：
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/read-apps-config.py" --repo-root "<repo-root>"

@@ -12,7 +12,7 @@ import json
 import sys
 import uuid
 
-from dispatch_transport import EndpointUnavailableError, send_instruction_message
+from straw_boss.herdr.transport import EndpointUnavailableError, send_instruction_message
 
 
 INTENTS = ("question", "answer", "inform", "reply", "redirect", "control")

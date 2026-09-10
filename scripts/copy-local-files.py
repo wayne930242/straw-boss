@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from apps_config import read_apps_config
+from straw_boss.apps import read_apps_config
 
 
 def configured_app(payload: dict[str, Any], app_name: str) -> dict[str, Any]:

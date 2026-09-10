@@ -155,8 +155,16 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             )
 
         old_scripts = old_root / "scripts"
-        (old_scripts / "dispatch_state.py").write_text(
-            (SCRIPTS / "dispatch_state.py").read_text()
+        state_module = old_scripts / "straw_boss" / "dispatch" / "state.py"
+        state_module.parent.mkdir(parents=True, exist_ok=True)
+        # `straw_boss/__init__.py` is what anchors SCRIPTS_DIR/PLUGIN_ROOT, so the
+        # copy has to be the real one for this fake root to resolve to itself.
+        (state_module.parent.parent / "__init__.py").write_text(
+            (SCRIPTS / "straw_boss" / "__init__.py").read_text()
+        )
+        (state_module.parent / "__init__.py").write_text("")
+        state_module.write_text(
+            (SCRIPTS / "straw_boss" / "dispatch" / "state.py").read_text()
         )
         managed_contract = subprocess.run(
             [
@@ -165,7 +173,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
                 (
                     "import sys; from pathlib import Path; "
                     f"sys.path.insert(0, {str(old_scripts)!r}); "
-                    "from dispatch_state import render_dispatch_contract; "
+                    "from straw_boss.dispatch.state import render_dispatch_contract; "
                     "print(render_dispatch_contract(Path('/tmp/instruction.json')))"
                 ),
             ],
@@ -348,7 +356,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             / "references"
             / "plan-mechanics.md"
         ).read_text()
-        contract_source = (ROOT / "scripts" / "dispatch_state.py").read_text()
+        contract_source = (ROOT / "scripts" / "straw_boss" / "dispatch" / "state.py").read_text()
 
         normalize = lambda source: " ".join(source.replace("`", "").split())
         self.assertIn(
@@ -418,7 +426,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         orchestrator = (ROOT / "skills" / "i-am-orchestrator" / "SKILL.md").read_text()
         dispatching = (ROOT / "skills" / "dispatching-work" / "SKILL.md").read_text()
         boss_say = (ROOT / "skills" / "boss-say" / "SKILL.md").read_text()
-        contract_source = (ROOT / "scripts" / "dispatch_state.py").read_text()
+        contract_source = (ROOT / "scripts" / "straw_boss" / "dispatch" / "state.py").read_text()
 
         for source in (roles, context, orchestrator):
             self.assertIn("smallest sufficient loop", source.lower())

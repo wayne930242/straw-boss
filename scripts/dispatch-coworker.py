@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dispatch_state import load_json
+from straw_boss.dispatch.state import load_json
 
 
 SCRIPTS = Path(__file__).resolve().parent

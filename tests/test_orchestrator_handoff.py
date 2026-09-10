@@ -30,7 +30,7 @@ class OrchestratorHandoffTests(DispatchedAgentLifecycleFixture, unittest.TestCas
     def test_durable_json_write_replaces_a_complete_temporary_file(self) -> None:
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
-            import dispatch_state
+            from straw_boss.dispatch import state as dispatch_state
         finally:
             sys.path.pop(0)
         target = self.home / "record.json"

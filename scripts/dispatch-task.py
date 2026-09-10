@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from dispatch_state import (
+from straw_boss.dispatch.state import (
     confirm_dispatch,
     contract_path,
     dump_json,
@@ -41,8 +41,8 @@ from dispatch_state import (
     sha256_text,
     straw_boss_root,
 )
-from dispatch_transport import resolve_endpoint, validate_current_sender
-from orchestrator_registry import MAX_SCOPE_CHARS, auto_register_from_dispatch
+from straw_boss.herdr.transport import resolve_endpoint, validate_current_sender
+from straw_boss.orchestrator import MAX_SCOPE_CHARS, auto_register_from_dispatch
 
 
 def instruction_path(app: str, slug: str) -> Path:

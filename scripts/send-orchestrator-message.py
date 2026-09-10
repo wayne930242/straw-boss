@@ -12,8 +12,8 @@ import json
 import sys
 import uuid
 
-from dispatch_transport import EndpointUnavailableError
-from orchestrator_registry import ORCHESTRATOR_INTENTS, send
+from straw_boss.herdr.transport import EndpointUnavailableError
+from straw_boss.orchestrator import ORCHESTRATOR_INTENTS, send
 
 
 def main() -> int:

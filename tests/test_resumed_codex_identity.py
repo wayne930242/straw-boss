@@ -3,14 +3,14 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from dispatch_session import Endpoint, validate_live_session, worker_endpoint_confirmed_closed
+from straw_boss.herdr.session import Endpoint, validate_live_session, worker_endpoint_confirmed_closed
 
 class ResumedCodexIdentityTests(unittest.TestCase):
     def live(self, session='original', terminal='new-terminal', provider='codex'):
         agent={'pane_id':'worker-pane','agent':provider,'agent_status':'idle','terminal_id':terminal}
         if session is not None:
             agent['agent_session']={'agent':provider,'kind':'id','value':session}
-        return patch('dispatch_session.run_herdr', return_value={'result':{'agent':agent}})
+        return patch('straw_boss.herdr.session.run_herdr', return_value={'result':{'agent':agent}})
 
     def endpoint(self, session='original'):
         return Endpoint('worker','worker-pane',session,'old-terminal','codex')

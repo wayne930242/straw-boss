@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import runpy
@@ -536,23 +535,15 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
         # a missing 'agents' key -- never an uncaught TypeError from iterating
         # a non-list, which would crash the launcher after the dispatch (and
         # its receipt) already succeeded.
-        launcher_path = ROOT / "scripts" / "launch-dispatched-agent.py"
-        spec = importlib.util.spec_from_file_location(
-            "launch_dispatched_agent_decoy_scan", launcher_path
-        )
-        assert spec is not None and spec.loader is not None
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
-            launcher = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(launcher)
+            from straw_boss.dispatch.launch.agent import decoy_orchestrator_panes
         finally:
             sys.path.pop(0)
 
         for malformed_agents in (42, 3.14, True):
             with self.assertRaises(ValueError):
-                launcher.decoy_orchestrator_panes(
-                    {"result": {"agents": malformed_agents}}, set()
-                )
+                decoy_orchestrator_panes({"result": {"agents": malformed_agents}}, set())
 
     def test_launcher_derives_a_coworker_name_and_never_renames_its_parent(self) -> None:
         parent_path, _ = self.write_dispatch("claude", main_agent_kind="codex")

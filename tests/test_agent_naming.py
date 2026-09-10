@@ -18,7 +18,7 @@ class AgentNamingTests(unittest.TestCase):
         sys.path.pop(0)
 
     def test_derives_role_and_app_into_a_readable_handle(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         self.assertEqual(agent_naming.derive_agent_name("worker", "api"), "api-worker")
         self.assertEqual(agent_naming.derive_agent_name("coworker", "web"), "web-coworker")
@@ -28,7 +28,7 @@ class AgentNamingTests(unittest.TestCase):
         )
 
     def test_derived_name_always_matches_the_format_pattern(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         for role in ("worker", "coworker", "coordinator"):
             for app in ("api", "web", "database", "straw-boss"):
@@ -37,28 +37,28 @@ class AgentNamingTests(unittest.TestCase):
                 self.assertLessEqual(len(name), agent_naming.MAX_NAME_LENGTH)
 
     def test_sanitizes_an_app_name_that_is_not_already_kebab_case(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         self.assertEqual(
             agent_naming.derive_agent_name("worker", "REST API v3"), "rest-api-v3-worker"
         )
 
     def test_derives_a_valid_name_for_a_digit_leading_app_slug(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         name = agent_naming.derive_agent_name("worker", "3d-printer-app")
         self.assertRegex(name, agent_naming.NAME_PATTERN.pattern)
         self.assertTrue(name.endswith("-worker"))
 
     def test_derives_a_valid_name_for_a_symbol_only_app_slug(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         name = agent_naming.derive_agent_name("worker", "---")
         self.assertRegex(name, agent_naming.NAME_PATTERN.pattern)
         self.assertTrue(name.endswith("-worker"))
 
     def test_truncates_a_long_app_name_from_the_tail_to_fit_the_cap(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         name = agent_naming.derive_agent_name(
             "worker", "moldplan-frontend-2-production-schedule-ui"
@@ -68,18 +68,18 @@ class AgentNamingTests(unittest.TestCase):
         self.assertTrue(name.endswith("-worker"))
 
     def test_rejects_a_role_that_leaves_no_room_for_any_app_signal(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         with self.assertRaises(ValueError):
             agent_naming.derive_agent_name("x" * 32, "api")
 
     def test_unique_name_passes_through_when_not_taken(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         self.assertEqual(agent_naming.unique_agent_name("api-worker", set()), "api-worker")
 
     def test_unique_name_appends_a_numeric_suffix_on_collision(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         self.assertEqual(
             agent_naming.unique_agent_name("api-worker", {"api-worker"}), "api-worker-2"
@@ -90,7 +90,7 @@ class AgentNamingTests(unittest.TestCase):
         )
 
     def test_unique_name_suffix_still_fits_the_cap_for_a_maximal_candidate(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         candidate = "a" * agent_naming.MAX_NAME_LENGTH
         result = agent_naming.unique_agent_name(candidate, {candidate})
@@ -98,7 +98,7 @@ class AgentNamingTests(unittest.TestCase):
         self.assertTrue(agent_naming.NAME_PATTERN.match(result))
 
     def test_live_names_reads_the_agent_list_shape(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         payload = {
             "result": {"agents": [{"name": "a"}, {"pane_id": "no-name"}, {"name": "b"}]}
@@ -106,7 +106,7 @@ class AgentNamingTests(unittest.TestCase):
         self.assertEqual(agent_naming.live_names(payload), {"a", "b"})
 
     def test_live_names_rejects_an_unexpected_shape(self) -> None:
-        import agent_naming
+        from straw_boss import naming as agent_naming
 
         with self.assertRaises(ValueError):
             agent_naming.live_names({"result": {}})

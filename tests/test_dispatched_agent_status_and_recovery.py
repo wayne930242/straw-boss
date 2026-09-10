@@ -1497,7 +1497,7 @@ class UnconfirmedDispatchDiagnosticTests(unittest.TestCase):
     def _resolve_endpoint():
         if str(SCRIPTS) not in sys.path:
             sys.path.insert(0, str(SCRIPTS))
-        from dispatch_session import resolve_endpoint
+        from straw_boss.herdr.session import resolve_endpoint
 
         return resolve_endpoint
 

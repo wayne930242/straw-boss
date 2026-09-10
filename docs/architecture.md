@@ -37,7 +37,7 @@ This table is what each skill *does*; see `docs/roles.md` for who's doing it —
 | `bringing-coworker` + `dispatch-coworker.py` | skill + public script | Authenticate an in-progress worker and bring one review-only or file-disjoint Claude Code or Codex CLI coworker into its exact worktree and shared tab through the existing write/launch/confirm adapters |
 | `handoff-orchestrator` + `handoff-orchestrator.py` | skill + public script | After one explicit user approval, open and label an independent Herdr tab, pass a bounded continuity payload, verify receiver acceptance, and transfer that scope into the receiver's `boss-say` loop. Failed acceptance closes the new tab and leaves ownership at the source |
 | `contacting-orchestrators` + `register-orchestrator.py` + `send-orchestrator-message.py` | skill + public scripts | Keep one record per live main agent under `~/.straw-boss/orchestrators/`, keyed on the provider session fingerprint: register this session's pane, name, cwd, and one-line scope before its first dispatch, reconcile every record against the live agent list, and send another orchestrator a two-sentence fact/question/answer whose envelope names this session's herdr pane id. A target whose session ended is recorded undelivered rather than retried. `dispatch-task.py write` auto-registers a fallback record from the dispatch's own task text when the session skipped this step, without overwriting an explicit one |
-| `dispatch_transport.py` + `send-dispatch-message.py` | internal module + public script | Resolve sender and receiver, validate sessions/intent, enforce a two-sentence delta, carry structured references, submit through herdr, and retain content-free correlation proof. Status/checkpoint wrappers reuse this seam |
+| `straw_boss/herdr/transport.py` + `send-dispatch-message.py` | internal module + public script | Resolve sender and receiver, validate sessions/intent, enforce a two-sentence delta, carry structured references, submit through herdr, and retain content-free correlation proof. Status/checkpoint wrappers reuse this seam |
 | `dispatched-agent-stop-guard.py` | Claude Stop hook | Block an in-progress dispatched Claude session from ending a turn without a durable checkpoint or terminal report; non-dispatched sessions are unaffected |
 | `peeking-work` | skill | Read-only peek at one dispatch's actual live content — a Herdr pane's recent output — without joining or interrupting it. Used by `dispatching-work`'s failure diagnosis and `boss-say`'s stalled-batch reporting; every other skill that needs this calls it too, instead of reimplementing the read |
 | `notifying-main-agent` | skill (invoked by a dispatched agent, not the main agent) | Routes integrated/context questions and status through instruction-keyed scripts; the independent worker and user own work details. `done`/`failed` persist before notifying the main-agent Herdr endpoint, and the watcher remains recovery evidence. |
@@ -85,7 +85,7 @@ Both are stated, not asked. A user who disagrees overrides it in one sentence, w
 
 ## Why the app list is project config, not plugin code
 
-`apps_config.py` 集中設定路徑、舊版 fallback 與讀取驗證。技能透過 `read-apps-config.py` 取得設定與來源，`copy-local-files.py` 直接使用同一 Python 介面。
+`straw_boss/apps.py` 集中設定路徑、舊版 fallback 與讀取驗證。技能透過 `read-apps-config.py` 取得設定與來源，`copy-local-files.py` 直接使用同一 Python 介面。
 
 設定讀取優先使用 `.straw-boss/apps.json`；新路徑不存在時相容 `.claude/straw-boss/apps.json`。`init` 將確認後的舊設定寫入新路徑並保留舊檔，回報其已被取代。
 

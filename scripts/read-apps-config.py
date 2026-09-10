@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from apps_config import AppsConfigMissing, read_apps_config
+from straw_boss.apps import AppsConfigMissing, read_apps_config
 
 
 def main() -> int:

@@ -26,8 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from dispatch_state import dump_json, load_json, resolve_instruction_status_path
-from dispatch_transport import (
+from straw_boss.dispatch.state import dump_json, load_json, resolve_instruction_status_path
+from straw_boss.herdr.transport import (
     HerdrCommandError,
     confirm_transcript_contains,
     normalize_references,

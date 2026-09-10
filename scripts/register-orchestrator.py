@@ -11,7 +11,7 @@ import argparse
 import json
 import sys
 
-from orchestrator_registry import directory, live_agents, register
+from straw_boss.orchestrator import directory, live_agents, register
 
 
 def main() -> int:

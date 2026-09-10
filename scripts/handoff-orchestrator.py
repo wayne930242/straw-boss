@@ -16,13 +16,13 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
-from agent_naming import derive_agent_name, live_names, unique_agent_name
-from dispatch_session import (
+from straw_boss.naming import derive_agent_name, live_names, unique_agent_name
+from straw_boss.herdr.session import (
     HerdrCommandError,
     run_herdr,
     validate_current_process_in_pane,
 )
-from dispatch_state import (
+from straw_boss.dispatch.state import (
     dump_json,
     load_json,
     straw_boss_root,

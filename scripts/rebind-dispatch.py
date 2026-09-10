@@ -17,11 +17,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from dispatch_session import (
+from straw_boss.herdr.session import (
     Endpoint, agent_matches_identity, resolve_endpoint, run_herdr,
     validate_current_process_in_pane, validate_live_session,
 )
-from dispatch_state import dump_json, launch_receipt_path, load_json
+from straw_boss.dispatch.state import dump_json, launch_receipt_path, load_json
 
 
 def verify_original_sessions(path: Path, instruction: dict, sessions: dict[str, str],

@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dispatch_state import (
+from straw_boss.dispatch.state import (
     INSTRUCTION_SIBLING_SUFFIXES,
     launch_failure_path,
     launch_receipt_path,
@@ -41,9 +41,9 @@ from dispatch_state import (
     resolve_instruction_status_path,
     straw_boss_root,
 )
-from dispatch_transport import run_herdr
-from dispatch_session import agent_matches_identity, session_value
-from orchestrator_registry import live_agents
+from straw_boss.herdr.transport import run_herdr
+from straw_boss.herdr.session import agent_matches_identity, session_value
+from straw_boss.orchestrator import live_agents
 
 
 TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled"})

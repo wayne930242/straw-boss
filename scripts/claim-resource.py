@@ -85,7 +85,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from dispatch_state import load_json, straw_boss_root
+from straw_boss.dispatch.state import load_json, straw_boss_root
 
 RESOURCE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 PORT_RESOURCE_RE = re.compile(r"^port--.+--(\d+)$")

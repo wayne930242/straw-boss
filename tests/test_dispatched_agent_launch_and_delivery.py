@@ -509,7 +509,7 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
                 sys.executable,
                 "-c",
                 (
-                    "from dispatch_transport import transcript_contains; "
+                    "from straw_boss.herdr.transport import transcript_contains; "
                     "raise SystemExit(0 if transcript_contains("
                     "'外 層邊界可拖曳調寬', '外層邊界可拖曳調寬') else 1)"
                 ),

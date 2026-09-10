@@ -54,12 +54,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic, sleep
 
-from dispatch_state import (
+from straw_boss.dispatch.state import (
     load_json,
     plan_status_path,
     resolve_instruction_status_path,
 )
-from dispatch_transport import (
+from straw_boss.herdr.transport import (
     normalize_references,
     send_instruction_message,
     validate_delta_message,

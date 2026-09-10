@@ -14,8 +14,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from dispatch_session import validate_current_process_in_pane
-from dispatch_state import dump_json, load_json, straw_boss_root
+from straw_boss.herdr.session import validate_current_process_in_pane
+from straw_boss.dispatch.state import dump_json, load_json, straw_boss_root
 
 
 VALID_COORDINATION_GRAPHS = {

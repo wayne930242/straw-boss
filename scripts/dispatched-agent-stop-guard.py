@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dispatch_state import (
+from straw_boss.dispatch.state import (
     load_json,
     resolve_instruction_status_path,
     straw_boss_root,
