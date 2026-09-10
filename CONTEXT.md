@@ -76,6 +76,9 @@ _Avoid_: transcript, conversation summary
 The machine-local record of each live main agent's identity and one-line work
 scope, keyed on the provider session fingerprint that dispatch delivery already
 validates on. A session registers before its first dispatch.
+Listing and sending also resolve live main-agent fingerprints from current and
+archived dispatch instructions, labeling an undeclared scope while preserving
+registered scope text.
 _Avoid_: pane list, agent roster
 
 **Reality anchor**:

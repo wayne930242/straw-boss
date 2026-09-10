@@ -45,6 +45,121 @@ BETA_AGENT = agent(BETA, "orchestrator-b", name="orchestrator-beta")
 
 
 class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
+    def seed_unregistered_dispatch(self, *, archived: bool = False, **fields: object) -> Path:
+        root = self.home / ".straw-boss" / "dispatch"
+        if archived:
+            root /= "archive"
+        root.mkdir(parents=True, exist_ok=True)
+        path = root / "api--discovery.json"
+        path.write_text(json.dumps({
+            "app": "api", "mode": "herdr-pane", "task": "既有派工",
+            "main_agent_kind": "claude", "main_agent_session_id": "orchestrator-b",
+            "main_agent_herdr_pane_id": "old-pane", **fields,
+        }))
+        return path
+
+    def test_unregistered_dispatch_coordinator_lists_and_receives_without_writes(self) -> None:
+        self.register("發送端", pane_id=ALPHA)
+        self.seed_unregistered_dispatch()
+        before = {p: p.read_bytes() for p in self.records()}
+        listed = self.run_directory_script("register-orchestrator.py", "--list", agents=[ALPHA_AGENT, BETA_AGENT])
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        rows = json.loads(listed.stdout)["directory"]
+        row = next((r for r in rows if r["herdr_pane_id"] == BETA), None)
+        self.assertIsNotNone(row, rows)
+        self.assertTrue(row["live"])
+        self.assertEqual(row["discovery_source"], "dispatch")
+        self.assertFalse(row["scope_declared"])
+        result = self.send("--to", BETA, "--intent", "inform", "--message", "驗證自動定址。", pane_id=ALPHA)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)["submitted"])
+        self.assertEqual(self.prompts()[-1][2], BETA)
+        self.assertEqual(before, {p: p.read_bytes() for p in self.records()})
+
+    def test_archived_dispatch_covers_live_coordinator_and_preserves_explicit_scope(self) -> None:
+        self.seed_unregistered_dispatch(archived=True)
+        listed = self.run_directory_script("register-orchestrator.py", "--list", agents=[BETA_AGENT])
+        rows = json.loads(listed.stdout)["directory"]
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["live"])
+        self.assertEqual(rows[0]["discovery_source"], "archived-dispatch")
+        self.assertEqual(self.records(), [])
+        self.register("人工完整範圍", pane_id=BETA)
+        before = self.records()[0].read_bytes()
+        listed = self.run_directory_script("register-orchestrator.py", "--list", agents=[BETA_AGENT])
+        rows = json.loads(listed.stdout)["directory"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["scope"], "人工完整範圍")
+        self.assertEqual(self.records()[0].read_bytes(), before)
+
+    def test_discovery_uses_fingerprints_and_excludes_coworker_parents_and_shells(self) -> None:
+        cases = [
+            {"main_agent_session_id": "old-session"},
+            {"main_agent_session_id": None},
+            {"main_agent_kind": "codex"},
+            {"parent_instruction_path": "/dispatch/parent.json"},
+        ]
+        for fields in cases:
+            with self.subTest(fields=fields):
+                self.seed_unregistered_dispatch(**fields)
+                result = self.run_directory_script("register-orchestrator.py", "--list", agents=[BETA_AGENT, agent("shell", None, kind="shell")])
+                self.assertEqual(json.loads(result.stdout)["directory"], [])
+
+    def test_legacy_codex_discovery_uses_exact_terminal(self) -> None:
+        self.seed_unregistered_dispatch(main_agent_kind="codex", main_agent_session_id=None, main_agent_herdr_terminal_id=f"terminal-{BETA}")
+        result = self.run_directory_script("register-orchestrator.py", "--list", agents=[agent(BETA, None, kind="codex")])
+        rows = json.loads(result.stdout)["directory"]
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["live"])
+
+    def test_discovered_coordinator_can_answer_without_registration(self) -> None:
+        self.register("發送端", pane_id=ALPHA)
+        self.seed_unregistered_dispatch()
+        asked = self.send("--to", BETA, "--intent", "question", "--message", "驗證回覆路由？", pane_id=ALPHA)
+        self.assertEqual(asked.returncode, 0, asked.stderr)
+        message_id = json.loads(asked.stdout)["message_id"]
+        replied = self.send("--to", ALPHA, "--intent", "answer", "--in-reply-to", message_id, "--message", "回覆路由正常。", pane_id=BETA)
+        self.assertEqual(replied.returncode, 0, replied.stderr)
+        self.assertTrue(json.loads(replied.stdout)["submitted"])
+        self.assertEqual(len(self.records()), 1)
+
+    def test_two_discovered_coordinators_create_only_ledgers_and_can_answer(self) -> None:
+        self.seed_unregistered_dispatch()
+        self.seed_unregistered_dispatch(archived=True, main_agent_session_id="orchestrator-a")
+        root = self.home / ".straw-boss" / "orchestrators"
+        self.assertFalse(root.exists())
+        asked = self.send("--to", BETA, "--intent", "question", "--message", "驗證回覆路由？", pane_id=ALPHA)
+        self.assertEqual(asked.returncode, 0, asked.stderr)
+        message_id = json.loads(asked.stdout)["message_id"]
+        self.assertEqual(self.ledger("orchestrator-b")[0]["message_id"], message_id)
+        replied = self.send("--to", ALPHA, "--intent", "answer", "--in-reply-to", message_id, "--message", "回覆路由正常。", pane_id=BETA)
+        self.assertEqual(replied.returncode, 0, replied.stderr)
+        self.assertTrue(json.loads(replied.stdout)["submitted"])
+        self.assertEqual(self.records(), [])
+
+    def test_discovery_deduplicates_evidence_and_rechecks_recipient_before_send(self) -> None:
+        self.register("發送端", pane_id=ALPHA)
+        self.seed_unregistered_dispatch()
+        self.seed_unregistered_dispatch(archived=True)
+        listed = self.run_directory_script("register-orchestrator.py", "--list", agents=[ALPHA_AGENT, BETA_AGENT])
+        rows = json.loads(listed.stdout)["directory"]
+        self.assertEqual(len([r for r in rows if r["herdr_pane_id"] == BETA]), 1)
+        result = self.send("--to", BETA, "--intent", "inform", "--message", "核對接收端。", pane_id=ALPHA, sessions={ALPHA: "orchestrator-a", BETA: "replacement"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("session mismatch", result.stderr)
+        self.assertEqual(self.prompts(), [])
+
+    def test_coworker_instruction_discovers_only_its_root_coordinator(self) -> None:
+        self.seed_unregistered_dispatch(parent_instruction_path="parent.json", main_agent_session_id="worker", root_main_agent_kind="claude", root_main_agent_session_id="orchestrator-b")
+        result = self.run_directory_script("register-orchestrator.py", "--list", agents=[BETA_AGENT, agent(ALPHA, "worker", name="coordinator-worker")])
+        rows = json.loads(result.stdout)["directory"]
+        self.assertEqual([r["herdr_pane_id"] for r in rows], [BETA])
+
+    def test_archived_evidence_does_not_match_a_reused_pane_or_an_unattributed_agent(self) -> None:
+        self.seed_unregistered_dispatch(archived=True)
+        result = self.run_directory_script("register-orchestrator.py", "--list", agents=[agent(BETA, "replacement", name="orchestrator-beta"), ALPHA_AGENT])
+        self.assertEqual(json.loads(result.stdout)["directory"], [])
+
     def run_directory_script(
         self,
         script_name: str,

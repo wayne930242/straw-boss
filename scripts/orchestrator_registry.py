@@ -1,13 +1,10 @@
 """Machine-local directory of live orchestrators and the deltas they exchange.
 
-A coordinating session's identity has only ever existed inside the dispatches it
-wrote (`main_agent_*` on each instruction), so an orchestrator that has not
-dispatched yet is invisible to every other one on the machine -- `roll-call.py`
-can only report it as an agent with no instruction of its own. This module keeps
-one record per orchestrator, keyed on the provider conversation fingerprint that
-dispatch delivery already validates identity with, so coordinators sharing a
-machine can name each other, read each other's one-line scope, and send a
-factual delta directly.
+Explicit registrations carry a coordinator's scope. Current and archived
+dispatches establish additional coordinator identities through their main-agent
+fingerprints. Listing and sending combine these sources with verified live
+sessions; discovered rows stay in memory and retain a stable delivery-ledger
+address. Names and cwd alone leave an agent unattributed.
 
 A record is a claim about a session, never a claim about a pane: `list` reports
 a record whose fingerprint no live agent carries as `live: false` and keeps the
@@ -39,7 +36,7 @@ from dispatch_session import (
     validate_current_sender,
     validate_live_session,
 )
-from dispatch_state import dump_json, load_json, straw_boss_root
+from dispatch_state import INSTRUCTION_SIBLING_SUFFIXES, dump_json, load_json, straw_boss_root
 from dispatch_transport import (
     ENDPOINT_MISSING_ERROR_CODES,
     EndpointUnavailableError,
@@ -187,9 +184,62 @@ def directory(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
                 "updated_at": record.get("updated_at"),
                 "record_path": str(path),
+                "discovery_source": "registration",
+                "scope_declared": True,
             }
         )
+    covered = {row["herdr_pane_id"] for row in rows if row["live"]}
+    for path, instruction in coordinator_instructions():
+        # A coworker's main agent is its parent worker. Only the root identity
+        # identifies the orchestrator in that instruction.
+        prefix = "root_main_agent_" if instruction.get("parent_instruction_path") else "main_agent_"
+        kind = instruction.get(f"{prefix}kind")
+        if kind not in SUPPORTED_AGENT_KINDS:
+            continue
+        for agent in agents:
+            pane = str(agent.get("pane_id"))
+            if pane in covered or not agent_matches_identity(
+                agent, str(kind), instruction.get(f"{prefix}session_id"),
+                instruction.get(f"{prefix}herdr_terminal_id"),
+            ):
+                continue
+            _, session, terminal = agent_identity(agent)
+            rows.append({
+                "name": agent.get("name"), "agent_kind": kind,
+                "scope": "自動偵測，未宣告 scope", "scope_declared": False,
+                "cwd": agent.get("cwd"), "herdr_pane_id": pane,
+                "session_id": session, "herdr_terminal_id": terminal,
+                "agent_status": agent.get("agent_status"), "live": True,
+                "unavailable_reason": None, "updated_at": None,
+                "record_path": str(record_path(str(kind), session or str(terminal))),
+                "discovery_source": "archived-dispatch" if path.parent.name == "archive" else "dispatch",
+                "discovery_ref": str(path),
+            })
+            covered.add(pane)
     return rows
+
+
+def coordinator_instructions() -> list[tuple[Path, dict[str, Any]]]:
+    """Read current and archived role evidence without changing shared state.
+
+    Names, cwd and an unattributed pane do not establish a coordinator role.
+    Archived instructions still establish it while that exact session is live.
+    """
+    root = straw_boss_root() / "dispatch"
+    found = []
+    for folder in (root, root / "archive"):
+        for path in sorted(folder.glob("*.json")):
+            if path.name.endswith(INSTRUCTION_SIBLING_SUFFIXES):
+                continue
+            try:
+                instruction = load_json(path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if (isinstance(instruction, dict) and instruction.get("app")
+                    and instruction.get("mode") == "herdr-pane"
+                    and isinstance(instruction.get("task"), str)):
+                found.append((path, instruction))
+    return found
 
 
 def prune_retired(agents: list[dict[str, Any]]) -> list[str]:
@@ -373,15 +423,15 @@ def send(
     agents = live_agents()
     agent = current_agent(agents)
     kind, session, terminal = agent_identity(agent)
-    my_path = record_path(kind, session or str(terminal))
-    if not my_path.is_file():
+    rows = directory(agents)
+    my_record = next((row for row in rows if row["live"] and row["herdr_pane_id"] == str(agent.get("pane_id"))), None)
+    if my_record is None:
         raise ValueError(
             "this orchestrator is unregistered; run register-orchestrator.py --scope first"
         )
-    my_record = load_json(my_path)
+    my_path = Path(my_record["record_path"])
     source = Endpoint("orchestrator", str(agent.get("pane_id")), session, terminal, kind)
 
-    rows = directory(agents)
     target = resolve_target(to, rows)
     if target["record_path"] == str(my_path):
         raise ValueError("an orchestrator message needs another orchestrator as its target")
@@ -392,6 +442,11 @@ def send(
     if intent == "answer":
         assert in_reply_to is not None
         validate_peer_reply(my_path, source, endpoint, in_reply_to)
+
+    # Both endpoints may be discovered without any registration files. Prepare
+    # their ledger directory before prompting, so a missing parent cannot turn
+    # a delivered question into an error with no reply trail.
+    target_path.parent.mkdir(parents=True, exist_ok=True)
 
     def record_undelivered(reason: str) -> None:
         append_delivery_record(

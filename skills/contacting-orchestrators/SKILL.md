@@ -38,6 +38,15 @@ row has no verified live match: its record stays as history, its address
 reaches nobody, and `unavailable_reason` explains the missing match. A live row's pane is read from herdr, so it stays right across a
 coordinator that moved panes.
 
+Listing and sending also discover live coordinators from the verified main-agent
+fingerprints in current and archived dispatch instructions. Coworker instructions
+identify their root coordinator. These rows carry `discovery_source` and
+`discovery_ref`, with `scope_declared: false` and “自動偵測，未宣告 scope”.
+Discovery is read-only and preserves registered scope text. A discovered
+coordinator can receive and answer messages before declaring its scope.
+Names and cwd alone leave an agent unattributed; an agent with no registration
+or dispatch identity declares its role through `--scope`.
+
 ## Send one delta
 
 ```bash
