@@ -11,7 +11,7 @@ App resolution: identify the checkout and return it to the caller. The caller's 
 
 An agent working in the app loads its own instructions before acting. A separate workroom is useful when the caller needs the app's full session harness or a durable interactive lifecycle.
 
-Locate the config with `git rev-parse --show-toplevel` from the current working directory, then read `<repo-root>/.claude/straw-boss/apps.json` — never assume the current directory is the repo root, and never search upward by hand.
+從目前目錄以 `git rev-parse --show-toplevel` 解析 repo root，再執行 `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md` 的共用讀取 handler。exit 0 時使用回傳的 `config` 與來源；exit 3 才進入下方無設定分支；exit 1 回報設定錯誤並修復後重試。
 
 **If it doesn't exist, that's not a hard stop — `init` is a convenience, not a precondition.** See Task 1's no-config handling below.
 
@@ -67,7 +67,7 @@ This skill returns the resolved app to its caller, including its directory and a
 
 ## Out of scope
 
-- Apps not listed in `.claude/straw-boss/apps.json` — no dispatch target exists; say so. Only reachable with more than one app configured — see Task 1's single-app fast path (a missing `apps.json` in a single-app-looking repo is not this case; see Task 1's no-config handling).
+- Apps not listed in the handler-resolved apps config — no dispatch target exists; say so. Only reachable with more than one app configured — see Task 1's single-app fast path (a missing `apps.json` in a single-app-looking repo is not this case; see Task 1's no-config handling).
 - Infrastructure work outside any managed app's directory — no per-app agent system there.
 - Self-contained or external reads that need no managed-app files — no app
   dispatch target is required.

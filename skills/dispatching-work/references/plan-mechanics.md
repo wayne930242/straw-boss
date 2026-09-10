@@ -235,7 +235,7 @@ EOF
 ```
 (`<git-common-dir>` is `git -C <app_dir> rev-parse --git-common-dir`; `<worktree-name>` is usually the branch/slug name — confirm via `ls <git-common-dir>/worktrees/`.) Re-run the verification command after writing the repair file. Do not dispatch into a worktree that still fails verification after one repair attempt — stop and report it. `git worktree repair` does **not** fix this class of problem — do not reach for it.
 
-**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree. Read the resolved app's `localFiles` entry in `.claude/straw-boss/apps.json` (see `skills/init/references/apps-config-schema.md`). If an entry has `sensitive: true`, ask the user once before copying it; a config entry records that the file is expected, while the copy of live credentials remains user-approved.
+**Copy the target app's declared local-only files, once verification passes.** `git worktree add` only checks out tracked files — anything gitignored (`.env`, `.env.local`, `certs/`, per-tenant local config) is missing from a fresh worktree. 透過 `skills/init/references/apps-config-schema.md` 的共用讀取 handler，取得已解析 app 的 `localFiles`。 If an entry has `sensitive: true`, ask the user once before copying it; a config entry records that the file is expected, while the copy of live credentials remains user-approved.
 
 Run the validated copy seam once, before dispatch:
 

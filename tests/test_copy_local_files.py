@@ -43,7 +43,7 @@ class CopyLocalFilesTests(unittest.TestCase):
     def write_config(
         self, local_files: list[dict[str, object]], *, app_dir: str = "."
     ) -> None:
-        path = self.repo / ".claude" / "straw-boss" / "apps.json"
+        path = self.repo / ".straw-boss" / "apps.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
@@ -189,3 +189,40 @@ class CopyLocalFilesTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("certs/client.pem overlaps certs", result.stderr)
         self.assertFalse((self.worktree / "certs").exists())
+
+    def test_legacy_config_remains_readable(self) -> None:
+        (self.repo / ".env").write_text("legacy\n")
+        self.write_config([{"path": ".env"}])
+        canonical = self.repo / ".straw-boss" / "apps.json"
+        legacy = self.repo / ".claude" / "straw-boss" / "apps.json"
+        legacy.parent.mkdir(parents=True)
+        canonical.rename(legacy)
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.worktree / ".env").read_text(), "legacy\n")
+
+    def test_canonical_config_wins_over_legacy(self) -> None:
+        legacy = self.repo / ".claude" / "straw-boss" / "apps.json"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text('{"apps": []}')
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_invalid_canonical_config_does_not_fall_back(self) -> None:
+        canonical = self.repo / ".straw-boss" / "apps.json"
+        legacy = self.repo / ".claude" / "straw-boss" / "apps.json"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text(canonical.read_text())
+        for invalid in ("{", '{"apps": null}'):
+            with self.subTest(invalid=invalid):
+                canonical.write_text(invalid)
+                result = self.run_script()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(str(canonical), result.stderr)
+
+    def test_missing_config_reports_both_locations(self) -> None:
+        (self.repo / ".straw-boss" / "apps.json").unlink()
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(".straw-boss/apps.json", result.stderr)
+        self.assertIn(".claude/straw-boss/apps.json", result.stderr)

@@ -106,12 +106,28 @@ class SkillInstructionQualityTests(unittest.TestCase):
 
     def test_harness_has_no_guessed_default_artifacts(self) -> None:
         source = normalized(ROOT / "skills" / "create-great-harness" / "SKILL.md")
-        self.assertIn("CLAUDE.md is the only unconditional artifact", source)
+        self.assertIn("AGENTS.md 與 CLAUDE.md 是必要產物", source)
         self.assertIn("concrete project evidence or explicit confirmed scope", source)
         self.assertNotIn("universally applicable", source)
         self.assertNotIn("single most common irreversible-mistake footgun", source)
         self.assertNotIn("Target under 100 lines", source)
         self.assertNotIn("Every app this bootstraps starts with zero skills", source)
+
+    def test_init_and_work_on_use_the_shared_config_handler(self) -> None:
+        for name in ("init", "work-on"):
+            source = normalized(ROOT / "skills" / name / "SKILL.md")
+            self.assertIn("共用讀取 handler", source)
+        schema = normalized(ROOT / "skills/init/references/apps-config-schema.md")
+        self.assertIn("read-apps-config.py", schema)
+        self.assertIn("exit 3", schema)
+        self.assertIn("exit 1", schema)
+
+    def test_init_reaches_guidance_sync_without_herdr(self) -> None:
+        source = normalized(ROOT / "skills/init/SKILL.md")
+        self.assertIn("略過 Tasks 7–8，接續 Task 9 與 Task 10", source)
+        self.assertIn("補齊缺檔並保留既有指引", source)
+        self.assertIn("保留兩檔各自的區段外內容", source)
+        self.assertIn("routing 區段在兩檔一致", source)
 
     def test_moving_base_refresh_is_conditional(self) -> None:
         source = normalized(

@@ -5,13 +5,13 @@ description: One-time (or occasional) setup for straw-boss in a project. Use whe
 
 ## Overview
 
-Three independent one-time decisions, all persisted so no other skill has to ask again: which apps this project manages (project-level, checked into git, shared with the team), which work routes should select each provider profile/model/effort and optional Claude Code native advisor (project-level, written into root `CLAUDE.md`), and whether `herdr-pane` dispatch is available on this machine (per-user, per-machine, lives under the user's home directory). A project can be re-`init`'d to change any one of these without touching the other two.
+Three independent one-time decisions, all persisted so no other skill has to ask again: which apps this project manages (project-level, checked into git, shared with the team), which work routes should select each provider profile/model/effort and optional Claude Code native advisor (project-level, written into root `AGENTS.md` 與 `CLAUDE.md`), and whether `herdr-pane` dispatch is available on this machine (per-user, per-machine, lives under the user's home directory). A project can be re-`init`'d to change any one of these without touching the other two.
 
 ## Task 1: Check for an existing apps config
 
-Locate the repo root with `git rev-parse --show-toplevel` — never assume the current directory is the root. Read `<repo-root>/.claude/straw-boss/apps.json` (schema: `references/apps-config-schema.md`). If it exists, show the current app list and ask whether the user wants to keep it, add/remove apps, or redo it from scratch — do not silently overwrite it.
+Locate the repo root with `git rev-parse --show-toplevel` — never assume the current directory is the root. 執行 `references/apps-config-schema.md` 的共用讀取 handler，依 exit code 區分有設定、缺設定與設定錯誤。以回傳的 `config` 作為後續修改基礎，`path` 與 `legacy` 作為遷移證據。 If it exists, show the current app list and ask whether the user wants to keep it, add/remove apps, or redo it from scratch — do not silently overwrite it.
 
-- **Keep, no changes:** Task 2 is a no-op — the config already reflects the intended app list, so don't re-run its resolution dialogue. The rest of the skill still runs in full: Task 3's agent-routing question, Tasks 4-8's capability/herdr decisions are independent of the apps list, Task 9 still checks each app for a missing agent system, and Task 10 still re-syncs `CLAUDE.md`, in case that file drifted independently of the config.
+- **Keep, no changes:** 保留 app 清單，略過 Task 2 的確認對話；若來源為舊路徑，依 schema 的遷移規則寫入新路徑。 The rest of the skill still runs in full: Task 3's agent-routing question, Tasks 4-8's capability/herdr decisions are independent of the apps list, Task 9 still checks each app for a missing agent system, and Task 10 still re-syncs `AGENTS.md` 與 `CLAUDE.md`, in case that file drifted independently of the config.
 - **Add/remove apps, or redo from scratch:** Task 2 runs for real, scoped to what the user asked to change (e.g. only the new apps, not re-confirming ones the user didn't mention).
 - **No existing config:** Task 2 runs fresh, as normal.
 
@@ -39,7 +39,7 @@ Each reconnaissance returns proposed fields with evidence references:
 
 Use a confirmed lower-tier investigation route when it can still produce an explanatory, evidence-backed result. Integrate the reports into one recommendation, show the evidence behind every proposed optional field, and let the user confirm, correct, or add private team policy that the workers could not observe. Empty optional fields are a valid result.
 
-Write the result to `<repo-root>/.claude/straw-boss/apps.json` (same repo-root resolution as Task 1) per `references/apps-config-schema.md`'s exact field names and shapes.
+Write the result to `<repo-root>/.straw-boss/apps.json` (same repo-root resolution as Task 1) per `references/apps-config-schema.md`'s exact field names and shapes.
 
 **Verification:** every app in the written config has a `name`, `dir`, and at least one `match` phrase; the coordinator did not read target-app histories, ignore files, skills, or agent instructions; every proposed optional field arrived with evidence references and was confirmed by the user or supplied directly by the user.
 
@@ -47,19 +47,21 @@ Write the result to `<repo-root>/.claude/straw-boss/apps.json` (same repo-root r
 
 Ask once, project-wide — not per app — whether to configure work routes for dispatched work. A work route maps a description such as "documentation" or "programming" to one complete worker setup. This is independent of Task 2's per-app `agentKind`: that field remains the mechanical provider fallback when no route matches.
 
-If root `CLAUDE.md` already has a `<!-- straw-boss:agent-routing:start/end -->` section, show its current routes and ask whether to keep, edit, remove, or add routes. Preserve a kept route without re-asking each field.
+If either root `AGENTS.md` or `CLAUDE.md` already has a `<!-- straw-boss:agent-routing:start/end -->` section, show its current routes and ask whether to keep, edit, remove, or add routes. Preserve a kept route without re-asking each field.
+
+先讀取兩檔的 routing 區段（缺少的檔案以一行專案標題建立）；僅一檔有區段時採用它，兩檔相同時保留，兩檔不同時呈現差異由使用者選定，再同步已確認內容。寫入限於 routing markers 內，保留兩檔各自的其他內容。
 
 For every new or edited route:
 
 1. Get the work description used for matching.
 2. Get the agent kind (`claude` or `codex`) and optional provider profile — Claude's named `--agent` preset or Codex's named `--profile` configuration.
-3. Recommend model and reasoning effort. Check that provider's local config, relevant installed routing guidance, and the user's personal root `CLAUDE.md` before proposing values. Use current official guidance only when local evidence gives no clear preference. For bounded investigation, audit, or diagnosis routes, offer a lower-tier model such as Haiku or a lower-tier Codex model when it remains capable of returning an explanatory result with evidence; never trade away the evidence requirement for a binary answer.
+3. Recommend model and reasoning effort. Check that provider's local config, relevant installed routing guidance, and the user's personal root `AGENTS.md` 與 `CLAUDE.md` before proposing values. Use current official guidance only when local evidence gives no clear preference. For bounded investigation, audit, or diagnosis routes, offer a lower-tier model such as Haiku or a lower-tier Codex model when it remains capable of returning an explanatory result with evidence; never trade away the evidence requirement for a binary answer.
 4. For a Claude route only, ask whether to use a Claude Code native advisor and, if so, recommend its model. Sonnet with Opus is one documented pairing; availability and accepted pairings still depend on the installed Claude Code account/provider. Codex has no native advisor, so a Codex route records `advisor: none` without offering a coworker or subagent as a substitute.
 5. Present the whole route and get explicit confirmation or correction before recording it. Then offer another route.
 
-Write confirmed routes as canonical prose between the routing markers, one line per route: `<work description> → worker: kind=<kind>, profile=<profile|default>, model=<model|default>, effort=<effort|default>; advisor=<model|none>`. Keep this policy in root `CLAUDE.md`, not `apps.json`.
+Write confirmed routes as canonical prose between the routing markers, one line per route: `<work description> → worker: kind=<kind>, profile=<profile|default>, model=<model|default>, effort=<effort|default>; advisor=<model|none>`. Keep this policy in root `AGENTS.md` 與 `CLAUDE.md`, not `apps.json`.
 
-**Verification:** every written route was confirmed as a whole; recommendations used local preferences before current official guidance; only Claude routes can name an advisor; existing routes were presented before replacement; multiple work routes can reuse the same agent kind with different profiles/models; the result lives only between root `CLAUDE.md`'s agent-routing markers.
+**Verification:** every written route was confirmed as a whole; recommendations used local preferences before current official guidance; only Claude routes can name an advisor; existing routes were presented before replacement; multiple work routes can reuse the same agent kind with different profiles/models; 結果僅寫入根目錄 `AGENTS.md` 與 `CLAUDE.md` 的 agent-routing markers 內。
 
 ## Task 4: Check for an existing capability record
 
@@ -77,7 +79,7 @@ Create `<home>/.straw-boss/dispatch/` and `<home>/.straw-boss/dispatch/archive/`
 
 Ask the user whether to enable herdr-backed dispatch (`herdr-pane` mode). Explain briefly what it buys them (a visible, interactive pane the user can join, real synchronous wait for mid-task questions) versus the always-available `claude-p` fallback.
 
-- **Declines:** persist `{"mode": "claude-p-only"}` and stop here — Task 7 does not run.
+- **Declines:** 記錄 `{"mode": "claude-p-only"}`，略過 Tasks 7–8，接續 Task 9 與 Task 10。
 - **Enables:** continue to Task 7.
 
 **Verification:** the user made an explicit choice; you did not default to enabling herdr without asking.
@@ -105,16 +107,14 @@ Ask the user whether to enable herdr-backed dispatch (`herdr-pane` mode). Explai
 
 Use Task 2's worker-reported agent-system inventory for each app. For an
 unchanged configured app that has no current-run report, dispatch the same
-bounded inventory rooted in that app. An agent system exists when
-`<app-dir>/CLAUDE.md` exists or `<app-dir>/.claude/` contains `skills/`,
-`rules/`, or `hooks/`; settings alone are configuration rather than app
-guidance.
+bounded inventory rooted in that app.
 
-For an app with an existing agent system, record the evidence and continue. For
-an app without one, show that finding and ask whether to bootstrap it through
-`create-great-harness`. Ask per app because ownership and generation policy may
-differ. `CLAUDE.md` is the only unconditional artifact; optional hook or rule
-work requires concrete project evidence or explicit confirmed scope.
+以下任一條件表示已有 agent system：
+`<app-dir>/AGENTS.md` 或 `<app-dir>/CLAUDE.md` 存在，或 app 的 `.agents/skills/`、`.claude/skills/`、`.claude/rules/`、`.claude/hooks/` 有專案指引。settings 本身屬於設定。
+
+已有 agent system 的 app 記錄證據；若 `AGENTS.md` 或 `CLAUDE.md` 缺少，提議透過 `create-great-harness` 補齊缺檔並保留既有指引。兩檔齊備時繼續。完全缺少 agent system 的 app，提議建立兩個指引檔。每個 app 各自確認範圍，將已確認範圍交給 bootstrap。
+
+`AGENTS.md` 與 `CLAUDE.md` 是 bootstrap 的必要產物；可選 hook 或 rule 依具體專案證據或已確認範圍建立。
 
 For every confirmed bootstrap, dispatch `create-great-harness` through
 `dispatching-work` with the app's already-resolved directory and the user's
@@ -130,13 +130,11 @@ the still-running instruction and how the user can inspect it.
 bootstrap has an explicit per-app confirmation; app mutations occurred only in
 rooted workers; dispatch state and completion follow `dispatching-work`.
 
-## Task 10: Sync the managed-apps section in root CLAUDE.md
+## Task 10: 同步根目錄 AGENTS.md 與 CLAUDE.md
 
-**Keep this section minimal.** A monorepo's root `CLAUDE.md` is inherited by every nested session — not just the one running straw-boss's skills, but every session dispatched into an individual app's own directory too (nested `CLAUDE.md` loads walk up to the repo root). Anything written here has its token cost paid by every one of those sessions, every time, unlike `apps.json`, which only the skills that need it read on demand. Names and directories only — no prose, no per-app quirks. `forbidDirectCommit`, `gitWorkflowSkill`, `redirectTo`, `note`, `localFiles`, and `crossAppSkills` all stay in `apps.json` exclusively; never duplicate them here.
+等待 Task 9 中以 repo root 為 app 的 bootstrap 完成並清理後，再寫入同一根目錄的指引檔。
 
-**Check for a same-file race before writing.** For an app whose `<app-dir>` resolves to the repo root itself (a single-app repo's own implicit app, or any app whose `dir` is `.`), Task 9 may have dispatched a bootstrap targeting that exact `<app-dir>/CLAUDE.md` — the same file this task is about to edit. If that dispatch hasn't reached terminal status and been wrapped up yet, wait for it (same completion detection as Task 9) before touching root `CLAUDE.md` here; running both concurrently means whichever write lands last silently overwrites the other's content. This never applies to an app whose `dir` is an actual subdirectory — its `CLAUDE.md` is a different file entirely.
-
-Read `<repo-root>/CLAUDE.md` (create it with a one-line project heading if it doesn't exist yet). Render the apps config into markers:
+讀取 `<repo-root>/AGENTS.md` 與 `<repo-root>/CLAUDE.md`；缺少的檔案先建立一行專案標題。將同一份 apps 摘要同步至兩檔。僅列 app 名稱、目錄及設定位置；各 app 的詳細政策保存在 apps.json。
 
 ```markdown
 <!-- straw-boss:apps:start -->
@@ -145,13 +143,13 @@ Read `<repo-root>/CLAUDE.md` (create it with a one-line project heading if it do
 api — apps/api
 web — apps/web
 
-Full config (routing, redirects, per-app rules): `.claude/straw-boss/apps.json`.
+Full config (routing, redirects, per-app rules): `.straw-boss/apps.json`.
 <!-- straw-boss:apps:end -->
 ```
 
-If the markers already exist, replace only the content between them — leave the rest of `CLAUDE.md` untouched. If they don't exist, append the block at the end of the file, separated from any existing content by exactly one blank line (so a file that doesn't already end in a newline still renders as valid Markdown, and a file that does doesn't gain extra blank lines). This is the section a future main-agent session reads to know the project's managed scope, so keep it in sync every time Task 2 changes the config, not just on first run.
+既有 markers 存在時只替換區段內容；缺少時以一個空白行分隔並附加。保留兩檔各自的區段外內容。再次執行 init 時同步這兩份摘要，並核對 Task 3 已確認的 routing 區段在兩檔一致。
 
-**Verification:** root `CLAUDE.md` exists and contains an up-to-date managed-apps section between the markers, listing only app names and directories; nothing outside the markers was touched; no per-app rule detail leaked into this section from `apps.json`; if any Task 9 dispatch targeted the repo root itself, it was confirmed terminal before this task wrote root `CLAUDE.md`.
+**Verification:** 根目錄兩個指引檔皆存在，apps 區段與設定一致，routing 區段與 Task 3 的決定一致，區段外內容保留；根目錄 bootstrap 已完成才寫入。
 
 ## References
 

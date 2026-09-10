@@ -5,11 +5,13 @@ files are never modified to inject a dispatch workflow.
 
 ## Resolve mode and work route
 
+兩個指引檔的 routing 區段若不同，呈現差異並由使用者選定本次設定；init Task 3 負責同步確認後的區段。
+
 - `capability.json` explicitly says `claude-p-only`: use headless mode.
 - Otherwise use `herdr-pane` when `HERDR_ENV=1`; use headless only when no live
   herdr session exists.
 - Resolve the worker setup independently: explicit per-dispatch override, then
-  a matching work route in root `CLAUDE.md`, then the app's
+  a matching work route in root `AGENTS.md`（缺少 routing 區段時讀取 `CLAUDE.md`）, then the app's
   `apps.json.agentKind`, then Claude with provider defaults. A work route can
   select agent kind, provider profile, model, effort, and a Claude Code native
   advisor. Codex has no native advisor; refuse that combination.

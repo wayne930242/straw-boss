@@ -75,7 +75,7 @@ $straw-boss:init
 
 You can also browse or manage the installed plugin interactively by starting `codex` and entering `/plugins`. Plugins are not available in the Codex IDE extension.
 
-`init` asks which apps to manage, configures work routes, writes `.claude/straw-boss/apps.json`, syncs your root `CLAUDE.md`, offers to bootstrap a missing agent system per app, and records whether to enable herdr-backed dispatch.
+`init` 會確認 managed apps 與 work routes，寫入 `.straw-boss/apps.json`，同步根目錄的 `AGENTS.md` 與 `CLAUDE.md`，提議補齊各 app 缺少的指引檔，並記錄是否啟用 herdr dispatch。
 
 For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it when you want herdr, per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 
@@ -83,7 +83,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 
 | Skill | Description |
 |-------|-------------|
-| `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, configure work routes with provider profile/model/effort and an optional Claude advisor, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
+| `init` | 設定 managed apps、work routes 與 herdr dispatch；同步根目錄的 `AGENTS.md`、`CLAUDE.md`，並提議補齊各 app 的指引檔 |
 | `boss-say` | **The entry point for everything.** Selects the owning skill and smallest sufficient loop for one task, an independent batch, or a backlog |
 | `handoff-orchestrator` | After explicit approval, transfer one scope and its minimal continuity state to a new orchestrator tab |
 | `boss-assistant` | 老闆助理：將各協調者的摩擦當作 Straw Boss UAT，修復 graph 並依量測優化效能與儲存；先查本地專案，再準備 issue／PR 並詢問是否發布 |
@@ -97,7 +97,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `asking-peer-agents` | Let one dispatched task request a factual progress update or conclusion from another task |
 | `bringing-coworker` | Bring one Claude Code or Codex CLI coworker into an interactive worker's exact Herdr tab and worktree |
-| `create-great-harness` | Bootstrap a minimal agent system for an app that has none — an evidence-grounded `CLAUDE.md`, plus optional hook or rule artifacts when confirmed scope or project evidence requires them |
+| `create-great-harness` | 依專案證據建立或補齊 `AGENTS.md`、`CLAUDE.md`，依已確認範圍加入可選 hook／rule |
 | `inspecting-app` | Resolve the app and run an evidence-bearing rules audit through the smallest sufficient loop |
 | `investigating-app` | Resolve the app and explain its current behavior with evidence through the smallest sufficient loop |
 | `troubleshooting-app` | Keep ordinary diagnosis and repair in one `shipping-task` loop; split out only an integration preflight whose evidence is needed to route or schedule later work |
@@ -130,9 +130,11 @@ A status question or closing out a dispatch also goes through `boss-say`.
 
 ## Configuration
 
-Managed apps and their per-app lifecycle options live in `.claude/straw-boss/apps.json`, written by `init`. Schema: [skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md). A terse app summary and the project-wide work routes live in your root `CLAUDE.md`, which nested app sessions inherit.
+`init` 將 managed apps 與各 app 的生命週期設定寫入 `.straw-boss/apps.json`。格式見 [apps config schema](skills/init/references/apps-config-schema.md)。app 摘要與專案 work routes 同步至根目錄的 `AGENTS.md` 與 `CLAUDE.md`。
 
-An app can also default to a non-`claude` agent kind (`agentKind`). Complete work routes — provider profile, model, effort, and optional Claude Code native advisor — are a separate project-wide policy `init` writes into root `CLAUDE.md` as prose. Codex routes do not support advisor.
+app 的 `agentKind` 指定預設 agent。專案 work routes 則指定 provider profile、model、effort 與可選的 Claude advisor，由 `init` 同步至兩個指引檔；Codex route 的 advisor 為 none。
+
+設定讀取優先使用 `.straw-boss/apps.json`；新路徑不存在時相容 `.claude/straw-boss/apps.json`。`init` 將確認後的舊設定寫入新路徑並保留舊檔，回報其已被取代。
 
 ## License
 

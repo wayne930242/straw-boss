@@ -15,18 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
-def load_config(repo_root: Path) -> dict[str, Any]:
-    path = repo_root / ".claude" / "straw-boss" / "apps.json"
-    if not path.is_file():
-        raise ValueError(f"apps config is missing: {path}")
-    try:
-        payload = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"apps config cannot be read: {path}: {exc}") from exc
-    if not isinstance(payload, dict) or not isinstance(payload.get("apps"), list):
-        raise ValueError(f"apps config must contain an apps array: {path}")
-    return payload
+from apps_config import read_apps_config
 
 
 def configured_app(payload: dict[str, Any], app_name: str) -> dict[str, Any]:
@@ -93,7 +82,7 @@ def copy_local_files(
     if not worktree.is_dir():
         raise ValueError(f"worktree is not a directory: {worktree}")
 
-    app = configured_app(load_config(repo_root), app_name)
+    app = configured_app(read_apps_config(repo_root).payload, app_name)
     app_dir = relative_path(app.get("dir"), f"app {app_name!r} dir")
     source_root = resolve_inside(repo_root, app_dir, f"app {app_name!r} dir")
     if not source_root.is_dir():

@@ -72,7 +72,7 @@ $straw-boss:init
 
 也可以先啟動 `codex`，再輸入 `/plugins`，以互動介面瀏覽或管理 plugin。Codex IDE extension 目前不支援 plugins。
 
-`init` 會詢問要管理哪些 app、設定 work route、寫入 `.claude/straw-boss/apps.json`、同步 root `CLAUDE.md`，為缺少 agent system 的 app 提議建立一套，並記錄是否啟用 herdr-backed dispatch。
+`init` 會詢問要管理哪些 app、設定 work route、寫入 `.straw-boss/apps.json`、同步 root `AGENTS.md` 與 `CLAUDE.md`，為缺少 agent system 的 app 提議建立一套，並記錄是否啟用 herdr-backed dispatch。
 
 單一 app 的話 `init` 只是加分，裝好 plugin 就能直接用 `boss-say`。想開 herdr、設定 `forbidDirectCommit`/`localFiles` 這類選項、或設定 monorepo 多個 app，才需要跑。
 
@@ -80,7 +80,7 @@ $straw-boss:init
 
 | Skill | 說明 |
 |-------|-------------|
-| `init` | 問要管哪些 app、寫設定、同步 root `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
+| `init` | 問要管哪些 app、寫設定、同步 root `AGENTS.md` 與 `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、決定要不要開 herdr |
 | `boss-say` | **所有事情的入口。**為單一任務、獨立批次或 backlog 選擇 owner skill 與最小充分迴圈 |
 | `handoff-orchestrator` | 經明確同意後，把一個 scope 與最小延續狀態交給新的 orchestrator tab |
 | `boss-assistant` | 老闆助理：將各協調者的摩擦當作 Straw Boss UAT，修復 graph 並依量測優化效能與儲存；先查本地專案，再準備 issue／PR 並詢問是否發布 |
@@ -94,7 +94,7 @@ $straw-boss:init
 | `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
 | `asking-peer-agents` | 讓一個派出任務向另一個任務詢問實際進度或結論 |
 | `bringing-coworker` | 把一位 Claude Code 或 Codex CLI coworker 帶進互動式 worker 的同一個 Herdr tab 與 worktree |
-| `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——以證據為基礎的 `CLAUDE.md`，以及由確認範圍或專案證據支持的可選 hook／rule |
+| `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——以證據為基礎的 `AGENTS.md` 與 `CLAUDE.md`，以及由確認範圍或專案證據支持的可選 hook／rule |
 | `inspecting-app` | 解析目標 app，透過最小充分迴圈完成附證據的規則稽核 |
 | `investigating-app` | 解析目標 app，透過最小充分迴圈解釋現況並附上證據 |
 | `troubleshooting-app` | 一般故障在同一個 `shipping-task` 迴圈內連續診斷並修復；只有整合診斷必須先提供證據以安排後續工作時，才拆成獨立的前置調查 |
@@ -124,9 +124,11 @@ boss-say 把 docs/backlog.md 做掉
 
 ## 設定
 
-`init` 會把 managed app 與各 app 的生命週期選項寫進 `.claude/straw-boss/apps.json`。Schema：[skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md)。精簡 app 摘要與專案層級的 work route 則放在 root `CLAUDE.md`，讓各 app session 繼承。
+`init` 會把 managed app 與各 app 的生命週期選項寫進 `.straw-boss/apps.json`。Schema：[skills/init/references/apps-config-schema.md](skills/init/references/apps-config-schema.md)。精簡 app 摘要與專案層級的 work route 則放在 root `AGENTS.md` 與 `CLAUDE.md`，讓各 app session 繼承。
 
-app 也可以設定預設用非 `claude` 的 agent kind（`agentKind`）。完整 work route（provider profile、model、effort，以及可選的 Claude Code 原生 advisor）則是另一個專案層級政策，由 `init` 寫成 root `CLAUDE.md` 的文字說明，而不是塞進 per-app 設定。Codex route 不支援 advisor。
+app 也可以設定預設用非 `claude` 的 agent kind（`agentKind`）。完整 work route（provider profile、model、effort，以及可選的 Claude Code 原生 advisor）則是另一個專案層級政策，由 `init` 寫成 root `AGENTS.md` 與 `CLAUDE.md` 的文字說明，而不是塞進 per-app 設定。Codex route 不支援 advisor。
+
+設定讀取優先使用 `.straw-boss/apps.json`；新路徑不存在時相容 `.claude/straw-boss/apps.json`。`init` 將確認後的舊設定寫入新路徑並保留舊檔，回報其已被取代。
 
 ## 授權條款
 
