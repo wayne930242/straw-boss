@@ -86,6 +86,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `init` | Ask which apps to manage, write the config, sync root `CLAUDE.md`, configure work routes with provider profile/model/effort and an optional Claude advisor, offer to bootstrap a missing agent system per app, decide whether to enable herdr |
 | `boss-say` | **The entry point for everything.** Selects the owning skill and smallest sufficient loop for one task, an independent batch, or a backlog |
 | `handoff-orchestrator` | After explicit approval, transfer one scope and its minimal continuity state to a new orchestrator tab |
+| `boss-assistant` | 老闆助理：將各協調者的摩擦當作 Straw Boss UAT，修復 graph 並依量測優化效能與儲存；先查本地專案，再準備 issue／PR 並詢問是否發布 |
 | `contacting-orchestrators` | Register this orchestrator's identity and one-line scope, read which other orchestrators are live, and send one a factual delta carrying this session's herdr pane id |
 | `i-am-orchestrator` | Keep coordination event-driven while workers and the user own work details inside the named reality anchor |
 | `work-on` | Resolve a request to an app, apply any legacy redirect |

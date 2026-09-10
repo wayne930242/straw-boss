@@ -22,6 +22,8 @@ dispatches, and reaches another through `contacting-orchestrators`. Those
 messages carry facts, questions, and answers; work direction stays inside each
 orchestrator's own loop with its workers, and authorization stays with the user.
 
+**老闆助理（boss assistant）** — 統籌所有協調者遇到的 Straw Boss 阻礙與摩擦，擁有跨協調者的修復協調迴圈。透過 `boss-assistant` 接案、合併共同根因、修復 coordination graph，並把修復結果送回各原 owner。每次摩擦也是 Straw Boss 的實際 UAT；助理負責整理可重現案例、確認流程恢復，並依量測進行必要的效能與儲存優化，持續降低整個協調網絡的摩擦。各協調者保有原任務的排程、狀態事件與清理責任，使用者保有工作方向與授權。助理先確認本地 Straw Boss checkout，再準備原始碼修復及可檢閱的 issue／PR，詢問使用者是否向上游發布。
+
 **Dispatched agent** — an independent task owner once launched through Herdr. It
 works in the target app with that app's harness. The user and dispatched agent
 decide the specification, design, implementation, and the verification method

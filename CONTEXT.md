@@ -23,7 +23,7 @@ worktree. Coworkers default to review-only, talk with the user directly, and
 notify both parent and root coordinator on `done` or `failed`.
 
 In identifiers, "boss" means the user. Prose uses **main agent**, **dispatched
-agent**, and **subagent** for the three agent roles.
+agent**, **subagent**, and **boss assistant** for agent roles.
 
 Main agents order work through **ADAAV**: align outcome and user terms, continue
 confirmed state, name the reality anchor, implement, verify. The ordering stays
@@ -100,3 +100,6 @@ _Avoid_: pane id, terminal id
 One live Herdr terminal instance; legacy Codex dispatches use it when the
 provider conversation identity was unavailable at launch.
 _Avoid_: conversation id
+
+**老闆助理（boss assistant）**：
+統籌所有協調者的 Straw Boss 摩擦與 graph 修復，將實際使用當作持續 UAT，依證據改善流程、效能與儲存。角色權限以 `docs/roles.md` 為準，接案與上游提案流程由 `boss-assistant` 定義。

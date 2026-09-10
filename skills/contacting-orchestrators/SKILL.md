@@ -85,3 +85,7 @@ that actually disagree go to the user, per the rule above.
 
 **Complete when:** this session holds a current record, and each delta it owed
 another orchestrator is delivered or recorded undelivered.
+
+## Straw Boss 摩擦回報
+
+遇到 Straw Boss 阻礙或 coordination graph 摩擦時，使用 `boss-assistant` 的回報流程。目錄中 scope 以 `[boss-assistant]` 開頭且 `live: true` 的協調者是接案對象；助理不存在、多位或不可達的處理也由該 skill 定義。回報後繼續原任務中可執行的工作，依回覆處理協調修復。
