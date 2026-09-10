@@ -1,6 +1,6 @@
 ---
 name: create-great-harness
-description: Use when init finds an app missing AGENTS.md or CLAUDE.md and has confirmation to fill the gap, or when the user asks directly for a minimal agent system.
+description: Use when an app is missing AGENTS.md or CLAUDE.md, or the user asks for a minimal agent system.
 ---
 
 ## Overview
@@ -49,7 +49,12 @@ Follow this protocol in order — an unverified hook that silently doesn't fire 
    - **Invoked directly by a user in this session:** tell them and ask whether to keep, replace, or add alongside — don't silently double up.
    - **Invoked as a dispatched agent:** record the conflict for Task 6 and leave the existing configuration unchanged.
 2. **Construct the raw command** — a `PreToolUse` hook on `Bash`, matching the destructive pattern (e.g. `git push --force`/`git push -f` to the primary branch, or `git reset --hard`) and returning a blocking decision. No `|| true`, no stderr suppression yet — that comes after the pipe-test passes.
-3. **Pipe-test it** with a synthesized stdin payload matching the real hook-input shape (`{"tool_name":"Bash","tool_input":{"command":"<the exact destructive command this should block>"}}`) piped directly into the constructed command. A blocking `PreToolUse` hook signals via its **output**, not its exit code or any side effect — confirm the blocking case's stdout actually contains a deny decision (`hookSpecificOutput.permissionDecision: "deny"`, or the command exits 2 per the exit-code contract, whichever this hook uses). Also pipe-test one command it should **not** block (e.g. a plain `git push`), and confirm that case's output has no deny decision — an exit-0 "it ran without erroring" is not evidence either direction on its own.
+3. **Pipe-test it** with a synthesized stdin payload matching the real hook-input shape (`{"tool_name":"Bash","tool_input":{"command":"<the exact destructive command this should block>"}}`) piped directly into the constructed command. A blocking `PreToolUse` hook signals via its **output**, not its exit code or any side effect, so test both directions:
+
+   - **The blocking case** — confirm its stdout actually contains a deny decision (`hookSpecificOutput.permissionDecision: "deny"`, or the command exits 2 per the exit-code contract, whichever this hook uses).
+   - **A command it should not block** (e.g. a plain `git push`) — confirm that case's output has no deny decision.
+
+   An exit-0 "it ran without erroring" is not evidence either direction on its own.
 4. **Merge into `<app-dir>/.claude/settings.json`** — read-then-merge, never overwrite existing hooks/permissions/settings already in the file. Create the file (and `.claude/`) only if neither exists.
 5. **Validate:** `jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.type == "command") | .command' <app-dir>/.claude/settings.json` — exits 0 and prints the command, or the write is wrong.
 6. **Note the watcher caveat** for Task 6's report: a hook added to a `.claude/` directory that didn't exist when the current session started won't fire until `/hooks` is opened once or the session restarts — this skill cannot trigger that itself.

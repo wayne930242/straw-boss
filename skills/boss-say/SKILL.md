@@ -1,11 +1,17 @@
 ---
 name: boss-say
-description: Route work through Straw Boss. Use for one task, a small independent batch, or a backlog; select the owning skill, the lightest sufficient execution tier, and the coordination graph.
+description: Use to route work through Straw Boss: one task, a small independent batch, or a backlog.
 ---
 
 ## Overview
 
-This skill owns routing and capped-batch scheduling. Domain work stays with its specialist: `shipping-task`, `inspecting-app`, `investigating-app`, or `troubleshooting-app`. `work-on` resolves the app; `dispatching-work` supplies mechanics only when a separate workroom is useful.
+This skill owns routing and capped-batch scheduling. A git lifecycle goes to `shipping-task`; `work-on` resolves the app; `dispatching-work` supplies mechanics only when a separate workroom is useful.
+
+**A reported failure ends fixed, not merely explained.** An **integration preflight** — diagnosis dispatched separately from the fix — is warranted only when both conditions hold: the failure crosses an integration boundary, and its explanatory conclusion is needed to shape or schedule later dispatches. It requires an explanatory, falsifiable root-cause account with evidence references, anchored on an independent agent's adversarial review of that account. A symptom one resolved app can diagnose and repair stays in the same worker.
+
+For every other app-level or uncertain failure, diagnosis and repair stay in one `shipping-task` loop. One agent reproduces the failure, explains its mechanism and root cause, and repairs it, keeping the evidence and context it discovers; the fix is anchored on testing, so the reproduction goes red before the repair. Carry any hypothesis the user already eliminated, with its evidence.
+
+**A dispatch brief names no method skill.** Audit, research, and any other read-only work is dispatched on its question alone: a worker inside the app has that app's own skills loaded and knows better than this session which one fits. Require the result to cite evidence references — the exact rule and implementation, file/line, test, log, command, or artifact — because those references are what the work's anchor attacks.
 
 Choose the **smallest sufficient execution tier**. The process is light when its coordination cost stays below the work it coordinates. Once work is dispatched, the user and dispatched agent choose the specification, design, implementation, and the verification method inside the named reality anchor.
 
@@ -36,7 +42,7 @@ For `boss say <skill> <work>`, resolve a clear name, abbreviation, or partial ma
 
 ## Task 1: Triage scale and execution tier, then pick the dispatch shape
 
-Collect the items, select the owning skill, and state the shape with one reason.
+Collect the items, select the owning skill where one applies, and state the shape with one reason.
 
 - **One bounded logical item:** the current agent carries a bounded single-loop end to end when it can load the target checkout's instructions. This includes implementation, inspection, investigation, and diagnosis.
 - **Clear independent branches inside one item:** use sub-agent fan-out/fan-in and integrate the branches here.
@@ -53,7 +59,7 @@ Invoke `choosing-graph` and state the coordination graph and reality anchor. A c
 
 Batch path only (a single request left for `shipping-task` in Task 1 — nothing to do here).
 
-For each item, extract a task description and, if the project has more than one app configured, resolve its target app via `work-on`'s Task 1 (its single-app fast path applies the same way here). Follow `dispatching-work` Task 3's brief boundary: resolve the app and coordination shape, but leave implementation/context investigation to the worker. Ask about a genuinely ambiguous item individually — don't interrogate every item just because a few are unclear.
+For each item, extract a task description and, if the project has more than one app configured, resolve its target app via `work-on` (its single-app fast path applies the same way here). Follow `dispatching-work` Task 3's brief boundary: resolve the app and coordination shape, but leave implementation/context investigation to the worker. Ask about a genuinely ambiguous item individually — don't interrogate every item just because a few are unclear.
 
 **A batch item is never decomposed.** If resolving one item reveals it actually needs its own dependency graph (multiple phases, multiple apps for that one item), that item doesn't belong in this batch — pull it out per Task 1's mixed-input rule and route it through `shipping-task`.
 
@@ -69,7 +75,12 @@ Per resolved app, `forbidDirectCommit: true` forces team-mode for that item auto
 
 Derive the batch slug: a name the user gave the batch, or a slug from the source file's name if one was used, kebab-cased. This slug is load-bearing — it's how a later `/loop` tick finds this same batch again, so state it plainly in the confirmation and repeat it in a progress report only when needed to identify the batch.
 
-Present the resolved item list, each one's app, the chosen mode default, and the batch slug as one plan-confirmation decision through the harness-native ask-question interface before writing anything — this commits to real dispatches next. Then write `~/.straw-boss/plans/<batch-slug>/plan.json` using `dispatching-work`'s own plan schema (`references/plan-mechanics.md`) exactly — every task's `depends_on: []`. Create the empty `status/` and `artifacts/` directories the same way `work-on`'s own Task 5 does. No `grilling` pass here — there's no dependency graph to confirm, only the flat item list from Task 2.
+Present the resolved item list, each one's app, the chosen mode default, and the batch slug as one plan-confirmation decision through the harness-native ask-question interface before writing anything — this commits to real dispatches next. Then:
+
+1. Write `~/.straw-boss/plans/<batch-slug>/plan.json` using `dispatching-work`'s own plan schema (`references/plan-mechanics.md`) exactly — every task's `depends_on: []`.
+2. Create the empty `status/` and `artifacts/` directories the same way `work-on` does.
+
+No `grilling` pass here — there's no dependency graph to confirm, only the flat item list from Task 2.
 
 **Verification:** `plan.json` exists with one task per batch item, every `depends_on` empty, before any dispatch happens; the batch slug has been stated to the user.
 
@@ -86,22 +97,36 @@ reduction to the user.
 4. On a `done`/`failed`/`cancelled` status event for any in-flight task: receive the Herdr notification, auto-detach it, then refill the queue. `cancelled` is coordinator-authored only for an explicit user request or an objectively invalid dispatch.
 5. `awaiting-authorization`/`awaiting-user-input` are not terminal and do not free a slot. Report the coordination delta compactly. For an interactive task, name it and point the user to its pane.
 6. `awaiting-main-agent` is also not terminal and does not free a slot. Resolve it in the same tick only with integrated context or a coordinator-owned action result: an interactive task uses `reply-to-worker.py --worker-instruction-path <path> --reply "<answer or action result>"`. If it asks for a work-content decision, direct it to the user instead.
-7. **A feature-branch push notification is not a plan-status event — it never appears in `read-plan-status.py` or `watch-plan-status.py`.** A team-mode task pushed its own feature branch and opened or updated an MR/PR on its own (`shipping-task`'s Task 3/Overview, unchanged for a batch item) — it needed no authorization and was never waiting. Relay the script-delivered FYI to the user; a task with no live route records it in the progress trail. Don't treat it as `awaiting-authorization`, obtain authorization, or change slot accounting.
+7. **A feature-branch push notification is not a plan-status event — it never appears in `read-plan-status.py` or `watch-plan-status.py`.** A team-mode task pushed its own feature branch and opened or updated an MR/PR on its own (`shipping-task`'s Overview, unchanged for a batch item) — it needed no authorization and was never waiting. Relay the script-delivered FYI to the user; a task with no live route records it in the progress trail. Don't treat it as `awaiting-authorization`, obtain authorization, or change slot accounting.
 8. **Idle in-flight tasks — peek on entry or change.** When every currently in-flight task first enters `awaiting-authorization`/`awaiting-user-input`, or one of those states or notes changes, invoke `peeking-work` on the changed task. Report that new finding by name. If in-flight also equals the cap, report the newly observed **fully stalled batch**. (`awaiting-main-agent` is resolved by step 6.)
 
 **Don't re-peek or report unchanged idleness.** A later event or `/loop` tick carrying the same state and note is confirmation, not a coordination delta. Retain the prior finding and use quiet pacing until the task changes or the user asks.
 
-**Verification:** in-flight count never exceeds the cap; a freed slot is refilled before anything else happens for that tick; the plan branch's "whole ready wave at once" behavior was never invoked directly on the full batch; an `awaiting-main-agent` finding is resolved in the same tick through reply-to-worker.py; a feature-branch push notification is relayed to the user as an FYI whenever it arrives, never treated as `awaiting-authorization` and never held for a slot it was never holding; every idle in-flight task (`awaiting-authorization`/`awaiting-user-input` only) gets a `peeking-work` check once per stretch of idleness, not only once the batch is fully saturated at cap, and never repeatedly for the same unchanged state; a fully stalled batch is reported, not silently waited on.
+**Verification:**
+
+- in-flight count never exceeds the cap;
+- a freed slot is refilled before anything else happens for that tick;
+- the plan branch's "whole ready wave at once" behavior was never invoked directly on the full batch;
+- an `awaiting-main-agent` finding is resolved in the same tick through reply-to-worker.py;
+- a feature-branch push notification is relayed to the user as an FYI whenever it arrives, and never treated as `awaiting-authorization`;
+- every idle in-flight task (`awaiting-authorization`/`awaiting-user-input` only) gets a `peeking-work` check once per stretch of idleness, not only once the batch is fully saturated at cap, and never repeatedly for the same unchanged state;
+- a fully stalled batch is reported, not silently waited on.
 
 ## Task 6: Run the batch — one-shot, or self-paced
 
-Which of these applies was already decided in Task 1. The one thing to check here is whether **this turn is itself a `/loop` tick**: it is only if the input this turn started with literally arrived as a `/loop` prompt carrying the batch slug. Anything else — a direct invocation, a plain mention of "boss-say" — is a fresh invocation, whatever Task 1 decided about pacing. Don't infer a tick from context or from the batch being large.
+Which of these applies was already decided in Task 1. The one thing to check here is whether **this turn is itself a `/loop` tick**: it is only if the input this turn started with literally arrived as a `/loop` prompt carrying the batch slug. Anything else — a direct invocation, a plain mention of "boss-say" — is a fresh invocation, whatever Task 1 decided about pacing.
 
-**One-shot batch:** drive the batch as far as it goes within this turn. Run `watch-plan-status.py --plan <slug>` as the authoritative scheduling stream and react to every persisted `done`/`failed`/`cancelled`/checkpoint revision per Task 5. The shared status command also prompts each recorded main-agent herdr pane after persistence; that live route accelerates observation but never replaces the watcher. Feature-branch push FYIs remain outside Plan status and are relayed per Task 5 step 7 whenever observed. Continue until either every task is terminal, or the turn has to stop and hand something back to the user. **Never call `ScheduleWakeup` in this shape** — there is no `/loop` iteration to schedule.
+**One-shot batch:** drive the batch as far as it goes within this turn. Run `watch-plan-status.py --plan <slug>` as the authoritative scheduling stream and react to every persisted `done`/`failed`/`cancelled`/checkpoint revision per Task 5. The shared status command also prompts each recorded main-agent herdr pane after persistence; that live route accelerates observation but never replaces the watcher.
+
+Feature-branch push FYIs remain outside Plan status and are relayed per Task 5 step 7 whenever observed. Continue until either every task is terminal, or the turn has to stop and hand something back to the user. **Never call `ScheduleWakeup` in this shape** — there is no `/loop` iteration to schedule.
 
 **Self-paced batch, first turn:** after Task 4 writes `plan.json`, dispatch the first fill per Task 5, then start the loop yourself — invoke the `loop` skill with the prompt `boss-say <batch-slug>` and no interval, so it runs in dynamic-pacing mode and each tick re-enters this skill with the slug. Tell the user the loop is running and how to stop it. Starting the loop is this skill's job; never end a turn having told the user to type `/loop` themselves.
 
-**Self-paced batch, on a tick:** don't start a new batch — use the batch slug carried in the wake-up prompt to find and read the existing `plan.json` and `status/` for the batch already in progress; never guess the slug and never start a second `plan.json` for what might be the same batch. Run one round of Task 5. A new or changed idle finding from step 8 is news and sets `noop: false`; unchanged idleness stays quiet. A relayed push notification or resolved `awaiting-main-agent` checkpoint also counts as change. Otherwise call `ScheduleWakeup` with the same slug and `noop: true`. Once every task is terminal, report the final summary and call `ScheduleWakeup({stop: true})`.
+**Self-paced batch, on a tick:** don't start a new batch. Use the batch slug carried in the wake-up prompt to find and read the existing `plan.json` and `status/` for the batch already in progress; never start a second `plan.json` for what might be the same batch. Run one round of Task 5, then:
+
+- A new or changed idle finding from step 8 is news and sets `noop: false`; unchanged idleness stays quiet. A relayed push notification or resolved `awaiting-main-agent` checkpoint also counts as change.
+- Otherwise call `ScheduleWakeup` with the same slug and `noop: true`.
+- Once every task is terminal, report the final summary and call `ScheduleWakeup({stop: true})`.
 
 **Verification:** `ScheduleWakeup` is called only on a confirmed `/loop` tick, every prompt carries the batch slug, and no tick starts a duplicate plan. A newly observed stall is reported once; its unchanged later ticks are quiet.
 

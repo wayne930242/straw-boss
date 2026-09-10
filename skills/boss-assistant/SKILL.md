@@ -1,6 +1,6 @@
 ---
 name: boss-assistant
-description: Use when the user names the boss assistant, or when a main agent reports Straw Boss friction, a blocker, or a coordination-graph problem. Treats real friction as Straw Boss UAT, coordinates graph repair and any warranted performance or storage work, and prepares an upstream issue or PR for the user to decide on.
+description: Use when the user names the boss assistant, or a main agent reports Straw Boss friction or a coordination-graph problem.
 ---
 
 ## Take the role and stay reachable
@@ -26,7 +26,15 @@ Reply on the original message id to accept. Merge reports sharing one root cause
 
 Lay out the affected main agents, task owners, dependencies, session routing, reality anchors, and pending events, and name the one relationship blocking the next step. Take each owner's work conclusions as given, and check the current coordination state the repair depends on.
 
-Pick the smallest repair: update a registration, have the original owner rebind a reachable endpoint, correct a wrong dependency, coordinate a shared resource, or complete a missed checkpoint or terminal cleanup. Reuse the existing operations and status contracts in `dispatching-work`, `contacting-orchestrators`, and `handoff-orchestrator`. Each piece of mutable state is applied serially by its own owner while the assistant sequences them; coordination state the assistant owns itself is repaired directly. Where task direction or ownership conflicts, put one decision to the user and keep the current direction until they answer.
+Pick the smallest repair:
+
+- update a registration;
+- have the original owner rebind a reachable endpoint;
+- correct a wrong dependency;
+- coordinate a shared resource;
+- complete a missed checkpoint or terminal cleanup.
+
+Reuse the existing operations and status contracts in `dispatching-work`, `contacting-orchestrators`, and `handoff-orchestrator`. Each piece of mutable state is applied serially by its own owner while the assistant sequences them; coordination state the assistant owns itself is repaired directly. Where task direction or ownership conflicts, put one decision to the user and keep the current direction until they answer.
 
 Afterwards read the persisted state back, confirm the blocked relationship is fixed, and ask the original main agent whether its next step now runs. Keep the before and after evidence and any open question. Code, design, and verification for the original task stay in that task's own loop.
 
@@ -38,7 +46,12 @@ Watch the whole network for repeat friction through existing reports and status 
 
 When performance or storage burden is what degrades the flow, fix it as part of the repair. Measure a baseline tied to that friction first — message and event latency, retry and scan counts, CPU and memory, status-file count and size, read/write volume and growth rate — then pick the metric that best explains the bottleneck and compare before and after under the same workload. Favour removing duplicated work, ineffective polling, redundant storage, and unnecessary history scans, keeping coordination event-driven.
 
-For a storage change, establish the data owner, the write and read-back paths, and the retention and recovery contracts before choosing an evidence-backed approach such as indexing, caching, compaction, or archival. Verify that concurrent writes, recovery after a session restart, message tracing, and the evidence cleanup needs still hold. Data deletion follows the existing retention policy and user authorization. Report the benefit, the cost, and any remaining limit alongside the UAT result; where no improvement is measured, keep that conclusion and change the approach.
+For a storage change:
+
+- Establish the data owner, the write and read-back paths, and the retention and recovery contracts before choosing an evidence-backed approach such as indexing, caching, compaction, or archival.
+- Verify that concurrent writes, recovery after a session restart, message tracing, and the evidence cleanup needs still hold.
+- Data deletion follows the existing retention policy and user authorization.
+- Report the benefit, the cost, and any remaining limit alongside the UAT result; where no improvement is measured, keep that conclusion and change the approach.
 
 ## Repair Straw Boss and prepare an upstream proposal
 
@@ -52,4 +65,9 @@ Prepare a PR title, body, diff, and verification result when there is a verifiab
 
 Once the draft is reviewable, put exactly one publication decision to the user through the harness-native ask-question interface: whether to send this issue or PR to the confirmed Straw Boss upstream. On approval, publish and read back the URL and content; otherwise record where the draft is. A PR's remote branch push belongs to that same decision.
 
-**Complete when:** every report is restored and its main agent told, or has a named owner, blocker, and next event; every repaired case carries an actual UAT result, and any pending one names its next acceptance event; performance and storage work carries before/after measurements and a verified recovery contract; every upstream proposal has a user decision, with a read-back result when published and a draft location when kept local.
+**Complete when:**
+
+- every report is restored and its main agent told, or has a named owner, blocker, and next event;
+- every repaired case carries an actual UAT result, and any pending one names its next acceptance event;
+- performance and storage work carries before/after measurements and a verified recovery contract;
+- every upstream proposal has a user decision, with a read-back result when published and a draft location when kept local.

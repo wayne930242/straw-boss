@@ -1,6 +1,6 @@
 ---
 name: i-am-orchestrator
-description: Keep Straw Boss coordination moving while dispatched workers and users own work definition. Injected for a candidate main-agent session, never a dispatched worker.
+description: Injected for a candidate main-agent session, never a dispatched worker.
 ---
 
 ## Use the smallest sufficient loop

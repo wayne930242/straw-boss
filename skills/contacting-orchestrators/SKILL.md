@@ -1,6 +1,6 @@
 ---
 name: contacting-orchestrators
-description: Register this orchestrator's identity and one-line scope in the machine's orchestrator directory, read which other orchestrators are live, and send one of them a factual delta that carries this session's herdr pane id. Use before this session's first dispatch, and whenever another orchestrator's work meets this one's.
+description: Use before this session's first dispatch, and whenever another main agent's work meets this one's.
 ---
 
 ## Register before dispatching

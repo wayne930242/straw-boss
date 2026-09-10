@@ -1,38 +1,36 @@
 ---
 name: shipping-task
-description: Carries one task through a standardized git lifecycle in one of the project's managed apps. Normally invoked by `boss-say` once it has triaged a request down to a single unit of work, or by `troubleshooting-app` once it has scoped a reported failure; also usable directly when the user names it. Not for deciding how work gets dispatched (`boss-say` owns that), scoping/planning the task (your project's task-scoping skill), picking the app (`work-on`, invoked internally here), or many independent tasks at once (`boss-say`'s batch path).
+description: Use to carry one task through a managed app's git lifecycle.
 ---
 
 ## Overview
 
-straw-boss standardizes two lifecycle shapes across every managed app: **team-mode** (worktree → develop → MR → merge → archive) and **solo-mode** (develop directly in the app's primary checkout, commit straight to the base branch). Which one applies is how the user regards this piece of work, so Task 2 asks them — except where the resolved app's `apps.json` entry sets `forbidDirectCommit: true`, in which case only team-mode is offered. Scoping the task happens before this skill. Picking the app happens as this skill's own first step, via `work-on`.
+straw-boss standardizes two lifecycle shapes across every managed app: **team-mode** (worktree → develop → MR → merge → archive) and **solo-mode** (develop directly in the app's primary checkout, commit straight to the base branch). Which one applies is how the user regards this piece of work, which they can answer before the cause is known, so Task 2 asks them — except where the resolved app's `apps.json` entry sets `forbidDirectCommit: true`, in which case only team-mode is offered. Scoping the task happens before this skill. Picking the app happens as this skill's own first step, via `work-on`.
 
-The execution tier comes from `boss-say`: a bounded single-loop stays with the current agent; work needing a separate durable workroom uses `dispatching-work`. An app may already own its git lifecycle through `apps.json.gitWorkflowSkill`; otherwise the fallback below applies.
+Invoke `work-on` first when the target app is not established; it returns the app and directory. The execution tier comes from `boss-say`: a bounded single-loop stays with the current agent; work needing a separate durable workroom uses `dispatching-work`, and creates durable task tracking when it spans turns or checkpoints. An app may already own its git lifecycle through `apps.json.gitWorkflowSkill`; otherwise the fallback below applies.
 
-**Commit needs no authorization — the agent commits on its own as it goes. Neither does pushing the task's own feature branch** (opening or updating an MR/PR against it) — the branch was already implicitly authorized when the main agent created it; the agent reports with `send-dispatch-message.py --to main --intent inform` and continues, or records progress when no live route exists. **Merge is the mutation the agent cannot self-authorize** — as is any push that lands on another tracked branch: the agent stops and persists `awaiting-authorization` instead.
+Three gates, and only the last one stops the agent:
 
-## Task Initialization
+- **Commit needs no authorization** — the agent commits on its own as it goes.
+- **Neither does pushing the task's own feature branch** (opening or updating an MR/PR against it) — the branch was already implicitly authorized when the main agent created it; the agent reports with `send-dispatch-message.py --to main --intent inform` and continues, or records progress when no live route exists.
+- **Merge is the mutation the agent cannot self-authorize** — as is any push that lands on another tracked branch: the agent stops and persists `awaiting-authorization` instead.
 
-Create durable task tracking when the selected execution tier spans turns or checkpoints. A bounded single-loop needs no extra lifecycle bookkeeping.
-
-## Task 1: Resolve the app
-
-Invoke `work-on` when the target app is not established. It returns the app and directory; the execution tier remains the one selected by `boss-say`.
-
-**Verification:** you can name the app and its directory, sourced from `work-on`.
-
-## Task 2: Ask which mode this work is
+## Task 1: Ask which mode this work is
 
 Ask the user how they regard this piece of work — solo work they are carrying themselves, or team work that lands through review. Their reading of the work is the whole question. Determine the base/integration branch, and check the resolved app's `apps.json` entry for `forbidDirectCommit` while you're at it (if the field is absent, treat it as `false` — no direct-commit restriction — rather than asking the user to guess).
 
-- **solo-mode**: no worktree, develop directly in the app's primary checkout, commit straight to the base branch — no authorization needed, no MR. Say that much when you offer it, so the user is answering with the consequence in view. `forbidDirectCommit` (below) is the only gate on this path; once a task is offered solo-mode, its commit lands with no further check. The primary checkout is shared and unisolated — unlike a team-mode worktree, nothing keeps a solo-mode task's in-progress changes from colliding with anything else that touches the same checkout. Before dispatching one, check it's clean (`git -C <app_dir> status --porcelain`); a dirty tree almost always means an earlier solo-mode task's change is still mid-work or was abandoned — resolve that first rather than dispatching into contended state. Never have more than one solo-mode task in flight against the same app at once, for the same reason.
+- **solo-mode**: no worktree, develop directly in the app's primary checkout, commit straight to the base branch — no authorization needed, no MR. Say that much when you offer it, so the user is answering with the consequence in view.
+  - `forbidDirectCommit` (below) is the only gate on this path; once a task is offered solo-mode, its commit lands with no further check.
+  - The primary checkout is shared and unisolated — unlike a team-mode worktree, nothing keeps a solo-mode task's in-progress changes from colliding with anything else that touches the same checkout.
+  - Before dispatching one, check it's clean (`git -C <app_dir> status --porcelain`); a dirty tree almost always means an earlier solo-mode task's change is still mid-work or was abandoned — resolve that first rather than dispatching into contended state.
+  - Never have more than one solo-mode task in flight against the same app at once, for the same reason.
 - **team-mode**: worktree → develop → MR → merge → archive.
 
 If `forbidDirectCommit` is `true`, say so and only offer team-mode — do not ask the user to pick something the app itself blocks.
 
 **Verification:** the user explicitly picked a mode, or the app forced one and you said so, and you can name the base branch before work starts.
 
-## Task 3: Determine git-lifecycle ownership
+## Task 2: Determine git-lifecycle ownership
 
 **Worktree creation itself is never delegated, regardless of what the app owns.** In team-mode, the current agent creates and verifies the worktree with plain `git worktree add` (never `herdr worktree create`). See `dispatching-work`'s `references/plan-mechanics.md` "Worktree ownership" section for the verify-and-repair and `localFiles` copy steps. If a separate workroom was selected, its launcher uses that verified worktree as cwd. In solo-mode there is no worktree.
 
@@ -43,7 +41,7 @@ For everything **after** the worktree exists (or in solo-mode, from the start), 
 
 **Verification:** you can state whether the target app owns its post-worktree git lifecycle or is getting the fallback steps, before Task 4 assembles the instruction; in team-mode, worktree creation itself was never left to the agent's own skill.
 
-## Task 4: Execute in the selected tier
+## Task 3: Execute in the selected tier
 
 For a current-agent single-loop, load the target checkout's instructions and carry the task through implementation, its reality anchor, and the selected git lifecycle here.
 
@@ -62,7 +60,7 @@ The generated contract supplies exact progress, message, checkpoint, and termina
 
 **Verification:** the current agent is working from the resolved checkout with its instructions loaded, or the dispatched brief is understandable without private context and contains only the requirement, outcome, known coordination facts, and material constraints.
 
-## Task 5: Authorize merge, relay push notifications, resume through to completion
+## Task 4: Authorize merge, relay push notifications, resume through to completion
 
 Applies to team-mode only — solo-mode's commit needs no authorization and reaches no checkpoint here (Task 2/Task 3).
 
@@ -80,7 +78,7 @@ If the target app is itself a submodule of a monorepo root and a pointer-bump pu
 
 **Verification:** every gated mutation has direct user authorization in the interactive task or the current-agent single-loop; feature-branch pushes remain FYIs.
 
-## Task 6: Confirm and wrap up
+## Task 5: Confirm and wrap up
 
 For a `work-on`-produced plan (Task 1), this task runs once per plan task, as each one's own lifecycle completes — not once for the whole plan.
 

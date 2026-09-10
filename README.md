@@ -98,9 +98,6 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `asking-peer-agents` | Let one dispatched task request a factual progress update or conclusion from another task |
 | `bringing-coworker` | Bring one Claude Code or Codex CLI coworker into an interactive worker's exact Herdr tab and worktree |
 | `create-great-harness` | Write or complete `AGENTS.md` and `CLAUDE.md` from project evidence, adding an optional hook or rule within the confirmed scope |
-| `inspecting-app` | Resolve the app and run an evidence-bearing rules audit through the smallest sufficient loop |
-| `investigating-app` | Resolve the app and explain its current behavior with evidence through the smallest sufficient loop |
-| `troubleshooting-app` | Keep ordinary diagnosis and repair in one `shipping-task` loop; split out only an integration preflight whose evidence is needed to route or schedule later work |
 
 ## Usage
 
@@ -122,9 +119,8 @@ Every specialist skill is also callable by name:
 - Which app owns this? → `work-on`
 - Peek before joining or interrupting → `peeking-work`
 - No agent system for an app yet → `create-great-harness`
-- Audit existing code → `inspecting-app`
-- Research how something works now → `investigating-app`
-- Something broke, cause unknown → `troubleshooting-app`
+- Audit existing code, or research how something works now → `boss-say` (dispatched on the question alone; the worker picks its own method)
+- Something broke, cause unknown → `boss-say` (diagnosis and repair stay in one `shipping-task` loop)
 
 A status question or closing out a dispatch also goes through `boss-say`.
 

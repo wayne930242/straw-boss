@@ -1,6 +1,6 @@
 ---
 name: init
-description: One-time (or occasional) setup for straw-boss in a project. Use when the user says "straw-boss init", runs it for the first time in a repo, or another straw-boss skill reports no apps config .
+description: Use on straw-boss's first run in a repo, or when another straw-boss skill reports no apps config.
 ---
 
 ## Overview
@@ -11,7 +11,7 @@ Configure the project's managed apps and work routes, and check the Herdr depend
 
 Locate the repo root with `git rev-parse --show-toplevel` — never assume the current directory is the root. Run the shared read handler in `references/apps-config-schema.md`, and read its exit code to tell a present config from a missing one and from a config error. The returned `config` is the basis for every edit below; `path` and `legacy` are the migration evidence. If it exists, show the current app list and ask whether the user wants to keep it, add/remove apps, or redo it from scratch — do not silently overwrite it.
 
-- **Keep, no changes:** keep the app list and skip Task 2's confirmation dialogue; where the source was the old path, write it to the new path per the schema's migration rule. The rest of the skill still runs in full: Task 3's agent-routing question, the Herdr checks in Tasks 4-8 are independent of the apps list, Task 9 still checks each app for a missing agent system, and Task 10 still re-syncs `AGENTS.md` and `CLAUDE.md`, in case those files drifted independently of the config.
+- **Keep, no changes:** keep the app list and skip Task 2's confirmation dialogue; where the source was the old path, write it to the new path per the schema's migration rule. The rest of the skill still runs in full: Task 3's agent-routing question, the Herdr checks in Task 4 are independent of the apps list, Task 5 still checks each app for a missing agent system, and Task 6 still re-syncs `AGENTS.md` and `CLAUDE.md`, in case those files drifted independently of the config.
 - **Add/remove apps, or redo from scratch:** Task 2 runs for real, scoped to what the user asked to change (e.g. only the new apps, not re-confirming ones the user didn't mention).
 - **No existing config:** Task 2 runs fresh, as normal.
 
@@ -35,7 +35,7 @@ Each reconnaissance returns proposed fields with evidence references:
 - `gitWorkflowSkill`, when an app-owned skill handles commits, PRs, or releases;
 - `localFiles`, limited to existing, untracked, gitignored files, with sensitive material identified for later user approval and `optional: true` only when the app remains operable without that file;
 - `crossAppSkills`, when an app-owned skill contains a concrete cross-app path or repository dependency;
-- an agent-system inventory for Task 9.
+- an agent-system inventory for Task 5.
 
 Use a confirmed lower-tier investigation route when it can still produce an explanatory, evidence-backed result. Integrate the reports into one recommendation, show the evidence behind every proposed optional field, and let the user confirm, correct, or add private team policy that the workers could not observe. Empty optional fields are a valid result.
 
@@ -61,39 +61,28 @@ For every new or edited route:
 
 Write confirmed routes as canonical prose between the routing markers, one line per route: `<work description> → worker: kind=<kind>, profile=<profile|default>, model=<model|default>, effort=<effort|default>; advisor=<model|none>`. Keep this policy in root `AGENTS.md` and `CLAUDE.md` rather than `apps.json`.
 
-**Verification:** every written route was confirmed as a whole; recommendations used local preferences before current official guidance; only Claude routes can name an advisor; existing routes were presented before replacement; multiple work routes can reuse the same agent kind with different profiles/models; the result is written only inside the agent-routing markers of root `AGENTS.md` and `CLAUDE.md`.
+**Verification:**
 
-## Task 4: Check the Herdr CLI and service
+- every written route was confirmed as a whole;
+- recommendations used local preferences before current official guidance;
+- only Claude routes can name an advisor;
+- existing routes were presented before replacement;
+- multiple work routes can reuse the same agent kind with different profiles/models;
+- the result is written only inside the agent-routing markers of root `AGENTS.md` and `CLAUDE.md`.
 
-Check the dispatch dependency with `command -v herdr` and `herdr status`. Where either is missing, report what has to be installed or started; local configuration and Task 10's instruction sync still complete. Task 9's per-app dispatch waits for the service to be ready.
+## Task 4: Set up dispatch state and verify readiness
 
-**Verification:** the CLI and service state were actually observed, and any unmet dispatch condition is reported.
+Create `.straw-boss/dispatch/` and `.straw-boss/dispatch/archive/` under the user's home (resolved with Python's `Path.home()`), then check each dispatch dependency against what it actually reports:
 
-## Task 5: Create the dispatch state directories
+- **CLI and service** — `command -v herdr` and `herdr status`.
+- **Current session** — the live agent record for `$HERDR_PANE_ID`, and its provider identity.
+- **Provider integration** — `herdr integration status` for this worker provider. Where the Claude integration is missing, explain that `herdr integration install claude` writes a global Claude hook and settings, then install it with the user's authorization and check the result. Codex is validated through the provider session and terminal identity in the live record.
 
-Resolve the user's home directory with Python's `Path.home()`, then create `.straw-boss/dispatch/` and `.straw-boss/dispatch/archive/`.
+An unmet condition doesn't stop this skill: report it, and local configuration and Task 6's instruction sync still complete. Task 5's per-app dispatch waits for readiness. The mode is always `herdr-pane`, and readiness is re-checked at every dispatch entry point.
 
-**Verification:** the state directories are under the user's home.
+**Verification:** every dependency's actual state was observed; configuration completion and dispatch readiness are reported as separate claims.
 
-## Task 6: Check the current Herdr session
-
-Fetch the current Herdr live agent record through `$HERDR_PANE_ID` and check the provider identity. With no pane, ask the user to continue dispatching from a Herdr session; local configuration and Task 10's instruction sync still complete.
-
-**Verification:** the current pane and provider fingerprint were obtained before any dispatch.
-
-## Task 7: Check the provider integration
-
-Run `herdr integration status` and check the integration this worker provider needs. Where the Claude integration is missing, explain that `herdr integration install claude` writes a global Claude hook and settings, then install it with the user's authorization and check the result. Codex is validated through the provider session and terminal identity in the Herdr live record.
-
-**Verification:** the required integration is ready, or the outstanding condition is reported explicitly.
-
-## Task 8: Finish the readiness check
-
-Judge whether a dispatch is possible from the actual CLI, service, session, and provider-integration results. The mode is always `herdr-pane`, and readiness is re-checked at every dispatch entry point. Where Task 9 has an unmet condition, report the app inventory or bootstrap still to run, then complete Task 10.
-
-**Verification:** configuration completion and dispatch readiness are reported as separate claims, and unrun app work stays marked incomplete.
-
-## Task 9: Offer to bootstrap a missing agent system, per app
+## Task 5: Offer to bootstrap a missing agent system, per app
 
 Use Task 2's worker-reported agent-system inventory for each app. For an
 unchanged configured app that has no current-run report, dispatch the same
@@ -120,9 +109,9 @@ the still-running instruction and how the user can inspect it.
 bootstrap has an explicit per-app confirmation; app mutations occurred only in
 rooted workers; dispatch state and completion follow `dispatching-work`.
 
-## Task 10: Sync the root AGENTS.md and CLAUDE.md
+## Task 6: Sync the root AGENTS.md and CLAUDE.md
 
-Wait for Task 9's bootstrap of the repo-root app to finish and clean up before writing the instruction files in that same root.
+Wait for Task 5's bootstrap of the repo-root app to finish and clean up before writing the instruction files in that same root.
 
 Read `<repo-root>/AGENTS.md` and `<repo-root>/CLAUDE.md`, creating a missing file with a one-line project heading first. Sync the same apps summary into both. List only app names, directories, and the config location; each app's detailed policy stays in `apps.json`.
 

@@ -1,6 +1,6 @@
 ---
 name: handoff-orchestrator
-description: Move one approved work scope to a new orchestrator in an independent Herdr tab, then end the source orchestrator's ownership of that scope.
+description: Use when an approved work scope moves to a new orchestrator in its own Herdr tab.
 ---
 
 # Hand off one orchestrator scope

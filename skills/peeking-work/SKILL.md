@@ -1,11 +1,11 @@
 ---
 name: peeking-work
-description: Use when checking a dispatched task's live progress without joining or interrupting it, or judging whether a stuck/failed task looks like a permission denial. Not for status alone (`dispatching-work`'s list branch).
+description: Use to check a dispatched task's live progress without joining or interrupting it.
 ---
 
 ## Overview
 
-Read-only. Never interrupts a `working` pane, never sends input, never substitutes for the actual checkpoint-answering flow — it only tells you what a dispatched task is currently doing. Every straw-boss skill that needs this reads it through here; the pane-read, progress-trail, and transcript-tail mechanics are not reimplemented inline anywhere else.
+Read-only. Read-only: it tells you what a dispatched task is currently doing. Answering a checkpoint goes through its own flow. Every straw-boss skill that needs this reads it through here; the pane-read, progress-trail, and transcript-tail mechanics are not reimplemented inline anywhere else.
 
 ## Task 1: Resolve the target dispatch
 

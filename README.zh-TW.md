@@ -95,9 +95,6 @@ $straw-boss:init
 | `asking-peer-agents` | 讓一個派出任務向另一個任務詢問實際進度或結論 |
 | `bringing-coworker` | 把一位 Claude Code 或 Codex CLI coworker 帶進互動式 worker 的同一個 Herdr tab 與 worktree |
 | `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——以證據為基礎的 `AGENTS.md` 與 `CLAUDE.md`，以及由確認範圍或專案證據支持的可選 hook／rule |
-| `inspecting-app` | 解析目標 app，透過最小充分迴圈完成附證據的規則稽核 |
-| `investigating-app` | 解析目標 app，透過最小充分迴圈解釋現況並附上證據 |
-| `troubleshooting-app` | 一般故障在同一個 `shipping-task` 迴圈內連續診斷並修復；只有整合診斷必須先提供證據以安排後續工作時，才拆成獨立的前置調查 |
 
 ## 怎麼用
 
@@ -116,9 +113,8 @@ boss-say 把 docs/backlog.md 做掉
 - 哪個 app 管這個？→ `work-on`
 - 加入或打斷前先看一眼 → `peeking-work`
 - 沒有 agent system 的 app，建一套精簡版 → `create-great-harness`
-- 稽核現有程式碼 → `inspecting-app`
-- 研究現在怎麼運作的 → `investigating-app`
-- 東西壞了、原因不明 → `troubleshooting-app`
+- 稽核現有程式碼，或研究現在怎麼運作的 → `boss-say`（只帶問題派工，方法由 worker 自己挑）
+- 東西壞了、原因不明 → `boss-say`（診斷與修復留在同一個 `shipping-task` 迴圈）
 
 想知道現在有哪些派工在跑、或收尾一個，一樣問 `boss-say`。
 

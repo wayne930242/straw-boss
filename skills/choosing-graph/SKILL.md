@@ -1,6 +1,6 @@
 ---
 name: choosing-graph
-description: Pick the coordination graph and the reality anchor before work starts — how the agents on this task are wired, and what contact with reality will prove the result. Use at the start of any straw-boss work, whether a main agent is about to dispatch or a dispatched worker is about to begin its own task, and again when the shape of the work changes under you.
+description: Use at the start of any straw-boss work, and again when the shape of the work changes.
 ---
 
 ## Overview
@@ -36,7 +36,7 @@ Between **single-loop** and **sub-agent fan-out/fan-in**, the deciding question 
 
 Review one coherent change-set with one adversarial review after implementation and primary verification. The reviewer examines the finished change-set directly. Correctness and contract findings return to the working loop; nits close with an explicit disposition. The lifecycle owner records the review once against the confirmed completion reference.
 
-For read-only work with no operable artifact or red test, adversarial-review is its anchor. The reviewer attacks the report's claims against its evidence references. A troubleshooting branch that lands a fix uses testing like any other change.
+For read-only work with no operable artifact or red test, adversarial-review is its anchor. The reviewer attacks the report's claims against its evidence references, so an audit or investigation has to carry them: the exact rule and implementation, file/line, test, log, command, or artifact are what this work's anchor attacks. A troubleshooting branch that lands a fix uses testing like any other change.
 
 ## The port a frontend anchor needs
 

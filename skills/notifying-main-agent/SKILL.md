@@ -1,6 +1,6 @@
 ---
 name: notifying-main-agent
-description: Route a dispatched agent's questions, progress, and status to its recorded main agent.
+description: Use when a dispatched agent routes a question, progress, or status to its main agent.
 ---
 
 ## Overview

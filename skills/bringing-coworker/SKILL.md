@@ -1,6 +1,6 @@
 ---
 name: bringing-coworker
-description: Bring one interactive coworker into a dispatched worker's current Herdr tab and exact worktree. Use from an in-progress worker when the user asks to pull in a colleague or a rule requires a human-facing second-agent review.
+description: Use from an in-progress dispatched worker when the user asks to pull in a colleague, or a rule requires a second-agent review.
 ---
 
 # Bring a coworker

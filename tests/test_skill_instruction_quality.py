@@ -132,7 +132,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
     def test_init_reaches_guidance_sync_without_herdr(self) -> None:
         source = normalized(ROOT / "skills/init/SKILL.md")
         self.assertIn(
-            "local configuration and Task 10's instruction sync still complete", source
+            "local configuration and Task 6's instruction sync still complete", source
         )
         self.assertIn(
             "offer to fill the gap through create-great-harness while keeping the "
@@ -186,18 +186,11 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertNotIn("every request resolves to it", work_on)
 
     def test_investigation_contract_is_positive_and_consistent(self) -> None:
-        for skill_name in (
-            "inspecting-app",
-            "investigating-app",
-            "troubleshooting-app",
-        ):
+        for skill_name in ("boss-say", "choosing-graph"):
             source = normalized(ROOT / "skills" / skill_name / "SKILL.md")
             self.assertIn("evidence references", source)
             self.assertNotIn("not a yes-or-no answer", source)
-        troubleshooting = normalized(
-            ROOT / "skills" / "troubleshooting-app" / "SKILL.md"
-        )
-        self.assertNotIn("from your own diagnosis", troubleshooting)
+            self.assertNotIn("from your own diagnosis", source)
         lifecycle_tests = "\n".join(
             (ROOT / "tests" / name).read_text()
             for name in (
@@ -212,7 +205,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertNotIn('self.assertIn("not a yes-or-no answer"', lifecycle_tests)
 
     def test_troubleshooting_splits_only_integration_preflight(self) -> None:
-        source = normalized(ROOT / "skills" / "troubleshooting-app" / "SKILL.md")
+        source = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
         self.assertIn("only when both conditions hold", source)
         self.assertIn("failure crosses an integration boundary", source)
         self.assertIn("needed to shape or schedule later dispatches", source)
@@ -573,13 +566,21 @@ class SkillInstructionQualityTests(unittest.TestCase):
             ["skills/dispatching-work/references/shared-resource-coordination.md"],
         )
 
-    def test_read_only_dispatch_skills_name_the_anchor_their_evidence_feeds(
-        self,
-    ) -> None:
-        for skill in ("inspecting-app", "investigating-app"):
-            source = normalized(ROOT / "skills" / skill / "SKILL.md")
-            self.assertIn("what this work's anchor attacks", source, skill)
-            self.assertIn("adversarial-review is the reality anchor", source, skill)
+    def test_read_only_dispatch_names_the_anchor_its_evidence_feeds(self) -> None:
+        """Audit and research lost their wrapper skills; the contract did not.
+
+        Dispatching them on the question alone is what lets the worker pick its
+        own method, so the evidence and anchor requirement has to live where the
+        anchor is chosen and where the brief is written -- otherwise it travels
+        with nothing.
+        """
+        graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
+        self.assertIn("what this work's anchor attacks", graph)
+        self.assertIn("adversarial-review is its anchor", graph)
+
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
+        self.assertIn("A dispatch brief names no method skill", boss_say)
+        self.assertIn("what the work's anchor attacks", boss_say)
 
     def test_the_anchor_set_is_closed_and_identical_on_every_surface(self) -> None:
         """A main agent has to name an anchor from a list, so the list has to be
@@ -647,11 +648,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         shipping = normalized(ROOT / "skills" / "shipping-task" / "SKILL.md")
         self.assertIn("how the user regards this piece of work", shipping)
         self.assertIn("the user is answering with the consequence in view", shipping)
-        troubleshooting = normalized(
-            ROOT / "skills" / "troubleshooting-app" / "SKILL.md"
-        )
-        self.assertIn("which they can answer before the cause is known", troubleshooting)
-        self.assertIn("It owns the mode decision", troubleshooting)
+        self.assertIn("which they can answer before the cause is known", shipping)
 
     def test_the_deleted_allowed_list_exception_is_actually_gone(self) -> None:
         """`dispatching-work` Task 3's "or the reality anchor" allowed-list
@@ -787,12 +784,11 @@ class SkillInstructionQualityTests(unittest.TestCase):
         branch lands a fix -- so the rule reaches its integration preflight, not
         the skill.
         """
-        troubleshooting = normalized(ROOT / "skills" / "troubleshooting-app" / "SKILL.md")
+        boss_say = normalized(ROOT / "skills" / "boss-say" / "SKILL.md")
         self.assertIn(
-            "an independent agent's adversarial review of the account",
-            troubleshooting,
+            "an independent agent's adversarial review of that account", boss_say
         )
-        self.assertIn("the fix is anchored on testing", troubleshooting.lower())
+        self.assertIn("the fix is anchored on testing", boss_say.lower())
 
         graph = normalized(ROOT / "skills" / "choosing-graph" / "SKILL.md")
         self.assertIn("adversarial-review is its anchor", graph)
@@ -1025,7 +1021,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         """`shipping-task` is not the only path an ordinary programming change
         takes: `boss-say`'s capped batch dispatches its items through
         `dispatching-work` Tasks 1-5 directly and closes them out in its own
-        Task 7, never reaching `shipping-task` Task 6 -- and a direct
+        Task 7, never reaching `shipping-task` Task 5 -- and a direct
         `dispatching-work` close-out (`boss-say`'s own "close out `<task>`"
         passthrough) reaches neither.
 
@@ -1046,7 +1042,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         `boss-say`'s own "close out `<task>`" passthrough (Branch: Status
         query, or closing out one dispatch) lands control on
         `dispatching-work`'s Wrap-up branch directly, past both
-        `shipping-task` Task 6 and `boss-say` Task 7 -- so that branch has to
+        `shipping-task` Task 5 and `boss-say` Task 7 -- so that branch has to
         carry the disposition itself, for whatever reaches it without either.
         """
         dispatching = normalized(ROOT / "skills" / "dispatching-work" / "SKILL.md")
@@ -1084,7 +1080,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
 
     def test_choosing_graph_names_the_plan_auto_detach_path_too(self) -> None:
         """`choosing-graph`'s enumeration named exactly three acceptance
-        points (`shipping-task` Task 6, `boss-say` Task 7,
+        points (`shipping-task` Task 5, `boss-say` Task 7,
         `dispatching-work`'s own Wrap-up branch) even after
         `plan-mechanics.md`'s auto-detach gained its own guard -- a fourth
         real textual location that now discharges the same obligation. An
@@ -1113,7 +1109,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
     def test_boss_say_confirms_the_items_own_reference_before_dispositioning_it(
         self,
     ) -> None:
-        """`shipping-task` Task 6 confirms the merge or commit reference
+        """`shipping-task` Task 5 confirms the merge or commit reference
         before dispositioning the review against it. `boss-say` Task 7
         dispositioned against a reference it never confirmed -- Task 5 only
         counts, refills, and relays, and Task 7's own data source is the
@@ -1130,7 +1126,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         guard exists to prevent: Task 6's confirm-and-disposition paragraph
         sat two paragraphs after "Then invoke `dispatching-work`'s wrap-up
         branch", so a literal reading invokes the branch first -- at which
-        point the branch's own guard ("neither shipping-task Task 6 ...
+        point the branch's own guard ("neither shipping-task Task 5 ...
         already dispositioned") is still true, runs its own disposition, and
         Task 6's later paragraph then runs it again.
         """
@@ -1148,7 +1144,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self,
     ) -> None:
         """The reciprocal half of `dispatching-work`'s guard: that branch
-        already skips disposition when `shipping-task` Task 6 or `boss-say`
+        already skips disposition when `shipping-task` Task 5 or `boss-say`
         Task 7 got there first, but nothing stopped a batch item manually
         closed out mid-batch through the "close out `<task>`" passthrough
         (dispositioned once at the Wrap-up branch) from being dispositioned
