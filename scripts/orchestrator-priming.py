@@ -19,6 +19,11 @@ if it were the orchestrator.
 Registered via hooks/hooks.json (SessionStart, matcher "*" -- fires on
 startup/resume/clear/compact/fork alike, so a compacted main-agent
 session gets re-primed too, not just a fresh one).
+
+A worker's contract already reaches it at launch through the provider's
+own system prompt, which survives every source that keeps that process
+alive. Only a source that starts a fresh process without the launcher's
+flags -- a resume -- needs this hook to hand the contract back.
 """
 
 from __future__ import annotations
@@ -28,6 +33,13 @@ import sys
 from pathlib import Path
 
 from straw_boss.dispatch.state import straw_boss_root
+
+
+# Sources that keep the launched process, and with it the contract the
+# launcher put in its system prompt. An unknown source repeats the
+# contract: a worker reading it twice costs context, and a worker without
+# it cannot report at all.
+LIVE_SYSTEM_PROMPT_SOURCES = frozenset({"startup", "clear", "compact"})
 
 
 def dispatched_instruction(session_id: str) -> dict[str, object] | None:
@@ -62,6 +74,8 @@ def main() -> int:
     if session_id:
         instruction = dispatched_instruction(session_id)
         if instruction is not None:
+            if payload.get("source") in LIVE_SYSTEM_PROMPT_SOURCES:
+                return 0
             contract_path = Path(str(instruction.get("contract_path", "")))
             if contract_path.is_file():
                 print(contract_path.read_text().strip())

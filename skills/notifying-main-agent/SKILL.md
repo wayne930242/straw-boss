@@ -5,7 +5,6 @@ description: Use when a dispatched agent routes a question, progress, or status 
 
 ## Overview
 
-A Herdr-launched session is an independent agent.
 Discuss work details and authorization directly with the user; the main agent accepts those decisions.
 Ask it only for integrated context or a coordinator-owned action result.
 Address every operation by your instruction path.

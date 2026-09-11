@@ -6,6 +6,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -29,6 +30,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
 
         contract = contract_path.read_text()
         self.assertIn(str(instruction_path), contract)
+        self.assertIn("`task` field", contract)
         self.assertIn("report-task-status.py", contract)
         self.assertIn("awaiting-user-input", contract)
         self.assertIn("awaiting-main-agent", contract)
@@ -310,7 +312,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         dispatch = (ROOT / "skills/dispatching-work/SKILL.md").read_text()
         contract = (ROOT / "scripts/straw_boss/dispatch/state.py").read_text()
         self.assertIn("Target-app context discovery and work decisions stay with the worker", dispatch)
-        self.assertIn("Investigate the target app's implementation and precedent yourself", " ".join(contract.split()))
+        self.assertIn("Investigate this working directory yourself", " ".join(contract.split()))
         for skill in ("boss-say", "shipping-task"):
             source = (ROOT / "skills" / skill / "SKILL.md").read_text()
             self.assertIn("../dispatching-work/SKILL.md", source)
@@ -528,12 +530,10 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
                     )
                     self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_session_start_repeats_the_matching_worker_contract_on_resume(self) -> None:
-        instruction_path, _ = self.write_dispatch("claude")
-        instruction = json.loads(instruction_path.read_text())
+    def prime_session(self, payload: dict[str, Any]) -> subprocess.CompletedProcess[str]:
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "orchestrator-priming.py")],
-            input=json.dumps({"session_id": instruction["session_id"]}),
+            input=json.dumps(payload),
             cwd=ROOT,
             env={**os.environ, "HOME": str(self.home)},
             capture_output=True,
@@ -541,9 +541,39 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        return result
+
+    def test_session_start_repeats_the_matching_worker_contract_on_resume(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        result = self.prime_session(
+            {"session_id": instruction["session_id"], "source": "resume"}
+        )
         self.assertIn(str(instruction_path), result.stdout)
         self.assertIn("report-task-status.py", result.stdout)
         self.assertNotIn("orchestrator", result.stdout.lower())
+
+    def test_session_start_leaves_a_live_worker_contract_to_the_system_prompt(
+        self,
+    ) -> None:
+        """The launcher already put this contract in the worker's system
+        prompt, and startup/clear/compact all keep that process. Printing it
+        again would hand the worker the whole contract twice at the moment it
+        has the least room for it."""
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        for source in ("startup", "clear", "compact"):
+            with self.subTest(source=source):
+                result = self.prime_session(
+                    {"session_id": instruction["session_id"], "source": source}
+                )
+                self.assertEqual(result.stdout.strip(), "")
+
+    def test_session_start_repeats_the_contract_for_an_unknown_source(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        result = self.prime_session({"session_id": instruction["session_id"]})
+        self.assertIn(str(instruction_path), result.stdout)
 
     def test_session_start_primes_a_main_agent_with_a_compact_stance(self) -> None:
         result = subprocess.run(

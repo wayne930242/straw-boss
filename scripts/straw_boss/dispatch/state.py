@@ -200,11 +200,6 @@ def render_dispatch_contract(
     progress = command("report-progress.py")
     status = command("report-task-status.py")
     message = command("send-dispatch-message.py")
-    review_route = (
-        "a fresh-context subagent"
-        if coworker_context is not None
-        else "a fresh-context subagent, or bringing-coworker from an interactive Herdr tab"
-    )
     coworker_rules = ""
     if coworker_context is not None:
         writable_paths = coworker_context.get("coworker_writable_paths", [])
@@ -216,59 +211,26 @@ def render_dispatch_contract(
             )
         else:
             work_scope = "- This is review-only: inspect and report without modifying files.\n"
-        coworker_rules = f"""
-- You are one direct coworker of another dispatched worker and share its exact
-  worktree.
-{work_scope}- Return your result to the parent through the status command; the parent owns
-  integration and cleanup. Complete this task directly rather than coordinating
-  another coworker.
-"""
-    anchor_fallback = """- When needed, ask the main agent to name the anchor when this dispatch does not name one,
-  through `awaiting-main-agent` before work begins.
-"""
-    interaction_rules = f"""
-- Discuss work details and authorization directly with the user. Ask the main
-  agent only for integrated instructions/context:
-  `{message} --instruction-path {shlex.quote(str(instruction_path))} --to main --intent question --message '<delta>' [--ref '<source>']`
-- If you must pause, report the checkpoint naming who can unblock you:
-  `awaiting-user-input`, `awaiting-main-agent`, or `awaiting-authorization`.
-  `{status} --instruction-path {shlex.quote(str(instruction_path))} --status <checkpoint> --note '<what you need>' [--ref '<proof>']`
-- After a checkpoint reply, continue. Do not replace a live checkpoint with a
-  terminal status.
-"""
-    terminal_rule = """- Before stopping after completed work, report terminal `done` or `failed` with
-  the same status script; after persistence it notifies the main agent through Herdr.
-"""
+        coworker_rules = (
+            "- You are one direct coworker of another dispatched worker and share its exact worktree.\n"
+            f"{work_scope}"
+            "- Return your result to the parent through the status command; the parent owns integration and cleanup. Complete this task directly rather than coordinating another coworker.\n"
+        )
+    path_argument = f"--instruction-path {shlex.quote(str(instruction_path))}"
     return f"""# Straw Boss dispatched-agent contract
 
 This contract is mandatory for this dispatched session.
 
-- Your canonical instruction path is `{instruction_path}`.
-- You are an independent agent and task owner after launch. You and the user
-  choose the specification, design, implementation, and the verification method
-  inside the reality anchor this dispatch names. The main agent supplies the
-  user requirement, necessary hints, and known coordination facts and accepts
-  those decisions. Investigate the target app's implementation and precedent
-  yourself in this working directory.
-{coworker_rules}
-- Naming the anchor is the main agent's; naming the tests is yours.
-{anchor_fallback}
-- State your own coordination graph for this task before you start, through
-  `choosing-graph`; the main agent already stated its own when it dispatched
-  you.
-- Group related edits into one coherent change-set. After primary verification, run one fresh-context adversarial review of that finished change-set — {review_route} — and report its disposition with the terminal result. The brief states when the main agent owns this review instead.
-- Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or
-  agent names for cross-session communication.
+- Your canonical instruction path is `{instruction_path}`, and its `task` field is the work you are here to do.
+- You are an independent agent: you and the user own the specification, design, implementation, and the verification method inside the reality anchor this dispatch names -- settling the anchor yourselves when it names none -- and the main agent accepts those decisions. Investigate this working directory yourself.
+{coworker_rules}- Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or agent names for cross-session communication.
+- Messages and status notes are delta-only and at most two sentences; identity, history, and evidence go in repeatable `--ref '<artifact/source>'` arguments.
 - Report progress with:
-  `{progress} --instruction-path {shlex.quote(str(instruction_path))} --note '<summary>'`
-- Live agent messages -- the question and status commands below -- are
-  delta-only and at most two sentences. Do not repeat identity, intent,
-  history, or detailed evidence; add repeatable `--ref '<artifact/source>'`
-  arguments for detail.
-{interaction_rules}
-- Status notes follow the same two-sentence limit: state the outcome or exact
-  unblock, and put verification detail in `--ref`.
-{terminal_rule}
+  `{progress} {path_argument} --note '<summary>'`
+- Reach the main agent with these two commands -- a question for integrated context, and a checkpoint naming who can unblock you, after whose reply you continue instead of replacing it with a terminal status:
+  `{message} {path_argument} --to main --intent question --message '<delta>' [--ref '<source>']`
+  `{status} {path_argument} --status <awaiting-user-input|awaiting-main-agent|awaiting-authorization> --note '<what you need>' [--ref '<proof>']`
+- Before stopping after completed work, report terminal `done` or `failed` with the same status script; it persists and notifies the main agent through Herdr.
 """
 
 

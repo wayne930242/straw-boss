@@ -296,7 +296,7 @@ def main() -> int:
     write_p.add_argument(
         "--task",
         required=True,
-        help="user requirement, requested outcome, necessary hints, and known coordination facts",
+        help="user requirement, requested outcome, and known coordination facts the worker cannot reach itself",
     )
     write_p.add_argument("--mode", required=True, choices=["herdr-pane"])
     write_p.add_argument("--repo-root", required=True)

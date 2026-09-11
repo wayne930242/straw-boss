@@ -18,8 +18,8 @@ Team-mode cwd preparation belongs to [shipping-task](../shipping-task/SKILL.md#p
 
 ## Write the brief
 
-Carry the user requirement, requested outcome, necessary hints and constraints, dependencies, and verified coordination facts already available.
-Target-app context discovery and work decisions stay with the worker in its own harness.
+Carry the user requirement, requested outcome, dependencies, and verified coordination facts already available.
+Target-app context discovery and work decisions stay with the worker in its own harness, so the brief carries only what the worker cannot reach from there.
 Investigation and audit briefs request an explanatory result with evidence references.
 
 Apply [choosing-graph](../choosing-graph/SKILL.md) if the graph and anchor are unset.
@@ -27,8 +27,7 @@ Add the chosen anchor, checkpoint, and any assigned frontend port.
 The worker and user choose the verification method inside that anchor.
 Name a method skill only when the user explicitly requested it; the app chooses its own methods otherwise.
 
-The generated contract supplies lifecycle, progress, message, checkpoint, and review mechanics.
-Include a review-route override only when the main agent will perform the independent review instead of the worker.
+The generated contract supplies lifecycle, progress, message, and checkpoint mechanics.
 
 Call [dispatch-task.py write](references/dispatch-mechanics.md#write-the-instruction-and-contract) with the resolved setup and main-agent identity.
 A plan task also supplies `plan_id`/`task_id`; the command marks the planned task dispatched.

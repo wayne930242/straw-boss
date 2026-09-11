@@ -300,26 +300,6 @@ class SkillInstructionQualityTests(unittest.TestCase):
             takes_the_category,
         )
 
-    def test_the_contract_says_what_to_do_when_a_dispatch_names_no_anchor(self) -> None:
-        sys.path.insert(0, str(ROOT / "scripts"))
-        try:
-            from straw_boss.dispatch import state as dispatch_state
-        finally:
-            sys.path.pop(0)
-
-        contract = " ".join(
-            dispatch_state.render_dispatch_contract(
-                instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
-            )
-            .replace("`", "")
-            .split()
-        )
-        self.assertIn("the reality anchor this dispatch names", contract)
-        self.assertIn(
-            "ask the main agent to name the anchor when this dispatch does not",
-            contract,
-        )
-
     def test_no_retired_coordination_alias_is_live_in_the_skills(self) -> None:
         headwords: list[str] = []
         retired: dict[str, list[str]] = {}
@@ -365,34 +345,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         ]
         self.assertEqual(offenders, [])
 
-    def test_the_adversarial_review_obligation_reaches_every_worker(self) -> None:
-        sys.path.insert(0, str(ROOT / "scripts"))
-        try:
-            from straw_boss.dispatch import state as dispatch_state
-        finally:
-            sys.path.pop(0)
-
-        bullets = contract_bullets(
-            dispatch_state.render_dispatch_contract(
-                instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
-            )
-        )
-        carrying = [
-            bullet
-            for bullet in bullets
-            if "adversarial review" in bullet
-        ]
-        self.assertEqual(
-            len(carrying), 1, "the obligation is one standing contract bullet"
-        )
-        self.assertIn("one coherent change-set", carrying[0])
-        self.assertIn("one fresh-context adversarial review", carrying[0])
-        self.assertIn("The brief states when the main agent owns this review", carrying[0])
-        # A standing rule cannot be scoped to one transport.
-        self.assertNotIn("herdr-pane", carrying[0])
-        self.assertNotIn("claude-p", carrying[0])
-
-    def test_the_missing_anchor_fallback_applies_in_every_dispatch_mode(self) -> None:
+    def test_the_contract_carries_the_same_rules_to_every_agent_kind(self) -> None:
         sys.path.insert(0, str(ROOT / "scripts"))
         try:
             from straw_boss.dispatch import state as dispatch_state
@@ -402,30 +355,13 @@ class SkillInstructionQualityTests(unittest.TestCase):
         path = Path("/home/boss/.straw-boss/dispatch/app--slug.json")
         for kind in ("claude", "codex"):
             contract = dispatch_state.render_dispatch_contract(path, agent_kind=kind)
-            self.assertIn("name the anchor when this dispatch does not", contract)
+            # The anchor arrives with the dispatch; the worker settles one only
+            # for a dispatch that named none.
+            self.assertIn("the reality anchor this dispatch names", contract)
+            self.assertIn("settling the anchor yourselves when it names none", contract)
             self.assertIn("awaiting-main-agent", contract)
-            self.assertIn("directly with the user", contract)
             with self.assertRaises(ValueError):
                 dispatch_state.render_dispatch_contract(path, mode="claude-p", agent_kind=kind)
-
-    def test_the_workers_own_coordination_graph_obligation_reaches_the_contract(
-        self,
-    ) -> None:
-        sys.path.insert(0, str(ROOT / "scripts"))
-        try:
-            from straw_boss.dispatch import state as dispatch_state
-        finally:
-            sys.path.pop(0)
-
-        contract = dispatch_state.render_dispatch_contract(
-            instruction_path=Path("/home/boss/.straw-boss/dispatch/app--slug.json"),
-        )
-        normalized_contract = " ".join(contract.replace("`", "").split())
-        self.assertIn(
-            "State your own coordination graph for this task before you "
-            "start, through choosing-graph",
-            normalized_contract,
-        )
 
     def test_the_coordination_graph_glossary_entry_states_the_workers_half_too(
         self,
@@ -436,38 +372,6 @@ class SkillInstructionQualityTests(unittest.TestCase):
             "agent states its own for its own task",
             context,
         )
-
-    def test_the_review_route_offers_bringing_coworker_only_where_it_can_run(
-        self,
-    ) -> None:
-        sys.path.insert(0, str(ROOT / "scripts"))
-        try:
-            from straw_boss.dispatch import state as dispatch_state
-        finally:
-            sys.path.pop(0)
-
-        def review_bullet(coworker_context):
-            bullets = contract_bullets(
-                dispatch_state.render_dispatch_contract(
-                    instruction_path=Path(
-                        "/home/boss/.straw-boss/dispatch/app--slug.json"
-                    ),
-                    coworker_context=coworker_context,
-                )
-            )
-            carrying = [b for b in bullets if "adversarial review" in b]
-            self.assertEqual(len(carrying), 1)
-            return carrying[0]
-
-        top_level = review_bullet(None)
-        self.assertIn("bringing-coworker", top_level)
-
-        for coworker_context in (
-            {"coworker_writable_paths": ["src/"]},
-            {"coworker_writable_paths": []},
-        ):
-            nested = review_bullet(coworker_context)
-            self.assertNotIn("coworker", nested)
 
     def test_skill_names_and_metadata_remain_discoverable(self) -> None:
         expected = {
