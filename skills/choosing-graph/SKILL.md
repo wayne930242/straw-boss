@@ -12,7 +12,6 @@ State the graph before work starts, using the first matching case:
 - **single-loop** — one bounded task carried by one agent, including coordination of one dispatch.
 
 An independent review is a checkpoint, so it does not change the graph.
-A dispatched agent states its own graph for its task.
 
 Only `orchestrator-worker` writes `~/.straw-boss/plans/<slug>/plan.json`, through [boss-say](../boss-say/SKILL.md#plan-and-schedule).
 The other graphs create no Straw Boss plan or repo-local spec.

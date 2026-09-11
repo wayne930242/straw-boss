@@ -363,15 +363,14 @@ class SkillInstructionQualityTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 dispatch_state.render_dispatch_contract(path, mode="claude-p", agent_kind=kind)
 
-    def test_the_coordination_graph_glossary_entry_states_the_workers_half_too(
-        self,
-    ) -> None:
+    def test_the_coordination_graph_is_stated_by_the_coordinator_alone(self) -> None:
+        # The dispatched-agent contract asks a worker for no graph of its own,
+        # so no surface may claim one is stated.
         context = normalized(ROOT / "CONTEXT.md")
-        self.assertIn(
-            "The coordinator states it before it dispatches; a dispatched "
-            "agent states its own for its own task",
-            context,
-        )
+        self.assertIn("The coordinator states it before it dispatches", context)
+        for path in prose_surfaces():
+            with self.subTest(surface=path.relative_to(ROOT).as_posix()):
+                self.assertNotIn("states its own", normalized(path))
 
     def test_skill_names_and_metadata_remain_discoverable(self) -> None:
         expected = {

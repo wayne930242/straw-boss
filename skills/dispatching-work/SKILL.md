@@ -27,7 +27,7 @@ Add the chosen anchor, checkpoint, and any assigned frontend port.
 The worker and user choose the verification method inside that anchor.
 Name a method skill only when the user explicitly requested it; the app chooses its own methods otherwise.
 
-The generated contract supplies lifecycle, progress, message, and checkpoint mechanics.
+The generated contract supplies lifecycle, progress, message, checkpoint, and review-disposition mechanics.
 
 Call [dispatch-task.py write](references/dispatch-mechanics.md#write-the-instruction-and-contract) with the resolved setup and main-agent identity.
 A plan task also supplies `plan_id`/`task_id`; the command marks the planned task dispatched.

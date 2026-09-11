@@ -36,6 +36,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("awaiting-main-agent", contract)
         self.assertIn("awaiting-authorization", contract)
         self.assertIn("Before stopping", contract)
+        self.assertIn("review disposition", contract)
         self.assertIn("Do not use SendMessage", contract)
         self.assertIn("delta-only", contract)
         self.assertIn("--ref", contract)
