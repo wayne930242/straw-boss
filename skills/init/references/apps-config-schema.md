@@ -1,22 +1,30 @@
 # Apps config schema
 
-The managed-apps list lives at `.straw-boss/apps.json`, relative to the project's repo root — checked into git, shared with the team, edited by `init` (see `SKILL.md`) or by hand. `work-on`, `shipping-task`, and `dispatching-work` all read this file; none of them hardcode an app list.
+The managed-apps list lives at `.straw-boss/apps.json`, relative to the project's repo root — checked into git, shared with the team, edited by `init` (see `SKILL.md`) or by hand.
+`work-on`, `shipping-task`, and `dispatching-work` all read this file; none of them hardcode an app list.
 
 ## Shared read handler
 
-Python callers use `read_apps_config(repo_root)` from `scripts/straw_boss/apps.py`, which returns `path`, `payload`, and `legacy`. A skill runs this once it has resolved the git repo root:
+Python callers use `read_apps_config(repo_root)` from `scripts/straw_boss/apps.py`, which returns `path`, `payload`, and `legacy`.
+A skill runs this once it has resolved the git repo root:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/read-apps-config.py" --repo-root "<repo-root>"
 ```
 
-Success is exit 0, with JSON carrying `path` (the source actually read), `legacy` (whether the old location was used), and `config` (the whole configuration); exit 3 means neither location exists, which sends `init` and `work-on` down their no-config branch; exit 1 means a read or format error — fix the config from stderr and retry. Every reader goes through this handler, and checks its own app fields only after it has the configuration.
+Success is exit 0, with JSON carrying `path` (the source actually read), `legacy` (whether the old location was used), and `config` (the whole configuration); exit 3 means neither location exists, which sends `init` and `work-on` down their no-config branch; exit 1 means a read or format error — fix the config from stderr and retry.
+Every reader goes through this handler, and checks its own app fields only after it has the configuration.
 
 ## Location and compatibility
 
-Relative to the git repo root, `.straw-boss/apps.json` is read first; the old location `.claude/straw-boss/apps.json` is read only when the new path does not exist. Where the new path exists but is unreadable, invalid JSON, or structurally invalid, report that file's error. With both present, the new file wins and `init` reports that the old one has been superseded.
+Relative to the git repo root, `.straw-boss/apps.json` is read first; the old location `.claude/straw-boss/apps.json` is read only when the new path does not exist.
+Where the new path exists but is unreadable, invalid JSON, or structurally invalid, report that file's error.
+With both present, the new file wins and `init` reports that the old one has been superseded.
 
-`init` writes the user-confirmed configuration to the new path. With only the old file present and the user keeping that configuration, every field is preserved into the new file, read back and checked, and the old file is left in place with the migration reported. Every other reader only reads. The single-app no-config branch applies when neither path exists.
+`init` writes the user-confirmed configuration to the new path.
+With only the old file present and the user keeping that configuration, every field is preserved into the new file, read back and checked, and the old file is left in place with the migration reported.
+Every other reader only reads.
+The single-app no-config branch applies when neither path exists.
 
 ## Configuration format
 

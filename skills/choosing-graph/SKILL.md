@@ -11,9 +11,13 @@ State the graph before work starts, using the first matching case:
 - **sub-agent fan-out/fan-in** — independent work branches run in subagents and their caller integrates the results. Work needing the target app's own harness uses an app-rooted dispatch.
 - **single-loop** — one bounded task carried by one agent, including coordination of one dispatch.
 
-An independent review is a checkpoint, so it does not change the graph. A dispatched agent states its own graph for its task.
+An independent review is a checkpoint, so it does not change the graph.
+A dispatched agent states its own graph for its task.
 
-Only `orchestrator-worker` writes `~/.straw-boss/plans/<slug>/plan.json`, through [boss-say](../boss-say/SKILL.md#plan-and-schedule). The other graphs create no Straw Boss plan or repo-local spec. A dispatch's instruction, contract, and status under `~/.straw-boss/dispatch/` are lifecycle records, archived at wrap-up. The app's own development artifacts follow its local workflow.
+Only `orchestrator-worker` writes `~/.straw-boss/plans/<slug>/plan.json`, through [boss-say](../boss-say/SKILL.md#plan-and-schedule).
+The other graphs create no Straw Boss plan or repo-local spec.
+A dispatch's instruction, contract, and status under `~/.straw-boss/dispatch/` are lifecycle records, archived at wrap-up.
+The app's own development artifacts follow its local workflow.
 
 ## Reality anchors
 
@@ -28,8 +32,11 @@ For frontend human or pseudo-human checkpoints, assign a reachable address throu
 
 ## Review checkpoint
 
-Review one coherent programming change-set once, after implementation and primary verification. A fresh-context reviewer examines the finished change-set directly; correctness and contract findings return to the work loop, and nits receive an explicit disposition.
+Review one coherent programming change-set once, after implementation and primary verification.
+A fresh-context reviewer examines the finished change-set directly; correctness and contract findings return to the work loop, and nits receive an explicit disposition.
 
-The lifecycle owner confirms the completion reference and records the review disposition against it. Reuse an existing disposition for the same change-set; changed code or unresolved findings reopen the relevant check. Dispatched work reaches this checkpoint through [wrap-up](../dispatching-work/SKILL.md#wrap-up); current-agent work through [shipping-task](../shipping-task/SKILL.md#complete-the-lifecycle).
+The lifecycle owner confirms the completion reference and records the review disposition against it.
+Reuse an existing disposition for the same change-set; changed code or unresolved findings reopen the relevant check.
+Dispatched work reaches this checkpoint through [wrap-up](../dispatching-work/SKILL.md#wrap-up); current-agent work through [shipping-task](../shipping-task/SKILL.md#complete-the-lifecycle).
 
 **Complete when:** graph, anchor, and checkpoint are established; a completed programming change has its confirmed reference and review disposition.

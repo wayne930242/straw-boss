@@ -94,7 +94,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `choosing-graph` | Pick the coordination graph (single-loop, sub-agent fan-out/fan-in, orchestrator-worker) and the reality anchor (testing, pseudo-human, human, adversarial review) before work starts — the anchor names the category, the agent doing the work still picks the method inside it |
 | `shipping-task` | Decide the git lifecycle from how you regard the work — team-mode (worktree → develop → MR → merge → archive) or solo-mode (direct commit) — dispatch, commit and push its own feature branch freely, get authorization before every merge (and any push outside that branch) |
 | `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
-| `reporting-to-user` | Close out finished work: grade what surfaced as Alert (act now), Warn (carry knowingly), or Info (informational), derive a Next recommendation list from the Alert and Warn findings, and ask item by item whether each one gets a follow-up dispatch |
+| `reporting-to-user` | Close out finished work: grade what surfaced as Alert (act now), Warn (carry knowingly), or Info (informational), derive a Next recommendation list from the Alert and Warn findings, and ask item by item whether each one gets a follow-up dispatch before the accepted items open one batched follow-up round |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `asking-peer-agents` | Let one dispatched task request a factual progress update or conclusion from another task |
 | `bringing-coworker` | Bring one Claude Code or Codex CLI coworker into an interactive worker's exact Herdr tab and worktree |

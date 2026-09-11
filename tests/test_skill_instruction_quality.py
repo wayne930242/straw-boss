@@ -650,8 +650,14 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("the only level that asks the user anything", source)
         self.assertIn("Alert-derived items first, then Warn-derived", source)
         self.assertIn("harness-native ask-question interface", source)
-        self.assertIn("Present one item at a time in Next order", source)
+        self.assertIn(
+            "Present one item at a time in Next order, wait for each answer, "
+            "and collect the answers until every item has one",
+            source,
+        )
         self.assertIn("A declined item is recorded with the user's decision", source)
+        self.assertIn("The accepted items enter", source)
+        self.assertIn("together as one round", source)
         self.assertIn("../boss-say/SKILL.md#route-the-work", source)
         # The close-out has one owner, reached from the entry point and the
         # injected stance.

@@ -7,30 +7,25 @@ description: Use when an approved work scope moves to a new orchestrator in its 
 
 ## 1. Get approval
 
-A handoff creates another user-facing window, so the current main agent first
-presents one approval decision, naming the scope that moves and any work this
-orchestrator retains. A new tab is created only after the user approves.
+A handoff creates another user-facing window, so the current main agent first presents one approval decision, naming the scope that moves and any work this orchestrator retains.
+A new tab is created only after the user approves.
 
 ## 2. Carry continuity
 
-Pass only goal and scope, confirmed decisions and user terms, current state and
-evidence, next action, and exclusions. Omit empty fields and conversation text.
+Pass only goal and scope, confirmed decisions and user terms, current state and evidence, next action, and exclusions.
+Omit empty fields and conversation text.
 
 ## 3. Launch and transfer
 
-Run `handoff-orchestrator.py` with `--user-approved`, this pane, cwd, provider,
-and the continuity fields. The script creates and labels an independent tab,
-starts the receiving orchestrator, prompts it to invoke `boss-say` and then
-accept, and verifies the handshake after that route is established. It retries
-once; final failure closes the
-new tab and leaves ownership here.
+Run `handoff-orchestrator.py` with `--user-approved`, this pane, cwd, provider, and the continuity fields.
+The script creates and labels an independent tab, starts the receiving orchestrator, prompts it to invoke `boss-say` and then accept, and verifies the handshake after that route is established.
+It retries once; final failure closes the new tab and leaves ownership here.
 
 ## 4. Leave the scope
 
-On acceptance, status events, investigation, scheduling, reporting, and cleanup
-all belong to the receiver. Report the new tab and transferred scope compactly.
-Continue only the scope passed through `--retains`. When none is retained, let the launcher
-close this pane after it emits the accepted result.
+On acceptance, status events, investigation, scheduling, reporting, and cleanup all belong to the receiver.
+Report the new tab and transferred scope compactly.
+Continue only the scope passed through `--retains`.
+When none is retained, let the launcher close this pane after it emits the accepted result.
 
-**Complete when:** the receiver accepted and this orchestrator left the scope,
-or the failed new tab is closed and ownership remains here.
+**Complete when:** the receiver accepted and this orchestrator left the scope, or the failed new tab is closed and ownership remains here.

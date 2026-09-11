@@ -5,13 +5,13 @@ description: Use when a dispatched agent routes a question, progress, or status 
 
 ## Overview
 
-A Herdr-launched session is an independent agent. Discuss work details and
-authorization directly with the user; the main agent accepts those decisions.
-Ask it only for integrated context or a coordinator-owned action result. Address
-every operation by your instruction path.
+A Herdr-launched session is an independent agent.
+Discuss work details and authorization directly with the user; the main agent accepts those decisions.
+Ask it only for integrated context or a coordinator-owned action result.
+Address every operation by your instruction path.
 
-Live bodies carry one delta in at most two sentences. Put detailed context or
-evidence in repeatable `--ref`; transport adds identity, intent, and correlation.
+Live bodies carry one delta in at most two sentences.
+Put detailed context or evidence in repeatable `--ref`; transport adds identity, intent, and correlation.
 
 ## Ask the main agent
 
@@ -23,8 +23,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
   --ref "<source or artifact when needed>"
 ```
 
-Continue independent work. If the coordinator's answer becomes blocking, report
-`awaiting-main-agent`; a user-owned question remains `awaiting-user-input`.
+Continue independent work.
+If the coordinator's answer becomes blocking, report `awaiting-main-agent`; a user-owned question remains `awaiting-user-input`.
 
 ## Report status
 
@@ -37,8 +37,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
   --note "<outcome or exact unblock>" --ref "<proof when needed>"
 ```
 
-The command persists status before notifying the recorded main-agent Herdr endpoint. Delivery failure is surfaced and leaves durable state
-for watcher recovery.
+The command persists status before notifying the recorded main-agent Herdr endpoint.
+Delivery failure is surfaced and leaves durable state for watcher recovery.
 
 ## Report a feature-branch push
 
@@ -52,5 +52,4 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
 If no live endpoint exists, record the same detail with `report-progress.py`.
 Continue immediately.
 
-**Complete when:** the intended message was delivered, or terminal status was
-persisted and its Herdr notification succeeded or visibly failed.
+**Complete when:** the intended message was delivered, or terminal status was persisted and its Herdr notification succeeded or visibly failed.

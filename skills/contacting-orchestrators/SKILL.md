@@ -11,7 +11,10 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/register-orchestrator.py" \
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/register-orchestrator.py" --list
 ```
 
-Register before the first dispatch and update the record when scope changes. Use live directory rows to resolve names or panes. A `live: false` row carries an `unavailable_reason`; a discovered row can receive messages before declaring its own scope. A pane with no verified identity remains unattributed.
+Register before the first dispatch and update the record when scope changes.
+Use live directory rows to resolve names or panes.
+A `live: false` row carries an `unavailable_reason`; a discovered row can receive messages before declaring its own scope.
+A pane with no verified identity remains unattributed.
 
 ## Exchange a delta
 
@@ -21,9 +24,13 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-orchestrator-message.py" \
   --message '<delta>' [--ref '<source>'] [--in-reply-to <id>]
 ```
 
-Send one fact, question, or answer in at most two sentences; repeat `--ref` for supporting material. Reply to the incoming sender using its question id. Transport validates recipient identity and records delivery failures.
+Send one fact, question, or answer in at most two sentences; repeat `--ref` for supporting material.
+Reply to the incoming sender using its question id.
+Transport validates recipient identity and records delivery failures.
 
-Accept a peer's conclusions within its owned scope. Verify the premises of your own actions, such as whether the required commit has landed on the integration branch. Conflicting facts go to the user; each task retains its current direction.
+Accept a peer's conclusions within its owned scope.
+Verify the premises of your own actions, such as whether the required commit has landed on the integration branch.
+Conflicting facts go to the user; each task retains its current direction.
 
 Route Straw Boss friction through [boss-assistant](../boss-assistant/SKILL.md#resolve-the-recipient).
 

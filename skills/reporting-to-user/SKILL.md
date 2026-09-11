@@ -30,12 +30,11 @@ A mixed result reports each part: what landed, what stalled, and what was left o
 ## Resolve Next
 
 Ask the user whether to dispatch each Next item, using the harness-native ask-question interface.
-Present one item at a time in Next order and wait for each answer.
+Present one item at a time in Next order, wait for each answer, and collect the answers until every item has one.
 A declined item is recorded with the user's decision and closed.
 
 ## Open the next round
 
-Each accepted item enters [boss-say](../boss-say/SKILL.md#route-the-work) as a new round, carrying the action, the cited findings, their evidence references, and the outcome the user asked for.
-The follow-up is new work with its own graph, anchor, and lifecycle.
+The accepted items enter [boss-say](../boss-say/SKILL.md#route-the-work) together as one round, each carrying its action, the cited findings, their evidence references, and the outcome the user asked for.
 
-**Complete when:** every Next item holds a user decision, and each accepted one has entered a new round.
+**Complete when:** every Next item holds a user decision, and the accepted set has entered one new round.

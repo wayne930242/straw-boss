@@ -91,7 +91,7 @@ $straw-boss:init
 | `choosing-graph` | 工作開始前先定分工圖（single-loop、sub-agent 扇出／扇入、orchestrator-worker）與 reality anchor（testing、pseudo-human、human、對抗性審查）；anchor 只定類別和檢查點，裡面用什麼接縫、哪些案例仍由做事的 agent 和你決定 |
 | `shipping-task` | 依你怎麼認定這份工作決定 git 生命週期——team-mode（worktree → develop → MR → merge → archive）或 solo-mode（直接 commit）、派工、commit 和推送自己的 feature branch 都自由，merge 前（以及推到該分支以外的任何 push 前）才找你授權 |
 | `peeking-work` | 唯讀看一個派工現在在做什麼，不加入、不打斷 |
-| `reporting-to-user` | 工作收尾報告：把浮現的事情分成 Alert（建議立刻處理）、Warn（提醒你留意）、Info（純資訊條列），再由 Alert 與 Warn 導出 Next 建議清單，逐項問要不要加派工 |
+| `reporting-to-user` | 工作收尾報告：把浮現的事情分成 Alert（建議立刻處理）、Warn（提醒你留意）、Info（純資訊條列），再由 Alert 與 Warn 導出 Next 建議清單，逐項問要不要加派工，答完後接受的項目合成一輪一起處理 |
 | `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
 | `asking-peer-agents` | 讓一個派出任務向另一個任務詢問實際進度或結論 |
 | `bringing-coworker` | 把一位 Claude Code 或 Codex CLI coworker 帶進互動式 worker 的同一個 Herdr tab 與 worktree |
