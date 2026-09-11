@@ -85,11 +85,20 @@ def _codex_plugin_root() -> Path | None:
     return None
 
 
-def _installed_plugin_roots(origin_root: Path) -> tuple[Path | None, Path | None]:
+def _agy_plugin_root() -> Path | None:
+    agy_root = Path.home() / ".gemini" / "config" / "plugins" / "straw-boss"
+    if agy_root.is_dir() and (agy_root / "plugin.json").is_file():
+        return agy_root
+    return None
+
+
+def _installed_plugin_roots(origin_root: Path) -> tuple[Path | None, ...]:
     normalized = origin_root.expanduser().as_posix()
     if "/.codex/plugins/cache/" in normalized:
-        return _codex_plugin_root(), _claude_plugin_root()
-    return _claude_plugin_root(), _codex_plugin_root()
+        return _codex_plugin_root(), _claude_plugin_root(), _agy_plugin_root()
+    if "/.gemini/config/plugins/" in normalized:
+        return _agy_plugin_root(), _claude_plugin_root(), _codex_plugin_root()
+    return _claude_plugin_root(), _codex_plugin_root(), _agy_plugin_root()
 
 
 def resolve_script(origin_root: Path, script_name: str, prefer_installed: bool) -> Path:

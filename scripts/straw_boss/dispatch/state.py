@@ -178,7 +178,7 @@ def render_dispatch_contract(
 ) -> str:
     if mode != "herdr-pane":
         raise ValueError(f"unsupported dispatch mode {mode!r}")
-    if agent_kind not in {"claude", "codex"}:
+    if agent_kind not in {"claude", "codex", "agy", "antigravity"}:
         raise ValueError(f"unsupported agent kind {agent_kind!r}")
     origin_root = PLUGIN_ROOT
     launcher = runtime_launcher_path()

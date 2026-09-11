@@ -194,6 +194,15 @@ def write_instruction(
         and not main_agent_terminal_id
     ):
         raise ValueError("--main-agent-terminal-id is required for a Codex main agent")
+    if (
+        mode == "herdr-pane"
+        and main_agent_kind in {"agy", "antigravity"}
+        and not main_agent_terminal_id
+        and not main_agent_session_id
+    ):
+        raise ValueError(
+            "--main-agent-terminal-id or --main-agent-session-id is required for an Antigravity main agent"
+        )
     if advisor_model is not None and agent_kind != "claude":
         raise ValueError(
             f"--advisor-model is supported only for Claude Code; agent kind {agent_kind!r} "
@@ -313,14 +322,14 @@ def main() -> int:
     write_p.add_argument(
         "--agent-kind",
         default="claude",
-        choices=["claude", "codex"],
+        choices=["claude", "codex", "agy", "antigravity"],
         help="which agent CLI runs this dispatch (default: claude); the caller resolves this "
         "from apps.json's agentKind / an explicit override before calling this script",
     )
     write_p.add_argument(
         "--main-agent-kind",
         default=None,
-        choices=["claude", "codex"],
+        choices=["claude", "codex", "agy", "antigravity"],
         help="which agent CLI runs the dispatching main agent; notification routing depends on "
         "the sender/receiver pair and must not be inferred from --agent-kind",
     )
@@ -385,6 +394,10 @@ def main() -> int:
 
     try:
         if args.action == "write":
+            if getattr(args, "agent_kind", None) == "antigravity":
+                args.agent_kind = "agy"
+            if getattr(args, "main_agent_kind", None) == "antigravity":
+                args.main_agent_kind = "agy"
             coworker_context = None
             if args.parent_instruction_path is not None:
                 if args.mode != "herdr-pane" or args.plan is not None or args.batch is not None:

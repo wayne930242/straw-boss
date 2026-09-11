@@ -53,7 +53,7 @@ LIFECYCLE_CONFIRMABLE_STATUSES = frozenset({"idle", "done", "blocked"})
 
 
 def read_agent_transcript(target: str, agent_kind: str) -> str:
-    if agent_kind not in {"claude", "codex"}:
+    if agent_kind not in {"claude", "codex", "agy", "antigravity"}:
         raise ValueError(f"unsupported agent kind {agent_kind!r}")
     args = [
         "agent",

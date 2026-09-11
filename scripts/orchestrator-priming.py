@@ -70,9 +70,9 @@ def main() -> int:
     except json.JSONDecodeError:
         return 0  # never block session start over a malformed hook payload
 
-    session_id = payload.get("session_id")
+    session_id = payload.get("session_id") or payload.get("conversationId")
     if session_id:
-        instruction = dispatched_instruction(session_id)
+        instruction = dispatched_instruction(str(session_id))
         if instruction is not None:
             if payload.get("source") in LIVE_SYSTEM_PROMPT_SOURCES:
                 return 0

@@ -2,31 +2,31 @@
 
 [English](./README.md) | 繁體中文
 
-一切由你做主。把一個任務或整份 backlog 交給 `boss-say`，它會選擇足以完成工作的最小迴圈：有界工作由目前 agent 直接完成，明確分支交給 subagent 平行處理，需要獨立權責或延續狀態時才協調以 app 為根目錄的 Claude Code 或 Codex CLI workroom。單一 app 裝好就能用，需要時也能協調整個 monorepo。
+一切由你做主。把一個任務或整份 backlog 交給 `boss-say`，它會選擇足以完成工作的最小迴圈：有界工作由目前 agent 直接完成，明確分支交給 subagent 平行處理，需要獨立權責或延續狀態時才協調以 app 為根目錄的 Claude Code、Codex CLI 或 Antigravity workroom。單一 app 裝好就能用，需要時也能協調整個 monorepo。
 
 名字來自牧場工頭：跟牛仔一起在現場做事，不是坐辦公室發號施令。
 
 ## 為什麼
 
-有界工作就留在有界迴圈內。當任務需要自己的 workroom，straw-boss 會讓 worker 直接以負責的 app 為根目錄，不必複製一份終究會過時的 app 脈絡摘要。Claude Code worker 會在那裡載入 app 的 `.claude/skills/` 與 `.claude/settings.json` hooks；Claude Code 與 Codex CLI worker 都會從正確的 app 目錄與本地指示開始工作。改程式、稽核、研究與故障診斷都走同一套路由。Monorepo 可用 `work-on` 做跨 app 路由，單一 app 不需要先做這層設定。完整理由見 [docs/architecture.md](docs/architecture.md)。
+有界工作就留在有界迴圈內。當任務需要自己的 workroom，straw-boss 會讓 worker 直接以負責的 app 為根目錄，不必複製一份終究會過時的 app 脈絡摘要。Claude Code worker 會在那裡載入 app 的 `.claude/skills/` 與 `.claude/settings.json` hooks；Claude Code、Codex CLI 與 Antigravity worker 都會從正確的 app 目錄與本地指示開始工作。改程式、稽核、研究與故障診斷都走同一套路由。Monorepo 可用 `work-on` 做跨 app 路由，單一 app 不需要先做這層設定。完整理由見 [docs/architecture.md](docs/architecture.md)。
 
 ## 特色
 
 - **一個入口：`boss-say`**——工作交給它，由它選 owner、執行層級、協作圖與 reality anchor。
 - **最小充分迴圈**——有界工作由目前 agent 完成；明確分支平行展開；需要延續狀態的 app 工作才開獨立 workroom。
-- **Claude Code 與 Codex CLI worker**——work route 可分別指定 provider、profile、model 與 effort；Claude route 也能使用原生 advisor。
+- **Claude Code、Codex CLI 與 Antigravity worker**——work route 可分別指定 provider、profile、model 與 effort；Claude route 也能使用原生 advisor。
 - **事件驅動協調**——持久化的 checkpoint 與 terminal status 會觸發排程、交接及清理。
 - **worktree 隔離**——team-mode 任務可在各自的 feature branch 平行進行。
 - **跨 main agent 資源鎖**——worktree 隔不到的 port、共用 DB migration，跨 session 排隊。
 - **批次自己抓步調**——backlog 做不完一個 turn，`boss-say` 自己開 `/loop`。
 - **獨立 orchestrator 交接**——經你同意後，把一個 scope 移到具名的 Herdr tab；新 orchestrator 透過 `boss-say` 接手，原窗口離開該 scope。
-- **herdr 隨時介入**——旁觀或加入派出的 Claude Code／Codex CLI workroom，直接在裡面回答問題。
+- **herdr 隨時介入**——旁觀或加入派出的 Claude Code、Codex CLI 或 Antigravity workroom，直接在裡面回答問題。
 
 ## 需求
 
-- Claude Code（plugins 要開），或支援 plugin 的 Codex CLI。
+- Claude Code（plugins 要開）、支援 plugin 的 Codex CLI，或 Google Antigravity（AGY CLI）。
 - Python 3，用來執行內附的生命週期與安裝腳本。
-- [Herdr](https://github.com/herdrdev/herdr)（委派必要需求）。Claude Code 與 Codex CLI worker 都在可查看、可加入的 Herdr pane 執行。安裝、讀取設定與整理已保存狀態可獨立執行；開始委派前須有可用的 Herdr 服務與目前 pane。
+- [Herdr](https://github.com/herdrdev/herdr)（委派必要需求）。Claude Code、Codex CLI 與 Antigravity worker 都在可查看、可加入的 Herdr pane 執行。安裝、讀取設定與整理已保存狀態可獨立執行；開始委派前須有可用的 Herdr 服務與目前 pane。
 
 ## 安裝
 
@@ -72,6 +72,18 @@ $straw-boss:init
 
 也可以先啟動 `codex`，再輸入 `/plugins`，以互動介面瀏覽或管理 plugin。Codex IDE extension 目前不支援 plugins。
 
+### Antigravity (AGY CLI)
+
+```bash
+agy plugin install wayne930242/straw-boss
+```
+
+接著每個專案跑一次：
+
+```text
+/straw-boss:init
+```
+
 `init` 會詢問要管理哪些 app、設定 work route、寫入 `.straw-boss/apps.json`、同步 root `AGENTS.md` 與 `CLAUDE.md`，為缺少 agent system 的 app 提議建立一套，並檢查 Herdr 委派需求。
 
 單一 app 的話 `init` 只是加分，裝好 plugin 就能直接用 `boss-say`。檢查 Herdr、設定 `forbidDirectCommit`/`localFiles` 這類選項、或設定 monorepo 多個 app，才需要跑。
@@ -94,7 +106,7 @@ $straw-boss:init
 | `reporting-to-user` | 工作收尾報告：把浮現的事情分成 Alert（建議立刻處理）、Warn（提醒你留意）、Info（純資訊條列），再由 Alert 與 Warn 導出 Next 建議清單，逐項問要不要加派工，答完後接受的項目合成一輪一起處理 |
 | `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
 | `asking-peer-agents` | 讓一個派出任務向另一個任務詢問實際進度或結論 |
-| `bringing-coworker` | 把一位 Claude Code 或 Codex CLI coworker 帶進互動式 worker 的同一個 Herdr tab 與 worktree |
+| `bringing-coworker` | 把一位 Claude Code、Codex CLI 或 Antigravity coworker 帶進互動式 worker 的同一個 Herdr tab 與 worktree |
 | `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——以證據為基礎的 `AGENTS.md` 與 `CLAUDE.md`，以及由確認範圍或專案證據支持的可選 hook／rule |
 
 ## 怎麼用

@@ -2,31 +2,31 @@
 
 English | [繁體中文](./README.zh-TW.md)
 
-You call the shots. Give `boss-say` one task or a backlog and it chooses the smallest sufficient loop: carry bounded work here, fan out clear branches, or coordinate app-rooted Claude Code and Codex CLI workrooms when separate ownership or continuity is useful. It works in a single app out of the box and coordinates across a monorepo when needed.
+You call the shots. Give `boss-say` one task or a backlog and it chooses the smallest sufficient loop: carry bounded work here, fan out clear branches, or coordinate app-rooted Claude Code, Codex CLI, and Antigravity workrooms when separate ownership or continuity is useful. It works in a single app out of the box and coordinates across a monorepo when needed.
 
 Named after the ranch foreman who works the ground alongside the crew, not from an office.
 
 ## Why
 
-Bounded work should stay bounded. When a task benefits from its own workroom, straw-boss roots that worker in the app it owns instead of copying the app's context into a summary that can drift. Claude Code workers load that app's `.claude/skills/` and `.claude/settings.json` hooks there; Claude Code and Codex CLI workers both operate from the correct app directory and local instructions. The same routing applies to implementation, audits, research, and diagnosis. Cross-app routing through `work-on` is available for monorepos, not required for a single app. Full rationale: [docs/architecture.md](docs/architecture.md).
+Bounded work should stay bounded. When a task benefits from its own workroom, straw-boss roots that worker in the app it owns instead of copying the app's context into a summary that can drift. Claude Code workers load that app's `.claude/skills/` and `.claude/settings.json` hooks there; Claude Code, Codex CLI, and Antigravity workers all operate from the correct app directory and local instructions. The same routing applies to implementation, audits, research, and diagnosis. Cross-app routing through `work-on` is available for monorepos, not required for a single app. Full rationale: [docs/architecture.md](docs/architecture.md).
 
 ## Highlights
 
 - **One door: `boss-say`** — hand over the work; it selects the owner, execution tier, coordination graph, and reality anchor.
 - **Smallest sufficient loop** — bounded work stays with the current agent; clear branches fan out; durable app-rooted work gets its own workroom.
-- **Claude Code and Codex CLI workers** — choose provider, profile, model, and effort per work route; Claude routes can also use a native advisor.
+- **Claude Code, Codex CLI, and Antigravity workers** — choose provider, profile, model, and effort per work route; Claude routes can also use a native advisor.
 - **Event-driven coordination** — persisted checkpoints and terminal status drive scheduling, handoffs, and cleanup.
 - **Worktree isolation** — team-mode tasks can run side by side on their own feature branches.
 - **Cross-main-agent resource lock** — a file lock for ports and shared-DB migrations worktrees can't isolate.
 - **Self-paced batches** — a backlog too big for one turn gets its own `/loop`, started by `boss-say` itself.
 - **Independent orchestrator handoff** — with your approval, move one scope into a named Herdr tab whose orchestrator takes over through `boss-say`; the original window leaves that scope.
-- **herdr for human-in-the-loop** — watch or join a dispatched Claude Code or Codex CLI workroom and answer questions there.
+- **herdr for human-in-the-loop** — watch or join a dispatched Claude Code, Codex CLI, or Antigravity workroom and answer questions there.
 
 ## Requirements
 
-- Claude Code with plugins enabled, or Codex CLI with plugin support.
+- Claude Code with plugins enabled, Codex CLI with plugin support, or Google Antigravity (AGY CLI).
 - Python 3 for the bundled lifecycle and installation scripts.
-- [Herdr](https://github.com/herdrdev/herdr), required for dispatch. Claude Code and Codex CLI workers both run in a Herdr pane you can watch and join. Installing, reading configuration, and tidying persisted state all work on their own; starting a dispatch needs a running Herdr service and a current pane.
+- [Herdr](https://github.com/herdrdev/herdr), required for dispatch. Claude Code, Codex CLI, and Antigravity workers all run in a Herdr pane you can watch and join. Installing, reading configuration, and tidying persisted state all work on their own; starting a dispatch needs a running Herdr service and a current pane.
 
 ## Install
 
@@ -75,6 +75,18 @@ $straw-boss:init
 
 You can also browse or manage the installed plugin interactively by starting `codex` and entering `/plugins`. Plugins are not available in the Codex IDE extension.
 
+### Antigravity (AGY CLI)
+
+```bash
+agy plugin install wayne930242/straw-boss
+```
+
+Then run once per project:
+
+```text
+/straw-boss:init
+```
+
 `init` confirms the managed apps and work routes, writes `.straw-boss/apps.json`, syncs the root `AGENTS.md` and `CLAUDE.md`, offers to fill in each app's missing instruction files, and checks the Herdr dispatch requirement.
 
 For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it to check Herdr readiness, configure per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
@@ -97,7 +109,7 @@ For a single app, `init` is a bonus — `boss-say` works the moment the plugin's
 | `reporting-to-user` | Close out finished work: grade what surfaced as Alert (act now), Warn (carry knowingly), or Info (informational), derive a Next recommendation list from the Alert and Warn findings, and ask item by item whether each one gets a follow-up dispatch before the accepted items open one batched follow-up round |
 | `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
 | `asking-peer-agents` | Let one dispatched task request a factual progress update or conclusion from another task |
-| `bringing-coworker` | Bring one Claude Code or Codex CLI coworker into an interactive worker's exact Herdr tab and worktree |
+| `bringing-coworker` | Bring one Claude Code, Codex CLI, or Antigravity coworker into an interactive worker's exact Herdr tab and worktree |
 | `create-great-harness` | Write or complete `AGENTS.md` and `CLAUDE.md` from project evidence, adding an optional hook or rule within the confirmed scope |
 
 ## Usage

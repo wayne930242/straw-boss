@@ -45,7 +45,7 @@ from straw_boss.herdr.transport import (
 
 
 ORCHESTRATOR_INTENTS = ("inform", "question", "answer")
-SUPPORTED_AGENT_KINDS = frozenset({"claude", "codex"})
+SUPPORTED_AGENT_KINDS = frozenset({"claude", "codex", "agy", "antigravity"})
 MAX_SCOPE_CHARS = 200
 # Long enough that yesterday's coordinator is still readable history, short
 # enough that the directory keeps reading as who is coordinating now.
@@ -106,7 +106,7 @@ def agent_identity(agent: dict[str, Any]) -> tuple[str, str | None, str | None]:
     session = session_value(agent)
     terminal = agent.get("terminal_id")
     terminal = terminal if isinstance(terminal, str) and terminal else None
-    if not session and not (kind == "codex" and terminal):
+    if not session and not (kind in {"codex", "agy", "antigravity"} and terminal):
         raise ValueError(
             f"no verified session fingerprint for pane {agent.get('pane_id')!r}, "
             "so this orchestrator cannot be addressed; Claude requires a foreground "

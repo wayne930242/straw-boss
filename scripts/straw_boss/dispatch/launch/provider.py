@@ -71,6 +71,24 @@ def provider_profile_args(
                     "raw model_reasoning_effort duplicates the dispatch instruction"
                 )
             resolved.extend(["-c", f"model_reasoning_effort={effort}"])
+    elif agent_kind in {"agy", "antigravity"}:
+        if advisor is not None:
+            raise ValueError(
+                "Antigravity has no native advisor; advisor_model requires Claude Code"
+            )
+        mappings = (
+            (profile, ("--agent",)),
+            (model, ("--model",)),
+            (effort, ("--effort",)),
+        )
+        for value, flags in mappings:
+            if value is None:
+                continue
+            if _option_present(extra_args, flags):
+                raise ValueError(
+                    f"raw provider argument {flags[0]} duplicates the dispatch instruction"
+                )
+            resolved.extend([flags[0], str(value)])
     else:
         raise ValueError(f"unsupported agent kind {agent_kind!r}")
 

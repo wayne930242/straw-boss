@@ -387,7 +387,9 @@ def main() -> int:
     parser.add_argument("--source-pane-id", required=True)
     parser.add_argument("--cwd", required=True)
     parser.add_argument("--slug", required=True)
-    parser.add_argument("--agent-kind", choices=["claude", "codex"], required=True)
+    parser.add_argument(
+        "--agent-kind", choices=["claude", "codex", "agy", "antigravity"], required=True
+    )
     parser.add_argument("--agent-arg", action="append", default=[])
     parser.add_argument("--goal", required=True)
     parser.add_argument("--scope", required=True)
@@ -405,6 +407,8 @@ def main() -> int:
         help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
+    if args.agent_kind == "antigravity":
+        args.agent_kind = "agy"
     if args.accept_timeout_seconds < 0:
         print("error: acceptance timeout must be non-negative", file=sys.stderr)
         return 1

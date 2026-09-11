@@ -26,7 +26,7 @@ uv run --script "$HOME/.straw-boss/bin/run-straw-boss-script.py" \
   --script dispatch-coworker.py -- \
   --parent-instruction-path <your-instruction-path> \
   --slug <unique-slug> [--name <short-name>] \
-  --agent-kind claude|codex --task "<user requirement and integrated context>" \
+  --agent-kind claude|codex|agy --task "<user requirement and integrated context>" \
   [--writable-path <repo-relative-path>]...
 ```
 

@@ -118,17 +118,20 @@ def main() -> int:
         default=None,
         help="operator-visible herdr agent name; omit for one the launcher derives automatically",
     )
-    parser.add_argument("--agent-kind", required=True, choices=("claude", "codex"))
+    parser.add_argument(
+        "--agent-kind", required=True, choices=("claude", "codex", "agy", "antigravity")
+    )
     parser.add_argument("--writable-path", action="append", default=[])
     parser.add_argument("--agent-arg", action="append", default=[])
     args = parser.parse_args()
+    agent_kind = "agy" if args.agent_kind == "antigravity" else args.agent_kind
     try:
         result = dispatch_coworker(
             args.parent_instruction_path,
             args.slug,
             args.task,
             args.name,
-            args.agent_kind,
+            agent_kind,
             args.writable_path,
             args.agent_arg,
         )

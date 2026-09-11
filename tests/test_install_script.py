@@ -30,6 +30,7 @@ class InstallScriptTests(unittest.TestCase):
         )["version"]
         self._write_fake_cli("claude")
         self._write_fake_cli("codex")
+        self._write_fake_cli("agy")
 
     def _write_fake_cli(self, provider: str) -> None:
         path = self.bin_dir / provider
@@ -76,8 +77,10 @@ class InstallScriptTests(unittest.TestCase):
             "        if os.environ.get('CLAUDE_PROJECT_ONLY_ON_FIRST_LIST') == '1' and not first_list.exists():\n"
             "            scope = 'project'; first_list.touch()\n"
             "        payload = ([{'id': 'straw-boss@straw-boss', 'version': installed_version, 'scope': scope, 'enabled': True}] if plugin.exists() else [])\n"
-            "    else:\n"
+            "    elif provider == 'codex':\n"
             "        payload = {'installed': ([{'pluginId': 'straw-boss@straw-boss', 'version': installed_version, 'enabled': True, 'source': {'source': 'local', 'path': '/fake/straw-boss'}}] if plugin.exists() else [])}\n"
+            "    else:\n"
+            "        payload = {'imports': ([{'name': 'straw-boss', 'version': installed_version}] if plugin.exists() else [])}\n"
             "    print(json.dumps(payload)); raise SystemExit\n"
             "if provider == 'claude' and args[:2] == ['plugin', 'uninstall']:\n"
             "    if '--keep-data' not in args:\n"
@@ -88,6 +91,10 @@ class InstallScriptTests(unittest.TestCase):
             "if provider == 'codex' and args[:2] == ['plugin', 'remove']:\n"
             "    plugin.unlink(missing_ok=True); print('{}'); raise SystemExit\n"
             "if provider == 'codex' and args[:2] == ['plugin', 'add']:\n"
+            "    plugin.write_text(version); print('{}'); raise SystemExit\n"
+            "if provider == 'agy' and args[:2] == ['plugin', 'uninstall']:\n"
+            "    plugin.unlink(missing_ok=True); print('{}'); raise SystemExit\n"
+            "if provider == 'agy' and args[:2] == ['plugin', 'install']:\n"
             "    plugin.write_text(version); print('{}'); raise SystemExit\n"
             "print(f'unexpected {provider} command: {args}', file=sys.stderr)\n"
             "raise SystemExit(2)\n"

@@ -220,6 +220,43 @@ install_codex() {
   echo "Installed straw-boss ${VERSION} for Codex CLI."
 }
 
+agy_plugin_state() {
+  agy plugin list 2>/dev/null | python3 -c '
+import json, sys
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    print("absent")
+    sys.exit(0)
+for item in payload.get("imports", []) or []:
+    if item.get("name") == "straw-boss":
+        print("present")
+        sys.exit(0)
+print("absent")
+'
+}
+
+install_agy() {
+  local source plugin_state
+  if [[ "${INSTALL_SOURCE_MODE}" == "local" ]]; then
+    source="${REPO_ROOT}"
+  else
+    source="${CLAUDE_REMOTE_SOURCE}"
+  fi
+
+  plugin_state="$(agy_plugin_state)"
+  if [[ "${plugin_state}" == "present" ]]; then
+    agy plugin uninstall "straw-boss" >/dev/null 2>&1 || true
+  fi
+
+  agy plugin install "${source}"
+  if [[ "$(agy_plugin_state)" != "present" ]]; then
+    echo "error: agy reports Straw Boss install failed" >&2
+    return 1
+  fi
+  echo "Installed straw-boss ${VERSION} for Antigravity CLI."
+}
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "error: python3 is required to validate plugin metadata" >&2
   exit 1
@@ -229,8 +266,10 @@ CLAUDE_VERSION="$(manifest_version "${REPO_ROOT}/.claude-plugin/plugin.json")"
 readonly CLAUDE_VERSION
 CODEX_VERSION="$(manifest_version "${REPO_ROOT}/.codex-plugin/plugin.json")"
 readonly CODEX_VERSION
-if [[ "${CLAUDE_VERSION}" != "${CODEX_VERSION}" ]]; then
-  echo "error: plugin manifest versions differ: Claude ${CLAUDE_VERSION}, Codex ${CODEX_VERSION}" >&2
+AGY_VERSION="$(manifest_version "${REPO_ROOT}/plugin.json")"
+readonly AGY_VERSION
+if [[ "${CLAUDE_VERSION}" != "${CODEX_VERSION}" || "${CLAUDE_VERSION}" != "${AGY_VERSION}" ]]; then
+  echo "error: plugin manifest versions differ: Claude ${CLAUDE_VERSION}, Codex ${CODEX_VERSION}, Antigravity ${AGY_VERSION}" >&2
   exit 1
 fi
 readonly VERSION="${CLAUDE_VERSION}"
@@ -256,8 +295,15 @@ else
   echo "Skipping Codex CLI: codex was not found."
 fi
 
+if command -v agy >/dev/null 2>&1; then
+  install_agy
+  installed_any=1
+else
+  echo "Skipping Antigravity CLI: agy was not found."
+fi
+
 if [[ "${installed_any}" -eq 0 ]]; then
-  echo "error: neither claude nor codex was found" >&2
+  echo "error: none of claude, codex, or agy was found" >&2
   exit 1
 fi
 

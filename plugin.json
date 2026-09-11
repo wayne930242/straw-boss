@@ -1,0 +1,8 @@
+{
+  "name": "straw-boss",
+  "version": "0.23.1",
+  "description": "Route work through the smallest sufficient loop: handle bounded tasks directly, fan out clear branches, or coordinate durable app-rooted Claude, Codex, and Antigravity workrooms with provider-neutral status and git lifecycle tracking.",
+  "author": { "name": "Wei Hung" },
+  "license": "MIT",
+  "keywords": ["herdr", "dispatch", "multi-app", "monorepo", "agent-harness", "orchestration", "batch", "loop", "peek", "coordination", "bootstrap", "antigravity"]
+}

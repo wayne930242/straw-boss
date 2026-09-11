@@ -63,7 +63,7 @@ def main() -> int:
         hook_input = json.load(sys.stdin)
     except json.JSONDecodeError:
         return 0
-    session_id = hook_input.get("session_id")
+    session_id = hook_input.get("session_id") or hook_input.get("conversationId")
     if not session_id:
         return 0
     found = find_active_instruction(str(session_id))
@@ -81,7 +81,8 @@ def main() -> int:
         f"uv run --script {status_script} --instruction-path {instruction_path} "
         "--status <chosen-status> --note \"<summary or blocker>\""
     )
-    print(json.dumps({"decision": "block", "reason": reason}))
+    decision = "continue" if "conversationId" in hook_input else "block"
+    print(json.dumps({"decision": decision, "reason": reason}))
     return 0
 
 

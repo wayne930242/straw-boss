@@ -36,12 +36,22 @@ def task_delivery_marker(task: str) -> str:
     digest = base64.urlsafe_b64encode(bytes.fromhex(sha256_text(task))).decode("ascii")
     return f"[{TASK_DELIVERY_MARKER_PREFIX}:{digest.rstrip('=')}]"
 
-def task_start_prompt(task: str) -> str:
-    return f"Begin contract task.\n{task_delivery_marker(task)}"
+def task_start_prompt(task: str, contract_path: object | None = None) -> str:
+    prefix = (
+        f"Before any task action, read and follow the mandatory contract at {contract_path}.\n"
+        if contract_path
+        else ""
+    )
+    return f"{prefix}Begin contract task.\n{task_delivery_marker(task)}"
 
-def prompt_task_with_confirmation(pane_id: str, task: str, agent_kind: str) -> None:
+def prompt_task_with_confirmation(
+    pane_id: str,
+    task: str,
+    agent_kind: str,
+    contract_path: object | None = None,
+) -> None:
     marker = task_delivery_marker(task)
-    prompt = task_start_prompt(task)
+    prompt = task_start_prompt(task, contract_path)
     backoff = prompt_retry_backoff_seconds()
     attempts_remaining = len(backoff)
     while attempts_remaining:

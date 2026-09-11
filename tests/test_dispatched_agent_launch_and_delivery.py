@@ -1125,6 +1125,80 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("launch receipt", missing.stderr)
         self.assertEqual(json.loads(instruction_path.read_text())["status"], "pending")
 
+    def test_launcher_applies_agy_profile_model_and_effort_and_records_receipt(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch(
+            "agy",
+            agent_profile="reviewer",
+            agent_model="gemini-2.5-pro",
+            agent_effort="high",
+        )
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "api-agy-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        self.assertIn("--kind", start)
+        self.assertEqual(start[start.index("--kind") + 1], "agy")
+        self.assertIn("--agent", start)
+        self.assertEqual(start[start.index("--agent") + 1], "reviewer")
+        self.assertIn("--model", start)
+        self.assertEqual(start[start.index("--model") + 1], "gemini-2.5-pro")
+        self.assertIn("--effort", start)
+        self.assertEqual(start[start.index("--effort") + 1], "high")
+
+        prompt_call = next(call for call in calls if call[:2] == ["agent", "prompt"])
+        prompt_text = prompt_call[3]
+        self.assertIn(str(instruction["contract_path"]), prompt_text)
+        self.assertIn("Begin contract task.", prompt_text)
+
+        receipt_path = instruction_path.with_name("api--contract-agy.launch.json")
+        self.assertTrue(receipt_path.exists())
+        receipt = json.loads(receipt_path.read_text())
+        self.assertEqual(receipt["pane_id"], "worker-pane")
+
+    def test_dispatch_write_rejects_agy_advisor_model(self) -> None:
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "api",
+            "--slug",
+            "bad-agy-advisor",
+            "--task",
+            "Do work",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(ROOT),
+            "--agent-kind",
+            "agy",
+            "--main-agent-kind",
+            "agy",
+            "--main-agent-pane-id",
+            "main-pane",
+            "--main-agent-terminal-id",
+            "main-term",
+            "--advisor-model",
+            "haiku",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--advisor-model is supported only for Claude Code", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

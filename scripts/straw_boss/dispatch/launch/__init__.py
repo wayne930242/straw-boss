@@ -148,6 +148,10 @@ class _LaunchAttempt:
                 ),
                 *self.base_provider_args,
             ]
+        if self.agent_kind in {"agy", "antigravity"}:
+            return [
+                *self.base_provider_args,
+            ]
         raise ValueError(f"unsupported agent kind {self.agent_kind!r}")
 
     def _start_agent(self, pane_id: str, provider_args: list[str]) -> ValueError | None:
@@ -282,8 +286,16 @@ class _LaunchAttempt:
             if gate is not None or agent.get("agent_status") == "blocked":
                 self._clear_startup_gate(pane_id, gate)
 
+            contract_path = (
+                self.contract_path
+                if self.agent_kind in {"agy", "antigravity"}
+                else None
+            )
             prompt_task_with_confirmation(
-                pane_id, str(self.instruction["task"]), self.agent_kind
+                pane_id,
+                str(self.instruction["task"]),
+                self.agent_kind,
+                contract_path=contract_path,
             )
             delivered = True
             terminal_id, session_id, session_fingerprint_warning = self._bind_session(

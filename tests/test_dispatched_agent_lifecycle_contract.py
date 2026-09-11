@@ -434,6 +434,28 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn(str(instruction_path), decision["reason"])
         self.assertIn("report-task-status.py", decision["reason"])
 
+    def test_stop_hook_returns_continue_for_antigravity_conversation(self) -> None:
+        instruction_path, _ = self.write_dispatch("agy")
+        instruction = json.loads(instruction_path.read_text())
+        instruction["status"] = "in-progress"
+        instruction["session_id"] = "test-agy-conv-123"
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
+            input=json.dumps({"conversationId": "test-agy-conv-123"}),
+            cwd=ROOT,
+            env={**os.environ, "HOME": str(self.home)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        decision = json.loads(result.stdout)
+        self.assertEqual(decision["decision"], "continue")
+        self.assertIn(str(instruction_path), decision["reason"])
+        self.assertIn("report-task-status.py", decision["reason"])
+
     def test_stop_hook_allows_a_dispatched_agent_after_a_valid_report(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         instruction = json.loads(instruction_path.read_text())

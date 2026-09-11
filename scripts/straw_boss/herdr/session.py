@@ -98,7 +98,9 @@ def resolve_endpoint(instruction: dict[str, Any], target: Target) -> Endpoint:
         raise ValueError(f"dispatch instruction has no {target} session fingerprint")
     if agent_kind == "codex" and not terminal_id:
         raise ValueError(f"dispatch instruction has no {target} terminal fingerprint")
-    if agent_kind not in {"claude", "codex"}:
+    if agent_kind in {"agy", "antigravity"} and not (session_id or terminal_id):
+        raise ValueError(f"dispatch instruction has no {target} session or terminal fingerprint")
+    if agent_kind not in {"claude", "codex", "agy", "antigravity"}:
         raise ValueError(f"dispatch instruction has unsupported {target} agent kind")
     return Endpoint(
         target,
@@ -210,14 +212,15 @@ def validate_live_session(endpoint: Endpoint) -> str | None:
         )
     agent_status = agent.get("agent_status")
     agent_status = agent_status if isinstance(agent_status, str) else None
-    if endpoint.agent_kind == "codex":
-        if agent.get("agent") != "codex":
+    if endpoint.agent_kind in {"codex", "agy", "antigravity"}:
+        expected_kind = "codex" if endpoint.agent_kind == "codex" else "agy"
+        if agent.get("agent") != expected_kind:
             raise ValueError(
                 f"{endpoint.target} agent kind mismatch for pane {endpoint.pane_id!r}: "
-                f"expected 'codex', live {agent.get('agent')!r}; refusing to send"
+                f"expected {endpoint.agent_kind!r}, live {agent.get('agent')!r}; refusing to send"
             )
         if agent_matches_identity(
-            agent, endpoint.agent_kind, endpoint.expected_session_id, endpoint.expected_terminal_id
+            agent, expected_kind, endpoint.expected_session_id, endpoint.expected_terminal_id
         ):
             return agent_status
         if endpoint.expected_session_id:
@@ -253,14 +256,15 @@ def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
         if exc.error_code not in {"agent_not_found", "pane_not_found"}:
             raise
         agent = None
-    if endpoint.agent_kind == "codex":
+    if endpoint.agent_kind in {"codex", "agy", "antigravity"}:
+        expected_kind = "codex" if endpoint.agent_kind == "codex" else "agy"
         if isinstance(agent, dict):
             if agent_matches_identity(
-                agent, endpoint.agent_kind, endpoint.expected_session_id,
+                agent, expected_kind, endpoint.expected_session_id,
                 endpoint.expected_terminal_id,
             ):
                 return False
-            if (agent.get("agent") == "codex"
+            if (agent.get("agent") == expected_kind
                     and (not endpoint.expected_session_id or session_value(agent) is None)):
                 raise ValueError("worker session is unavailable; cannot confirm closure")
         if endpoint.expected_session_id:
@@ -270,7 +274,7 @@ def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
                 raise ValueError("cannot confirm closure without a live agent list")
             return not any(
                 isinstance(candidate, dict) and agent_matches_identity(
-                    candidate, endpoint.agent_kind, endpoint.expected_session_id,
+                    candidate, expected_kind, endpoint.expected_session_id,
                     endpoint.expected_terminal_id,
                 ) for candidate in agents
             )

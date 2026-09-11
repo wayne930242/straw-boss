@@ -15,7 +15,7 @@ Resolve a complete worker setup in this order:
 4. Claude with provider defaults.
 
 A setup includes provider, profile, model, effort, and Claude's optional native advisor.
-Codex records no advisor; report an incompatible combination.
+Codex and Antigravity record no advisor; report an incompatible combination.
 If both instruction files carry conflicting routes, resolve the user's choice for this dispatch; [init](../../init/SKILL.md#configure-work-routes) owns synchronization.
 
 ## Write the instruction and contract
@@ -25,7 +25,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --app <app> --slug <slug> --task "<brief>" \
   --mode herdr-pane --repo-root <verified-cwd> \
   [--batch <batch>] [--plan <plan> --task-id <task>] [--role <workroom>] \
-  --agent-kind claude|codex --main-agent-kind claude|codex \
+  --agent-kind claude|codex|agy --main-agent-kind claude|codex|agy \
   [--agent-profile <profile>] [--agent-model <model>] \
   [--agent-effort <effort>] [--advisor-model <claude-model>] \
   --main-agent-pane-id <pane> \

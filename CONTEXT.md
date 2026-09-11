@@ -36,17 +36,17 @@ A project policy mapping a kind of task to one resolved worker setup.
 _Avoid_: agent-kind rule
 
 **Agent kind**:
-The CLI provider that executes a dispatch, currently Claude or Codex.
+The CLI provider that executes a dispatch, currently Claude, Codex, or Antigravity.
 _Avoid_: model, role, agent type
 
 **Provider profile**:
-A provider-native named preset selected at launch, such as Claude `--agent` or
+A provider-native named preset selected at launch, such as Claude/Antigravity `--agent` or
 Codex `--profile`.
 _Avoid_: agent type, worker role
 
 **Advisor**:
 Claude Code's native second-model server tool attached to one worker session.
-_Avoid_: coworker, subagent, Codex advisor
+_Avoid_: coworker, subagent, Codex advisor, Antigravity advisor
 
 **Coordination graph**:
 How the agents on one task are wired — single-loop, sub-agent fan-out/fan-in,
