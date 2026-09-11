@@ -16,7 +16,9 @@ class AppsConfigTests(unittest.TestCase):
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.repo = Path(temporary.name) / "repo with spaces"
+        # The script canonicalizes its repo root, and macOS hands out
+        # temporary directories under the /var -> /private/var symlink.
+        self.repo = Path(temporary.name).resolve() / "repo with spaces"
         self.canonical = self.repo / ".straw-boss" / "apps.json"
         self.legacy = self.repo / ".claude" / "straw-boss" / "apps.json"
         self.canonical.parent.mkdir(parents=True)

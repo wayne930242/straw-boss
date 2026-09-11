@@ -644,12 +644,14 @@ class SkillInstructionQualityTests(unittest.TestCase):
     ) -> None:
         source = normalized(ROOT / "skills/reporting-to-user/SKILL.md")
         self.assertIn("Report Alert, then Warn, then Info, then Next", source)
-        self.assertIn("Info is a bullet list, one line each", source)
+        self.assertIn("Number the items inside each level from 1", source)
+        self.assertIn("cites the findings it answers as (Alert 1) or (Warn 2)", source)
+        self.assertIn("Every item is one line", source)
         self.assertIn("the only level that asks the user anything", source)
         self.assertIn("Alert-derived items first, then Warn-derived", source)
         self.assertIn("harness-native ask-question interface", source)
         self.assertIn("Present one item at a time in Next order", source)
-        self.assertIn("Alert, Warn, and Info ask nothing themselves", source)
+        self.assertIn("A declined item is recorded with the user's decision", source)
         self.assertIn("../boss-say/SKILL.md#route-the-work", source)
         # The close-out has one owner, reached from the entry point and the
         # injected stance.
