@@ -47,4 +47,4 @@ For a self-paced backlog, use the harness's `loop` skill when available. Start i
 
 A `/loop` tick resumes the existing slug, runs one scheduling round, then calls `ScheduleWakeup` with `noop: true` only when nothing changed. Changed state uses `noop: false`; terminal completion uses `{stop: true}`. These calls belong only to actual loop ticks. Unchanged waiting stays quiet.
 
-**Complete when:** every item is terminal and cleaned up, or has a recorded blocker and next event. Summarize outcomes across the whole plan; stop the watcher or loop when every task is terminal. Review and completion references come from each lifecycle owner's result.
+**Complete when:** every item is terminal and cleaned up, or has a recorded blocker and next event. Report outcomes across the whole plan through [reporting-to-user](../reporting-to-user/SKILL.md); stop the watcher or loop when every task is terminal. Review and completion references come from each lifecycle owner's result.

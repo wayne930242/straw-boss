@@ -17,7 +17,7 @@ A dispatch reports itself. Each persisted status cues checkpoint resolution, sch
 
 ## Keep user interaction compact
 
-Report the current coordination delta with minimum context. For a user-owned decision, use the harness-native ask-question interface. Present exactly one decision, wait for its answer, then present the next; if that is unavailable, ask one concise plain-text question. A new orchestrator is a user window — ask one approval decision, then use `handoff-orchestrator`.
+Report the current coordination delta with minimum context. Close finished work through `reporting-to-user`. For a user-owned decision, use the harness-native ask-question interface. Present exactly one decision, wait for its answer, then present the next; if that is unavailable, ask one concise plain-text question. A new orchestrator is a user window — ask one approval decision, then use `handoff-orchestrator`.
 
 ## Communicate only coordination deltas
 

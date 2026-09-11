@@ -474,7 +474,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
             "asking-peer-agents", "boss-assistant", "boss-say", "bringing-coworker",
             "choosing-graph", "contacting-orchestrators", "create-great-harness",
             "dispatching-work", "handoff-orchestrator", "i-am-orchestrator", "init",
-            "notifying-main-agent", "peeking-work", "shipping-task", "work-on",
+            "notifying-main-agent", "peeking-work", "reporting-to-user",
+            "shipping-task", "work-on",
         }
         paths = list((ROOT / "skills").glob("*/SKILL.md"))
         self.assertEqual({p.parent.name for p in paths}, expected)
@@ -637,6 +638,26 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("relevant baseline", source)
         self.assertIn("actual UAT outcome", source)
         self.assertIn("user's publication decision", source)
+
+    def test_the_close_out_report_grades_findings_and_routes_the_follow_up(
+        self,
+    ) -> None:
+        source = normalized(ROOT / "skills/reporting-to-user/SKILL.md")
+        self.assertIn("Report Alert first, then Warn, then Info", source)
+        self.assertIn("Info is a bullet list, one line each", source)
+        self.assertIn("harness-native ask-question interface", source)
+        self.assertIn("Present one decision at a time, Alert before Warn", source)
+        self.assertIn("Info asks nothing", source)
+        self.assertIn("../boss-say/SKILL.md#route-the-work", source)
+        # The close-out has one owner, reached from the entry point and the
+        # injected stance.
+        self.assertIn(
+            "reporting-to-user", normalized(ROOT / "skills/boss-say/SKILL.md")
+        )
+        self.assertIn(
+            "reporting-to-user",
+            normalized(ROOT / "skills/i-am-orchestrator/SKILL.md"),
+        )
 
 
 if __name__ == "__main__":
