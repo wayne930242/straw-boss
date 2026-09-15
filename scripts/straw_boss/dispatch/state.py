@@ -96,7 +96,12 @@ def resolve_instruction_status_path(
     return standalone_status_path(instruction_path)
 
 
-SUPPORTED_AGENT_KINDS = ("claude", "codex")
+# Kept in step with orchestrator.SUPPORTED_AGENT_KINDS: an agent kind that can
+# be dispatched must also be recoverable and wrappable, or its instruction is
+# stranded in-progress once its pane closes. Antigravity was added to dispatch
+# without reaching this tuple, so an agy coworker could launch but never be
+# archived.
+SUPPORTED_AGENT_KINDS = ("claude", "codex", "agy", "antigravity")
 
 
 def load_herdr_pane_instruction(

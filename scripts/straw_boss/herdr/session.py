@@ -192,13 +192,20 @@ def agent_matches_identity(
     agent: dict[str, Any], agent_kind: str,
     session_id: str | None, terminal_id: str | None,
 ) -> bool:
-    """Use a recorded conversation id; terminal-only is legacy Codex identity."""
+    """Use a recorded conversation id; terminal-only identity covers the kinds
+    that may carry none.
+
+    Legacy Codex dispatches predate its session id, and Antigravity exposes no
+    conversation id at all -- for those the terminal is the whole identity. A
+    kind left out here can never match, and the caller then reports a mismatch
+    quoting two terminal ids that are in fact equal.
+    """
     if agent.get("agent") != agent_kind:
         return False
     if session_id:
         return session_value(agent) == session_id
     return bool(
-        agent_kind == "codex" and terminal_id
+        agent_kind in {"codex", "agy"} and terminal_id
         and agent.get("terminal_id") == terminal_id
     )
 
