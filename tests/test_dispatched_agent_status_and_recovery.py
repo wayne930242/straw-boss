@@ -1005,6 +1005,46 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("agent_prompt_stalled", result.stderr)
         self.assertFalse(ledger_path.exists())
 
+    def test_send_dispatch_message_records_the_body_when_herdr_refuses_a_blocked_target(
+        self,
+    ) -> None:
+        # herdr rejects a prompt to an already-blocked agent with agent_blocked
+        # before any input is sent, so the body is kept for a later resend.
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        fake_bin, capture = self.install_fake_herdr()
+        ledger_path = instruction_path.with_name("api--contract-claude.messages.jsonl")
+
+        result = self.run_script(
+            "send-dispatch-message.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--to",
+            "main",
+            "--intent",
+            "inform",
+            "--message",
+            "verified end to end.",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "worker-pane",
+                "HERDR_SESSIONS": json.dumps(
+                    {"worker-pane": "worker-session", "main-pane": "main-session"}
+                ),
+                "HERDR_AGENT_STATUSES": json.dumps({"main-pane": "blocked"}),
+                "HERDR_PROMPT_WAIT_ERROR_CODES": json.dumps({"main-pane": "agent_blocked"}),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(json.loads(result.stdout)["submitted"])
+        records = [json.loads(line) for line in ledger_path.read_text().splitlines()]
+        self.assertEqual(len(records), 1)
+        self.assertFalse(records[0]["delivered"])
+        self.assertIn("agent_blocked", records[0]["undeliverable_reason"])
+        self.assertEqual(records[0]["message"], "verified end to end.")
+
     def test_prompt_delivery_args_excludes_blocked_from_a_blocked_starts_until_list(
         self,
     ) -> None:

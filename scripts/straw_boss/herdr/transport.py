@@ -134,6 +134,9 @@ def prompt_delivery_args(pane_id: str, text: str, pre_send_status: str | None) -
 # herdr codes that mean "the target simply is not there any more", as opposed to
 # "the target is there but is not who this dispatch expects".
 ENDPOINT_MISSING_ERROR_CODES = frozenset({"agent_not_found", "pane_not_found"})
+# herdr codes that reject a prompt before any input reaches the pane. Stalls and
+# timeouts are excluded: their input was sent and may still sit in the composer.
+PROMPT_REFUSED_ERROR_CODES = frozenset({"agent_blocked"})
 
 
 class EndpointUnavailableError(ValueError):
@@ -249,7 +252,33 @@ def send_instruction_message(
         sender_instruction=sender_instruction,
         in_reply_to=in_reply_to,
     )
-    run_herdr(prompt_delivery_args(endpoint.pane_id, envelope, pre_send_status))
+    try:
+        run_herdr(prompt_delivery_args(endpoint.pane_id, envelope, pre_send_status))
+    except HerdrCommandError as exc:
+        if exc.error_code not in PROMPT_REFUSED_ERROR_CODES:
+            raise
+        # The session validated live a moment ago, so this is the pane refusing
+        # the hand-off rather than a missing target -- `agent_blocked` while it
+        # waits on its own prompt. herdr sends no input on that refusal, so the
+        # message is recoverable and worth resending, and the body has to
+        # survive: without this the message is lost outright, a worse outcome
+        # than the unreachable path above, which at least records it.
+        append_delivery_record(
+            path,
+            source,
+            endpoint,
+            intent,
+            message,
+            delivery_id,
+            in_reply_to,
+            normalized_references,
+            undeliverable_reason=str(exc),
+        )
+        raise EndpointUnavailableError(
+            f"{endpoint.target} did not accept the hand-off ({exc}); the message is "
+            f"recorded undelivered in the delivery ledger as {delivery_id} and can be "
+            f"resent once that pane is free"
+        ) from exc
     append_delivery_record(
         path,
         source,
