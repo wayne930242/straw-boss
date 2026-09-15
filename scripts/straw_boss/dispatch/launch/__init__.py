@@ -265,7 +265,7 @@ class _LaunchAttempt:
         provider_args = self._provider_args()
         pane_label_warning: str | None = None
         try:
-            pane_id, tab_id = create_worker_pane(self.instruction)
+            pane_id, tab_id, pane_layout_warning = create_worker_pane(self.instruction)
         except ValueError as exc:
             # No pane survived this, including the tab-mismatch case that closes
             # its own; there is nothing to keep and nothing to read.
@@ -341,6 +341,7 @@ class _LaunchAttempt:
             "session_id": session_id,
             "herdr_terminal_id": terminal_id,
             "pane_label_warning": pane_label_warning,
+            "pane_layout_warning": pane_layout_warning,
             "session_fingerprint_warning": session_fingerprint_warning,
         }
 
@@ -494,6 +495,7 @@ def launch(
         for warning in (
             tab_label_warning,
             landed.get("pane_label_warning"),
+            landed.get("pane_layout_warning"),
             landed.get("session_fingerprint_warning"),
             decoy,
             confirm,

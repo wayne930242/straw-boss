@@ -72,6 +72,85 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertEqual(receipt["pane_id"], "worker-pane")
         self.assertEqual(receipt["tab_id"], "tab-1")
 
+    def launch_calls_for_layout(
+        self, panes: list[dict[str, object]], splits: tuple[dict[str, object], ...] = ()
+    ) -> list[list[str]]:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "layout-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_LIVE_SESSION": str(instruction["session_id"]),
+                "HERDR_LAYOUT_PANES": json.dumps(panes),
+                "HERDR_LAYOUT_SPLITS": json.dumps(list(splits)),
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return [json.loads(line) for line in capture.read_text().splitlines()]
+
+    @staticmethod
+    def pane(pane_id: str, x: int, width: int, y: int = 0, height: int = 60) -> dict[str, object]:
+        return {"pane_id": pane_id, "rect": {"x": x, "y": y, "width": width, "height": height}}
+
+    def test_fifth_worker_stacks_under_the_oldest_full_height_column(self) -> None:
+        calls = self.launch_calls_for_layout(
+            [
+                self.pane("main-pane", 0, 40),
+                self.pane("w4", 40, 40),
+                self.pane("w3", 80, 40),
+                self.pane("w2", 120, 40),
+                self.pane("w1", 160, 40),
+            ]
+        )
+        split = next(call for call in calls if call[:2] == ["pane", "split"])
+        self.assertEqual(split[2:5], ["w1", "--direction", "down"])
+        self.assertFalse(any(call[:2] == ["pane", "resize"] for call in calls))
+
+    def test_next_worker_skips_a_column_that_is_already_stacked(self) -> None:
+        calls = self.launch_calls_for_layout(
+            [
+                self.pane("main-pane", 0, 40),
+                self.pane("w4", 40, 40),
+                self.pane("w3", 80, 40),
+                self.pane("w2", 120, 40),
+                self.pane("w1", 160, 40, height=30),
+                self.pane("w5", 160, 40, y=30, height=30),
+            ]
+        )
+        split = next(call for call in calls if call[:2] == ["pane", "split"])
+        self.assertEqual(split[2:5], ["w2", "--direction", "down"])
+
+    def test_worker_opens_a_new_column_once_every_column_is_stacked(self) -> None:
+        panes = [self.pane("main-pane", 0, 40)]
+        for index in range(4):
+            panes.append(self.pane(f"top-{index}", 40 + index * 40, 40, height=30))
+            panes.append(self.pane(f"bottom-{index}", 40 + index * 40, 40, y=30, height=30))
+        calls = self.launch_calls_for_layout(panes)
+        split = next(call for call in calls if call[:2] == ["pane", "split"])
+        self.assertEqual(split[2:5], ["main-pane", "--direction", "right"])
+
+    def test_new_column_rebalances_every_column_to_an_equal_width(self) -> None:
+        # main | w2 | w1 after two halving splits of main: widths 50, 50, 100.
+        calls = self.launch_calls_for_layout(
+            [self.pane("main-pane", 0, 50), self.pane("w2", 50, 50), self.pane("w1", 100, 100)],
+            [
+                {"direction": "right", "ratio": 0.5, "rect": {"x": 0, "y": 0, "width": 200, "height": 60}},
+                {"direction": "right", "ratio": 0.5, "rect": {"x": 0, "y": 0, "width": 100, "height": 60}},
+            ],
+        )
+        resizes = [call for call in calls if call[:2] == ["pane", "resize"]]
+        self.assertEqual(
+            resizes,
+            [["pane", "resize", "--pane", "w2", "--direction", "right", "--amount", "0.1667"]],
+        )
+
     def test_launcher_applies_claude_profile_model_effort_and_advisor(self) -> None:
         instruction_path, _ = self.write_dispatch(
             "claude",
