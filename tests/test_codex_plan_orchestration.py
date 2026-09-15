@@ -61,6 +61,112 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         self.assertNotIn("SendMessage", skill)
         self.assertNotIn("herdr agent prompt", skill)
 
+    def dispatched_plan_task(self, task_id: str = "t1") -> None:
+        """Mark a plan task dispatched, the state a running task is in."""
+        plan = json.loads(self.plan_path.read_text())
+        for task in plan["tasks"]:
+            if task["task_id"] == task_id:
+                task["status"] = "dispatched"
+        self.plan_path.write_text(json.dumps(plan, indent=2) + "\n")
+
+    def test_plan_route_refuses_a_writer_that_does_not_own_the_task(self) -> None:
+        # Addressing a task by --plan/--task lets anything that knows the slug
+        # and id retire it. A nested review in another worktree closed a
+        # running task that way, so the named route holds to the same sender
+        # check the instruction route uses whenever an owning instruction
+        # exists.
+        self.dispatched_plan_task("t1")
+        instruction = self.home / ".straw-boss" / "dispatch" / "api--t1.json"
+        instruction.write_text(
+            json.dumps(
+                {
+                    "app": "api",
+                    "mode": "herdr-pane",
+                    "plan": self.plan_slug,
+                    "task_id": "t1",
+                    "status": "in-progress",
+                    "herdr_pane_id": "worker:pane",
+                    "agent_kind": "claude",
+                    "session_id": "worker-session",
+                }
+            )
+            + "\n"
+        )
+
+        report = self.run_script(
+            "report-task-status.py",
+            "--plan",
+            self.plan_slug,
+            "--task",
+            "t1",
+            "--status",
+            "done",
+            "--note",
+            "A nested review in another worktree calling itself finished.",
+            extra_env={"HERDR_PANE_ID": "somebody-else:pane"},
+        )
+
+        self.assertNotEqual(report.returncode, 0)
+        self.assertFalse((self.plan_dir / "status" / "t1.json").exists())
+
+    def test_clear_task_status_restores_a_wrongly_retired_task(self) -> None:
+        self.dispatched_plan_task("t1")
+        status_path = self.plan_dir / "status" / "t1.json"
+        status_path.write_text(
+            json.dumps({"status": "done", "note": "written by something else"}) + "\n"
+        )
+
+        cleared = self.run_script(
+            "clear-task-status.py",
+            "--plan",
+            self.plan_slug,
+            "--task",
+            "t1",
+            "--note",
+            "Retired by a nested review while the worker was still running.",
+        )
+
+        self.assertEqual(cleared.returncode, 0, cleared.stderr)
+        self.assertFalse(status_path.exists())
+        # Printing the payload is not keeping it: the copy has to outlive the
+        # session so a later citation still resolves.
+        copies = sorted((self.plan_dir / "status").glob("t1.cleared-*.json"))
+        self.assertEqual(len(copies), 1)
+        saved = json.loads(copies[0].read_text())
+        self.assertEqual(saved["discarded"]["note"], "written by something else")
+        self.assertIn("nested review", saved["reason"])
+        self.assertIn(str(copies[0]), cleared.stdout)
+
+    def test_clear_task_status_refuses_a_checkpoint_and_a_finished_task(self) -> None:
+        status_path = self.plan_dir / "status" / "t1.json"
+
+        # A checkpoint belongs to the worker; discarding it would strand the
+        # answer the worker is waiting for.
+        self.dispatched_plan_task("t1")
+        status_path.write_text(
+            json.dumps({"status": "awaiting-main-agent", "note": "needs an answer"}) + "\n"
+        )
+        checkpoint = self.run_script(
+            "clear-task-status.py", "--plan", self.plan_slug, "--task", "t1",
+            "--note", "trying to discard a checkpoint",
+        )
+        self.assertNotEqual(checkpoint.returncode, 0)
+        self.assertTrue(status_path.exists())
+
+        # A task plan.json already retired has no running dispatch to restore.
+        plan = json.loads(self.plan_path.read_text())
+        for task in plan["tasks"]:
+            if task["task_id"] == "t1":
+                task["status"] = "done"
+        self.plan_path.write_text(json.dumps(plan, indent=2) + "\n")
+        status_path.write_text(json.dumps({"status": "done", "note": "real"}) + "\n")
+        finished = self.run_script(
+            "clear-task-status.py", "--plan", self.plan_slug, "--task", "t1",
+            "--note", "trying to reopen a finished task",
+        )
+        self.assertNotEqual(finished.returncode, 0)
+        self.assertTrue(status_path.exists())
+
     def run_script(
         self,
         script_name: str,

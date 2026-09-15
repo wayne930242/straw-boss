@@ -305,7 +305,14 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("references/dispatch-mechanics.md#resolve-mode-and-work-route", dispatch)
         for flag in ("--agent-profile", "--agent-model", "--agent-effort", "--advisor-model"):
             self.assertIn(flag, mechanics)
-        self.assertIn("Codex records no advisor", mechanics)
+        # Assert the rule, not one provider's name in it: this line went stale
+        # the moment Antigravity joined the sentence, and a wording-bound
+        # assertion fails without telling anyone what actually changed.
+        advisor_rule = next(
+            line for line in mechanics.splitlines() if "record no advisor" in line or "records no advisor" in line
+        )
+        self.assertIn("Codex", advisor_rule)
+        self.assertIn("incompatible combination", advisor_rule)
         self.assertIn("Claude's optional native advisor", mechanics)
         self.assertIn("must never be more permissive", mechanics)
 

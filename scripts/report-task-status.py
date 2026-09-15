@@ -59,6 +59,7 @@ from straw_boss.dispatch.state import (
     load_json,
     plan_status_path,
     resolve_instruction_status_path,
+    straw_boss_root,
 )
 from straw_boss.herdr.transport import (
     send_instruction_message,
@@ -106,6 +107,34 @@ def validate_status_sender_when_ready(
             sleep(min(poll_interval_seconds, remaining))
 
 
+
+def live_instruction_for_plan_task(plan_slug: str | None, task_id: str | None) -> Path | None:
+    """The dispatch instruction that owns this plan task, if one exists.
+
+    Only unarchived instructions count: an archived one belongs to a finished
+    attempt and must not gate a fresh report.
+    """
+    if plan_slug is None or task_id is None:
+        return None
+    dispatch_dir = straw_boss_root() / "dispatch"
+    if not dispatch_dir.is_dir():
+        return None
+    for candidate in sorted(dispatch_dir.glob("*.json")):
+        if candidate.name.endswith(".launch.json"):
+            continue
+        try:
+            instruction = load_json(candidate)
+        except (OSError, ValueError):
+            continue
+        if (
+            isinstance(instruction, dict)
+            and instruction.get("plan") == plan_slug
+            and instruction.get("task_id") == task_id
+        ):
+            return candidate
+    return None
+
+
 def resolve_status_path(plan_slug: str | None, task_id: str | None, instruction_path: str | None) -> Path:
     using_plan_task = plan_slug is not None and task_id is not None
     using_instruction = instruction_path is not None
@@ -144,6 +173,16 @@ def report_status(
 
     if instruction_path is not None:
         validate_status_sender_when_ready(instruction_path, status)
+    else:
+        # The --plan/--task route addresses a task by name, so anything that
+        # knows the slug and id can write any task's terminal status -- a
+        # nested review agent in another worktree closed a running task that
+        # way. When the task has a live dispatch instruction, hold this route
+        # to the same sender check the instruction route uses; when it has
+        # none (a task dispatched without one), leave the route as it was.
+        owner = live_instruction_for_plan_task(plan_slug, task_id)
+        if owner is not None:
+            validate_status_sender_when_ready(str(owner), status)
 
     path = resolve_status_path(plan_slug, task_id, instruction_path)
 
