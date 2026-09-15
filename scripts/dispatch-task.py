@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from straw_boss.dispatch.permission import detect_claude_tier
 from straw_boss.dispatch.state import (
     confirm_dispatch,
     contract_path,
@@ -162,6 +163,7 @@ def write_instruction(
     role: str | None,
     agent_kind: str,
     main_agent_kind: str,
+    main_agent_permission_tier: str | None,
     agent_profile: str | None,
     agent_model: str | None,
     agent_effort: str | None,
@@ -212,6 +214,13 @@ def write_instruction(
         assert task_id is not None
         check_dispatchable(plan_slug, task_id)
 
+    # Mirror the main agent's restriction tier. Detected here rather than left to
+    # each caller: the requirement is mandatory, and a caller that forgets it
+    # launches a worker that stops to ask about everything.
+    permission_tier = main_agent_permission_tier
+    if permission_tier is None and main_agent_kind == "claude":
+        permission_tier = detect_claude_tier()
+
     install_runtime_launcher()
     session_id = str(uuid.uuid4()) if agent_kind == "claude" else None
     generated_contract_path = contract_path(path)
@@ -228,6 +237,7 @@ def write_instruction(
         "session_id": session_id,
         "agent_kind": agent_kind,
         "main_agent_kind": main_agent_kind,
+        "main_agent_permission_tier": permission_tier,
         "agent_profile": agent_profile,
         "agent_model": agent_model,
         "agent_effort": agent_effort,
@@ -334,6 +344,12 @@ def main() -> int:
         "the sender/receiver pair and must not be inferred from --agent-kind",
     )
     write_p.add_argument(
+        "--main-agent-permission-tier",
+        default=None,
+        choices=("unrestricted", "guarded-write", "read-only"),
+        help="restriction tier to mirror onto the agent; omit to detect the main agent's own",
+    )
+    write_p.add_argument(
         "--agent-profile",
         default=None,
         help="provider-native named profile: Claude --agent or Codex --profile",
@@ -433,6 +449,7 @@ def main() -> int:
                 role=args.role,
                 agent_kind=args.agent_kind,
                 main_agent_kind=args.main_agent_kind,
+                main_agent_permission_tier=args.main_agent_permission_tier,
                 agent_profile=args.agent_profile,
                 agent_model=args.agent_model,
                 agent_effort=args.agent_effort,

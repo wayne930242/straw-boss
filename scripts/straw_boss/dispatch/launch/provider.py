@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from straw_boss.dispatch.permission import tier_flags
+
 
 def _option_present(args: list[str], flags: tuple[str, ...]) -> bool:
     return any(
@@ -36,6 +38,13 @@ def provider_profile_args(
             raise ValueError(f"dispatch instruction has invalid {label}")
 
     resolved: list[str] = []
+    # Mirror the main agent's restriction tier before anything else, so a worker
+    # never launches more guarded than the session that dispatched it. A kind
+    # with no documented flag for the tier keeps the provider default, which is
+    # never more permissive than what is being mirrored.
+    for flag in tier_flags(instruction.get("main_agent_permission_tier"), agent_kind):
+        if not _option_present(extra_args, (flag,)):
+            resolved.append(flag)
     if agent_kind == "claude":
         mappings = (
             (profile, ("--agent",)),
