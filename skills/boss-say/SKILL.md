@@ -1,6 +1,6 @@
 ---
 name: boss-say
-description: Use to route one task, an independent batch, or a dependency plan through Straw Boss.
+description: Use when the user or prompt explicitly names boss say, or when work spans multiple managed apps.
 ---
 
 ## Route the work
