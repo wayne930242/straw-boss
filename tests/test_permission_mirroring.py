@@ -27,11 +27,13 @@ class PermissionMirroringTests(unittest.TestCase):
             tier_flags(UNRESTRICTED, "codex"), ("--dangerously-bypass-approvals-and-sandbox",)
         )
         self.assertEqual(tier_flags(READ_ONLY, "codex"), ("--sandbox", "read-only"))
+        self.assertEqual(tier_flags(UNRESTRICTED, "agy"), ("--dangerously-skip-permissions",))
+        self.assertEqual(tier_flags(READ_ONLY, "agy"), ("--mode", "plan"))
 
     def test_an_undocumented_pairing_keeps_the_provider_default(self) -> None:
         # Leaving the default is never more permissive than the tier being
         # mirrored, so an unmapped kind must not be guessed at or refused.
-        self.assertEqual(tier_flags(UNRESTRICTED, "agy"), ())
+        self.assertEqual(tier_flags(GUARDED_WRITE, "agy"), ())
         self.assertEqual(tier_flags(GUARDED_WRITE, "claude"), ())
 
     def test_an_unknown_tier_adds_nothing(self) -> None:

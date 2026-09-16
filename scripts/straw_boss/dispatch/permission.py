@@ -31,6 +31,8 @@ PERMISSION_FLAGS: dict[str, tuple[str, ...]] = {
         "--sandbox",
         "--ask-for-approval",
     ),
+    "agy": ("--dangerously-skip-permissions", "--mode", "--sandbox"),
+    "antigravity": ("--dangerously-skip-permissions", "--mode", "--sandbox"),
 }
 
 # skills/dispatching-work/references/dispatch-mechanics.md's "Permission mapping".
@@ -40,6 +42,8 @@ TIER_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {
     UNRESTRICTED: {
         "claude": ("--dangerously-skip-permissions",),
         "codex": ("--dangerously-bypass-approvals-and-sandbox",),
+        "agy": ("--dangerously-skip-permissions",),
+        "antigravity": ("--dangerously-skip-permissions",),
     },
     GUARDED_WRITE: {
         "codex": ("--sandbox", "workspace-write", "--ask-for-approval", "on-request"),
@@ -47,6 +51,8 @@ TIER_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {
     READ_ONLY: {
         "claude": ("--permission-mode", "plan"),
         "codex": ("--sandbox", "read-only"),
+        "agy": ("--mode", "plan"),
+        "antigravity": ("--mode", "plan"),
     },
 }
 

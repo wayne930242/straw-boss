@@ -45,11 +45,11 @@ The brief follows [Write the brief](../SKILL.md#write-the-brief).
 
 Mirror the main agent's restriction tier within the current authorization; the dispatched agent must never be more permissive.
 
-| Tier | Claude | Codex |
-|---|---|---|
-| unrestricted | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` |
-| guarded-write | default/`auto`/`acceptEdits`/`dontAsk` | `--sandbox workspace-write --ask-for-approval on-request` |
-| read-only | `plan`/`manual` | `--sandbox read-only` |
+| Tier | Claude | Codex | Antigravity (`agy`) |
+|---|---|---|---|
+| unrestricted | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| guarded-write | default/`auto`/`acceptEdits`/`dontAsk` | `--sandbox workspace-write --ask-for-approval on-request` | default/`--mode accept-edits` |
+| read-only | `plan`/`manual` | `--sandbox read-only` | `--mode plan` |
 
 Read the main provider's active configuration and process arguments; for Claude, use `ps -p "$CLAUDE_PID" -ww -o args=`.
 Preserve each flag as one argument.
