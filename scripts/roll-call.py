@@ -43,7 +43,9 @@ from straw_boss.dispatch.state import (
     straw_boss_root,
 )
 from straw_boss.herdr.transport import run_herdr
-from straw_boss.herdr.session import agent_matches_identity, session_value
+from straw_boss.herdr.session import (
+    agent_matches_identity, claude_registry_session, session_value,
+)
 from straw_boss.orchestrator import live_agents
 
 
@@ -254,6 +256,28 @@ class LiveAgents:
         )
 
 
+def coordinator_live(instruction: dict[str, Any], live: LiveAgents) -> bool:
+    """Whether the recorded coordinator conversation still holds its own pane.
+
+    Herdr exposes no `agent_session` for many Claude panes, so its live index on
+    its own reports every such coordinator as gone. The session registry keyed
+    on the pane's foreground claude process is the corroboration dispatch
+    delivery already falls back to, and it answers the same question here.
+    """
+    session = str(instruction.get("main_agent_session_id") or "")
+    if session in live.by_session:
+        return True
+    pane = instruction.get("main_agent_herdr_pane_id")
+    if instruction.get("main_agent_kind") != "claude" or not pane:
+        return False
+    if str(pane) not in live.panes:
+        return False
+    try:
+        return claude_registry_session(str(pane)) == session
+    except (ValueError, OSError):
+        return False
+
+
 def dispatch_row(
     path: Path, mine: tuple[str, str] | None, live: LiveAgents
 ) -> tuple[dict[str, Any], set[str]]:
@@ -311,8 +335,11 @@ def dispatch_row(
         if reported not in TERMINAL_STATUSES:
             verdict = "routing-mismatch"
         note = f"{note}; worker moved to pane {live_pane} (instruction records {recorded_pane})"
-    if main_session and str(main_session) not in live.by_session:
-        note = f"{note}; its coordinator session is no longer live"
+    if main_session and not coordinator_live(instruction, live):
+        note = (
+            f"{note}; its coordinator session is no longer live -- the session now in "
+            "that pane takes the dispatch over through adopt-dispatch.py"
+        )
 
     return (
         {
@@ -484,6 +511,11 @@ def current_fingerprints() -> tuple[str, str]:
         if str(agent.get("pane_id")) != pane_id:
             continue
         session = session_value(agent) or ""
+        if not session and agent.get("agent") == "claude":
+            try:
+                session = claude_registry_session(pane_id) or ""
+            except (ValueError, OSError):
+                session = ""
         terminal = agent.get("terminal_id")
         terminal = terminal if isinstance(terminal, str) else ""
         if not session and not terminal:
