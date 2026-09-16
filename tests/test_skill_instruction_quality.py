@@ -572,6 +572,52 @@ class SkillInstructionQualityTests(unittest.TestCase):
             normalized(ROOT / "skills/i-am-orchestrator/SKILL.md"),
         )
 
+    def test_naming_the_anchor_settles_where_its_checkpoint_runs(self) -> None:
+        # Deciding this at plan time is what makes one checkpoint per group
+        # possible; deferring it buys one review per task by default.
+        graph = normalized(ROOT / "skills/choosing-graph/SKILL.md")
+        self.assertIn("Naming the anchor settles where its checkpoint runs", graph)
+        self.assertIn("take a single checkpoint dispatch over the whole group", graph)
+        self.assertIn("carries its own", graph)
+        # The anchor names the app's own verification commands, which is what
+        # makes one run over the group's integrated result the cheaper shape.
+        self.assertIn("test script, lint, and type check", graph)
+        self.assertIn("A repo-wide command returns the same verdict", graph)
+
+        boss_say = normalized(ROOT / "skills/boss-say/SKILL.md")
+        self.assertIn("Name each task's anchor here", boss_say)
+        self.assertIn(
+            "one checkpoint task depending on the tasks it covers", boss_say
+        )
+
+        # The shared decision reaches the worker through the write command.
+        mechanics = normalized(
+            ROOT / "skills/dispatching-work/references/dispatch-mechanics.md"
+        )
+        self.assertIn("--shared-checkpoint", mechanics)
+
+    def test_a_shared_checkpoint_leaves_the_worker_out_of_its_own_review(self) -> None:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            from straw_boss.dispatch import state as dispatch_state
+        finally:
+            sys.path.pop(0)
+
+        path = Path("/home/boss/.straw-boss/dispatch/app--slug.json")
+        for kind in ("claude", "codex", "agy"):
+            with self.subTest(agent_kind=kind):
+                shared = dispatch_state.render_dispatch_contract(
+                    path, agent_kind=kind, shared_checkpoint=True
+                )
+                self.assertNotIn("review disposition", shared)
+                self.assertIn(
+                    "the main agent dispatches this anchor's acceptance checkpoint separately",
+                    shared,
+                )
+                # A task carrying its own checkpoint still reports a disposition.
+                own = dispatch_state.render_dispatch_contract(path, agent_kind=kind)
+                self.assertIn("review disposition", own)
+
 
 if __name__ == "__main__":
     unittest.main()

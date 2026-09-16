@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from straw_boss.dispatch.permission import tier_flags
+from straw_boss.dispatch.permission import permission_flags, tier_flags
 
 
 def _option_present(args: list[str], flags: tuple[str, ...]) -> bool:
@@ -41,10 +41,14 @@ def provider_profile_args(
     # Mirror the main agent's restriction tier before anything else, so a worker
     # never launches more guarded than the session that dispatched it. A kind
     # with no documented flag for the tier keeps the provider default, which is
-    # never more permissive than what is being mirrored.
-    for flag in tier_flags(instruction.get("main_agent_permission_tier"), agent_kind):
-        if not _option_present(extra_args, (flag,)):
-            resolved.append(flag)
+    # never more permissive than what is being mirrored. A caller that writes
+    # any permission flag of its own owns the whole slot: matching only the
+    # identical flag used to send `--permission-mode plan` alongside a mirrored
+    # `--dangerously-skip-permissions`.
+    if not _option_present(extra_args, permission_flags(agent_kind)):
+        resolved.extend(
+            tier_flags(instruction.get("main_agent_permission_tier"), agent_kind)
+        )
     if agent_kind == "claude":
         mappings = (
             (profile, ("--agent",)),

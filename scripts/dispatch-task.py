@@ -171,6 +171,7 @@ def write_instruction(
     main_agent_pane_id: str | None,
     main_agent_session_id: str | None,
     main_agent_terminal_id: str | None,
+    shared_checkpoint: bool = False,
     coworker_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if mode != "herdr-pane":
@@ -225,7 +226,11 @@ def write_instruction(
     session_id = str(uuid.uuid4()) if agent_kind == "claude" else None
     generated_contract_path = contract_path(path)
     contract = render_dispatch_contract(
-        path, coworker_context, mode=mode, agent_kind=agent_kind
+        path,
+        coworker_context,
+        mode=mode,
+        agent_kind=agent_kind,
+        shared_checkpoint=shared_checkpoint,
     )
     contract_digest = sha256_text(contract)
     payload: dict[str, Any] = {
@@ -323,6 +328,12 @@ def main() -> int:
     write_p.add_argument("--plan", default=None, help="plan slug, if this is a plan task")
     write_p.add_argument("--task-id", default=None, help="this task's task_id within the plan")
     write_p.add_argument(
+        "--shared-checkpoint",
+        action="store_true",
+        help="this anchor's acceptance checkpoint runs as its own dispatch, so the worker "
+        "reports its completion reference and evidence instead of a review disposition",
+    )
+    write_p.add_argument(
         "--role",
         default=None,
         help="short workroom/role label (e.g. database, frontend, api) the caller already "
@@ -346,8 +357,9 @@ def main() -> int:
     write_p.add_argument(
         "--main-agent-permission-tier",
         default=None,
-        choices=("unrestricted", "guarded-write", "read-only"),
-        help="restriction tier to mirror onto the agent; omit to detect the main agent's own",
+        choices=("unrestricted", "guarded-write", "read-only", "none"),
+        help="restriction tier to mirror onto the agent; omit to inherit the main agent's "
+        "own, name a tier to override it, or pass 'none' to launch with no permission flag",
     )
     write_p.add_argument(
         "--agent-profile",
@@ -457,6 +469,7 @@ def main() -> int:
                 main_agent_pane_id=args.main_agent_pane_id,
                 main_agent_session_id=args.main_agent_session_id,
                 main_agent_terminal_id=args.main_agent_terminal_id,
+                shared_checkpoint=args.shared_checkpoint,
                 coworker_context=coworker_context,
             )
         else:

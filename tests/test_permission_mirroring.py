@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from straw_boss.dispatch.launch.provider import provider_profile_args
 from straw_boss.dispatch.permission import (
     GUARDED_WRITE,
+    NO_MIRROR,
     READ_ONLY,
     UNRESTRICTED,
     detect_claude_tier,
@@ -63,6 +64,26 @@ class PermissionMirroringTests(unittest.TestCase):
         args = provider_profile_args(instruction, ["--dangerously-skip-permissions"])
         # The caller's own copy is returned; the mirror must not add a second.
         self.assertEqual(args.count("--dangerously-skip-permissions"), 1)
+
+    def test_a_different_caller_permission_flag_replaces_the_mirrored_one(self) -> None:
+        # Matching only the identical flag left the worker carrying both
+        # `--permission-mode plan` and `--dangerously-skip-permissions`.
+        instruction = {"agent_kind": "claude", "main_agent_permission_tier": UNRESTRICTED}
+        args = provider_profile_args(instruction, ["--permission-mode", "plan"])
+        self.assertNotIn("--dangerously-skip-permissions", args)
+
+        codex = {"agent_kind": "codex", "main_agent_permission_tier": READ_ONLY}
+        codex_args = provider_profile_args(
+            codex, ["--dangerously-bypass-approvals-and-sandbox"]
+        )
+        self.assertNotIn("--sandbox", codex_args)
+
+    def test_no_mirror_launches_with_no_permission_flag(self) -> None:
+        for kind in ("claude", "codex"):
+            with self.subTest(agent_kind=kind):
+                instruction = {"agent_kind": kind, "main_agent_permission_tier": NO_MIRROR}
+                self.assertEqual(tier_flags(NO_MIRROR, kind), ())
+                self.assertEqual(provider_profile_args(instruction, []), [])
 
 
 if __name__ == "__main__":

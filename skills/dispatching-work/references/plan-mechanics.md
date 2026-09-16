@@ -16,10 +16,13 @@ Create sibling `status/` and `artifacts/` directories at the same time.
   "status": "planning",
   "tasks": [
     {"task_id": "t1", "app": "api", "description": "Required outcome", "depends_on": [], "status": "planned"},
-    {"task_id": "t2", "app": "web", "description": "Dependent outcome", "depends_on": ["t1"], "status": "planned"}
+    {"task_id": "t2", "app": "api", "description": "Second api outcome", "depends_on": [], "status": "planned"},
+    {"task_id": "c1", "app": "api", "description": "Checkpoint over t1 and t2", "depends_on": ["t1", "t2"], "status": "planned"}
   ]
 }
 ```
+
+A [checkpoint task](../../boss-say/SKILL.md#plan-and-schedule) is an ordinary task that depends on the group whose checkpoint it shares, so it becomes ready once they are all `done` and holds a slot while it runs.
 
 `plan.status` moves from `planning` to `in-progress` to `done` once every task is terminal.
 Each task moves from `planned` to `dispatched` to `done`/`failed`/`cancelled`.

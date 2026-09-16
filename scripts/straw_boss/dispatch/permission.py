@@ -16,6 +16,23 @@ UNRESTRICTED = "unrestricted"
 GUARDED_WRITE = "guarded-write"
 READ_ONLY = "read-only"
 
+# A caller's deliberate "launch with no permission flag at all", as opposed to a
+# tier that could not be read. Both add no flags; only this one says so on
+# purpose, which is what the archived instruction has to be able to show.
+NO_MIRROR = "none"
+
+# Every flag that sets a provider's permission posture. Mirroring fills one
+# slot, so a caller writing any of these for itself replaces the mirrored flag
+# rather than stacking a second, conflicting one beside it.
+PERMISSION_FLAGS: dict[str, tuple[str, ...]] = {
+    "claude": ("--dangerously-skip-permissions", "--permission-mode"),
+    "codex": (
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--sandbox",
+        "--ask-for-approval",
+    ),
+}
+
 # skills/dispatching-work/references/dispatch-mechanics.md's "Permission mapping".
 # A kind absent from a tier has no documented flag: the launcher leaves it at the
 # provider default, which is never more permissive than the tier being mirrored.
@@ -80,3 +97,8 @@ def tier_flags(tier: str | None, agent_kind: str) -> tuple[str, ...]:
     if tier is None:
         return ()
     return TIER_FLAGS.get(tier, {}).get(agent_kind, ())
+
+
+def permission_flags(agent_kind: str) -> tuple[str, ...]:
+    """Every flag that sets `agent_kind`'s permission posture."""
+    return PERMISSION_FLAGS.get(agent_kind, ())

@@ -23,6 +23,7 @@ from straw_boss.dispatch.launch.agent import (
     wait_for_agent_session,
 )
 from straw_boss.dispatch.launch.pane import (
+    close_worker_pane,
     create_worker_pane,
     name_task_tab,
     name_worker_pane,
@@ -384,7 +385,11 @@ def run_attempts(
             }
             if exc.pane_id and not exc.keep_pane:
                 try:
-                    run_herdr(["pane", "close", exc.pane_id])
+                    balance_warning = close_worker_pane(
+                        exc.pane_id, instruction.get("main_agent_herdr_pane_id")
+                    )
+                    if balance_warning:
+                        record["pane_balance_warning"] = balance_warning
                 except ValueError as close_error:
                     record["pane_close_error"] = str(close_error)
             attempts.append(record)

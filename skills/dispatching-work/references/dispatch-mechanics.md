@@ -25,6 +25,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --app <app> --slug <slug> --task "<brief>" \
   --mode herdr-pane --repo-root <verified-cwd> \
   [--batch <batch>] [--plan <plan> --task-id <task>] [--role <workroom>] \
+  [--shared-checkpoint] \
   --agent-kind claude|codex|agy --main-agent-kind claude|codex|agy \
   [--agent-profile <profile>] [--agent-model <model>] \
   [--agent-effort <effort>] [--advisor-model <claude-model>] \
@@ -34,6 +35,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
 
 Supply the required provider fingerprint from [Record the main agent before launch](cross-session-coordination.md#record-the-main-agent-before-launch).
 `--role` is an already-known workroom label such as `database` or `frontend`; it distinguishes tasks sharing an app.
+`--shared-checkpoint` is the anchor decision from [Reality anchors](../../choosing-graph/SKILL.md#reality-anchors): the contract then asks this worker for its completion reference and evidence, and the group's checkpoint task reports the disposition.
 
 The command creates a pending `<app>--<slug>.json`, immutable `.contract.md`, and recorded SHA-256 digest.
 It generates identity and reporting mechanics.
@@ -52,6 +54,9 @@ Mirror the main agent's restriction tier within the current authorization; the d
 Read the main provider's active configuration and process arguments; for Claude, use `ps -p "$CLAUDE_PID" -ww -o args=`.
 Preserve each flag as one argument.
 An uncertain restriction tier must be resolved before launch.
+
+`--main-agent-permission-tier` carries the three cases: omit it to inherit the main agent's own tier, name a tier to override it, and pass `none` to launch with no permission flag.
+A launcher `--agent-arg` permission flag owns that slot on its own, so the caller's flag replaces the mirrored one instead of joining it.
 
 ## Interactive herdr launch
 
@@ -140,6 +145,17 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/recover-task-status.py" \
 The command validates the live main agent, confirms the worker pane is unreachable, and records `recovered_by_main_agent`.
 It refuses a reachable worker or an existing terminal status.
 Determine the outcome from work evidence; pane closure alone establishes only reachability.
+
+## Close a worker pane
+
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/close-worker-pane.py" \
+  --instruction-path <path>
+```
+
+The command validates the live main agent, requires the dispatch's own terminal status, closes the pane, and rebalances the surviving columns to equal widths.
+Closing a column otherwise leaves its width to whichever neighbour absorbs it, so a tab balanced at every split widens at every close.
+A failed rebalance returns `balance_warning` on an otherwise successful close.
 
 ## Worker-owned coworker
 

@@ -1527,6 +1527,75 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertEqual(lock["holder_instruction_path"], str(instruction_path))
         self.assertNotIn("holder_boss", lock)
 
+    def close_worker_pane_calls(
+        self, status: str, layout_panes: list[dict[str, object]], splits: list[dict[str, object]]
+    ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        stem = instruction_path.name.removesuffix(".json")
+        instruction_path.with_name(f"{stem}.status.json").write_text(
+            json.dumps({"status": status, "note": "reported by the worker"}) + "\n"
+        )
+
+        fake_bin, capture = self.install_fake_herdr()
+        result = self.run_script(
+            "close-worker-pane.py",
+            "--instruction-path",
+            str(instruction_path),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+                "HERDR_LAYOUT_PANES": json.dumps(layout_panes),
+                "HERDR_LAYOUT_SPLITS": json.dumps(splits),
+            },
+        )
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        return result, calls
+
+    def test_closing_a_worker_pane_rebalances_the_columns_it_leaves(self) -> None:
+        # What the tab holds once the worker pane is gone: main and one column
+        # at widths 50 and 150, because the closed column's width went to its
+        # neighbour rather than being shared out.
+        result, calls = self.close_worker_pane_calls(
+            "done",
+            [
+                {"pane_id": "main-pane", "rect": {"x": 0, "y": 0, "width": 50, "height": 60}},
+                {"pane_id": "w1", "rect": {"x": 50, "y": 0, "width": 150, "height": 60}},
+            ],
+            [
+                {
+                    "direction": "right",
+                    "ratio": 0.25,
+                    "rect": {"x": 0, "y": 0, "width": 200, "height": 60},
+                }
+            ],
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(json.loads(result.stdout)["balance_warning"])
+        close_index = next(
+            index for index, call in enumerate(calls) if call[:2] == ["pane", "close"]
+        )
+        self.assertEqual(calls[close_index][2], "worker-pane")
+        resizes = [call for call in calls[close_index:] if call[:2] == ["pane", "resize"]]
+        self.assertEqual(
+            resizes,
+            [["pane", "resize", "--pane", "main-pane", "--direction", "right", "--amount", "0.2500"]],
+        )
+
+    def test_closing_refuses_a_worker_that_has_not_reported_a_terminal_status(self) -> None:
+        result, calls = self.close_worker_pane_calls(
+            "awaiting-user-input",
+            [{"pane_id": "main-pane", "rect": {"x": 0, "y": 0, "width": 200, "height": 60}}],
+            [],
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not terminal", result.stderr)
+        self.assertFalse(any(call[:2] == ["pane", "close"] for call in calls))
+
 
 class UnconfirmedDispatchDiagnosticTests(unittest.TestCase):
     """A launched-but-unconfirmed dispatch used to fail the worker's status

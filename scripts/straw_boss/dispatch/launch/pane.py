@@ -149,6 +149,19 @@ def balance_worker_columns(main_pane_id: str) -> str | None:
         return f"worker columns could not be balanced; dispatch continued: {exc}"
     return None
 
+def close_worker_pane(pane_id: str, main_pane_id: str | None) -> str | None:
+    """Close a worker pane and give the surviving columns their width back.
+
+    Whichever neighbour absorbs a closed column keeps its width, so a tab that
+    was balanced on every split drifts out of balance on every close. Balancing
+    here returns the same best-effort warning as the split path; the close
+    itself has already happened by then.
+    """
+    run_herdr(["pane", "close", pane_id])
+    if not main_pane_id:
+        return "surviving columns were not balanced: dispatch has no main-agent pane"
+    return balance_worker_columns(main_pane_id)
+
 def create_worker_pane(instruction: dict[str, object]) -> tuple[str, str, str | None]:
     """Split the worker's pane into the coordinator's tab.
 

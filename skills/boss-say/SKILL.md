@@ -40,6 +40,9 @@ A dependency carries the prerequisite's exact artifact path in both briefs when 
 
 For multiple app-rooted workers, write `~/.straw-boss/plans/<slug>/plan.json` using [Plan file](../dispatching-work/references/plan-mechanics.md#plan-file), and create its `status/` and `artifacts/` directories.
 Independent items have `depends_on: []`; dependent work uses the same plan with explicit edges.
+Name each task's anchor here, which settles [where its checkpoint runs](../choosing-graph/SKILL.md#reality-anchors).
+Every group whose checkpoint is shared gets one checkpoint task depending on the tasks it covers, and those tasks dispatch with their checkpoint marked shared.
+Correctness and contract findings return as fix tasks in the same plan, and each covered change-set takes its [disposition](../choosing-graph/SKILL.md#review-checkpoint) from that one result.
 State the slug and task summary.
 Resolve source-changing items' lifecycle modes through [Select the mode](../shipping-task/SKILL.md#select-the-mode), reusing a batch-wide answer where applicable.
 

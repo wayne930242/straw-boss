@@ -190,6 +190,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         agent_kind: str,
         task_id: str = "t1",
         main_agent_kind: str = "codex",
+        shared_checkpoint: bool = False,
     ) -> Path:
         args = [
             "dispatch-task.py",
@@ -219,6 +220,8 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             args.extend(["--main-agent-session-id", "main-session"])
         else:
             args.extend(["--main-agent-terminal-id", "terminal-main-pane"])
+        if shared_checkpoint:
+            args.append("--shared-checkpoint")
         result = self.run_script(*args)
         self.assertEqual(result.returncode, 0, result.stderr)
         instruction_path = Path(json.loads(result.stdout)["instruction_path"])
@@ -739,6 +742,23 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--main-agent-pane-id is required", result.stderr)
+
+    def contract_for(self, instruction_path: Path) -> str:
+        return Path(json.loads(instruction_path.read_text())["contract_path"]).read_text()
+
+    def test_a_shared_checkpoint_changes_what_the_plan_task_reports(self) -> None:
+        # The anchor decision travels as an argument, not as plan membership:
+        # two tasks in the same plan report differently because their anchors
+        # put their checkpoints in different places.
+        shared = self.contract_for(
+            self.dispatch("codex", task_id="t1", shared_checkpoint=True)
+        )
+        self.assertNotIn("review disposition", shared)
+        self.assertIn("completion reference and your verification evidence", shared)
+        self.assertIn("acceptance checkpoint", shared)
+
+        own = self.contract_for(self.dispatch("codex", task_id="t2"))
+        self.assertIn("review disposition", own)
 
 
 if __name__ == "__main__":

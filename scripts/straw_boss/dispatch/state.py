@@ -180,6 +180,7 @@ def render_dispatch_contract(
     *,
     mode: str = "herdr-pane",
     agent_kind: str = "claude",
+    shared_checkpoint: bool = False,
 ) -> str:
     if mode != "herdr-pane":
         raise ValueError(f"unsupported dispatch mode {mode!r}")
@@ -222,6 +223,19 @@ def render_dispatch_contract(
             "- Return your result to the parent through the status command; the parent owns integration and cleanup. Complete this task directly rather than coordinating another coworker.\n"
         )
     path_argument = f"--instruction-path {shlex.quote(str(instruction_path))}"
+    # Where this anchor's checkpoint runs is settled when the plan names the
+    # anchor, so it arrives as an argument rather than being inferred from plan
+    # membership. A task whose checkpoint was collected into a shared one hands
+    # over the reference and evidence that checkpoint reads; a task that carries
+    # its own reports the disposition itself.
+    if shared_checkpoint:
+        terminal_report = (
+            "carrying the completion reference and your verification evidence as repeatable "
+            "`--ref` arguments; the main agent dispatches this anchor's acceptance checkpoint "
+            "separately"
+        )
+    else:
+        terminal_report = "carrying the finished change-set's review disposition"
     return f"""# Straw Boss dispatched-agent contract
 
 This contract is mandatory for this dispatched session.
@@ -235,7 +249,7 @@ This contract is mandatory for this dispatched session.
 - Reach the main agent with these two commands -- a question for integrated context, and a checkpoint naming who can unblock you, after whose reply you continue instead of replacing it with a terminal status:
   `{message} {path_argument} --to main --intent question --message '<delta>' [--ref '<source>']`
   `{status} {path_argument} --status <awaiting-user-input|awaiting-main-agent|awaiting-authorization> --note '<what you need>' [--ref '<proof>']`
-- Before stopping after completed work, report terminal `done` or `failed` with the same status script, carrying the finished change-set's review disposition; it persists and notifies the main agent through Herdr.
+- Before stopping after completed work, report terminal `done` or `failed` with the same status script, {terminal_report}; it persists and notifies the main agent through Herdr.
 """
 
 
