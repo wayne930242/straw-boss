@@ -63,21 +63,24 @@ Self-compact is not cross-session communication.
 Once all next-turn state is durable, the main agent may submit `/compact <focus>` to its own pane.
 This does not replace any worker/main transport rule.
 
-## Adopt a dispatch whose Claude main agent was replaced
+## Adopt a dispatch whose Claude main agent was replaced or moved
 
-A coordinator pane outlives the conversation inside it.
+A coordinator pane and the conversation inside it can each outlive the other.
 When a Claude main agent ends on a provider limit or a restart and a new session takes the same pane, every dispatch recorded against the old session stops routing: replies, status recovery, and wrap-up all refuse on a main-session mismatch.
-From that pane, the session now holding it records itself:
+When the same conversation resumes in a different pane, every dispatch recorded against the old pane stops routing the other way: main-side commands refuse on a sender pane mismatch, and worker status reports land in the delivery ledger as undeliverable instead of reaching the pane.
+From its own pane, the session records itself:
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/adopt-dispatch.py" \
   --instruction-path <instruction> --main-session-id <this session's id>
 ```
 
-It rewrites the recorded main session alone, keeping the contract, task, worker endpoint, and status, and appends the exchange to `main_agent_adoptions`.
-Ownership follows the pane: the caller's own process tree must run inside the recorded main pane, and the Claude session registry keyed on that pane's foreground process must place the supplied session there.
-A registry that still reports the recorded session means nothing was replaced, and the refusal being chased has another cause.
-`roll-call.py` names the dispatches in this state; the worker then reports to the adopting session through the normal instruction-keyed channel.
+It keeps the contract, task, worker endpoint, and status, and appends the exchange to `main_agent_adoptions`.
+In the recorded main pane it rewrites the recorded main session alone; from another pane it rewrites the recorded main pane alone.
+Either way the caller's own process tree must run inside the pane it adopts from, and the Claude session registry keyed on that pane's foreground process must place the supplied session there.
+A new session adopts only from the recorded main pane, and the recorded session adopts from a new pane only while the recorded pane no longer hosts it, so a different conversation in a different pane is refused.
+A registry that still reports the recorded session in the recorded pane means nothing was replaced, and the refusal being chased has another cause.
+`roll-call.py` names the dispatches in either state; the worker then reports to the adopting pane through the normal instruction-keyed channel.
 
 ## Resume an older Codex dispatch
 

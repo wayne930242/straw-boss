@@ -136,6 +136,41 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         self.assertEqual(row["verdict"], "orphaned")
         self.assertIsNone(row["worker_agent_status"])
 
+    def test_a_coordinator_that_moved_panes_is_pointed_at_adoption(self) -> None:
+        """The recorded pane is gone but the session lives on in another pane."""
+        instruction_path, _ = self.write_dispatch(slug="moved-coordinator")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+
+        report = self.roll_call(
+            [
+                agent("wF:p9", "worker-session"),
+                agent("wF:pP", "main-session", name="api-coordinator"),
+            ]
+        )
+
+        row = self.row(report, "api--moved-coordinator")
+        self.assertEqual(row["verdict"], "running")
+        self.assertIn("now runs in pane wF:pP, not the recorded main-pane", row["note"])
+        self.assertIn("adopt-dispatch.py from pane wF:pP", row["note"])
+
+    def test_mine_recognises_its_own_move_through_the_registry(self) -> None:
+        """Herdr exposes no agent_session for the moved coordinator; the caller's
+        own registry-backed fingerprint is what ties the dispatch to its new pane."""
+        instruction_path, _ = self.write_dispatch(slug="moved-coordinator")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+        self.install_session("wF:pP", "main-session", 4343)
+        moved = agent("wF:pP", "", name="api-coordinator")
+        del moved["agent_session"]
+
+        report = self.roll_call(
+            [agent("wF:p9", "worker-session"), moved], "--mine", pane_id="wF:pP"
+        )
+
+        row = self.row(report, "api--moved-coordinator")
+        self.assertTrue(row["mine"])
+        self.assertIn("now runs in pane wF:pP, not the recorded main-pane", row["note"])
+        self.assertNotIn("no longer live", row["note"])
+
     def test_a_terminal_status_with_a_live_pane_is_awaiting_collection(self) -> None:
         instruction_path, _ = self.write_dispatch(slug="finished-worker")
         self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")

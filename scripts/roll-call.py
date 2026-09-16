@@ -278,6 +278,31 @@ def coordinator_live(instruction: dict[str, Any], live: LiveAgents) -> bool:
         return False
 
 
+def coordinator_moved_to(
+    instruction: dict[str, Any], live: LiveAgents, mine: tuple[str, str] | None
+) -> str | None:
+    """The pane the recorded coordinator conversation now occupies, when it is
+    not the recorded one.
+
+    A conversation resumed in another pane keeps its session id, so its
+    dispatches still name it -- at a pane that is gone. Herdr's live index
+    answers when it exposes the session; otherwise only the caller can say, by
+    being that session (`--mine`) in a pane other than the recorded one.
+    """
+    session = str(instruction.get("main_agent_session_id") or "")
+    recorded = str(instruction.get("main_agent_herdr_pane_id") or "")
+    if not session or not recorded:
+        return None
+    exposed = live.by_session.get(session)
+    if exposed is not None:
+        pane = str(exposed.get("pane_id"))
+        return pane if pane != recorded else None
+    current_pane = os.environ.get("HERDR_PANE_ID")
+    if mine is not None and mine[0] == session and current_pane and current_pane != recorded:
+        return current_pane
+    return None
+
+
 def dispatch_row(
     path: Path, mine: tuple[str, str] | None, live: LiveAgents
 ) -> tuple[dict[str, Any], set[str]]:
@@ -335,7 +360,14 @@ def dispatch_row(
         if reported not in TERMINAL_STATUSES:
             verdict = "routing-mismatch"
         note = f"{note}; worker moved to pane {live_pane} (instruction records {recorded_pane})"
-    if main_session and not coordinator_live(instruction, live):
+    moved_to = coordinator_moved_to(instruction, live, mine)
+    if moved_to:
+        note = (
+            f"{note}; its coordinator session now runs in pane {moved_to}, not the "
+            f"recorded {instruction.get('main_agent_herdr_pane_id')} -- "
+            f"adopt-dispatch.py from pane {moved_to} moves the route"
+        )
+    elif main_session and not coordinator_live(instruction, live):
         note = (
             f"{note}; its coordinator session is no longer live -- the session now in "
             "that pane takes the dispatch over through adopt-dispatch.py"

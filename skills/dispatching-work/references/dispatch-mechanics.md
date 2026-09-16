@@ -121,7 +121,7 @@ A pane title or cwd supplies context, not identity.
 | `launched-unconfirmed` | A matching worker exists but confirmation is incomplete. |
 | `awaiting-startup-gate` | The failed launch retained a pane awaiting action. |
 
-Rows identify the main agent and any loss of its liveness.
+Rows identify the main agent, any loss of its liveness, and a coordinator session that now runs in a pane other than the recorded one.
 Live agents in the same cwd are reported as context, without attributing them to the instruction.
 Unmatched agents are `coordinator` when dispatch identity establishes that role, otherwise `unattributed` (ownership unresolved).
 
