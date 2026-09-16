@@ -55,6 +55,7 @@ from straw_boss.dispatch.state import dump_json, load_json
 from straw_boss.herdr.session import (
     Endpoint,
     HerdrCommandError,
+    HerdrUnavailableError,
     claude_registry_session,
     resolve_endpoint,
     validate_current_process_in_pane,
@@ -95,8 +96,17 @@ def adopt_in_recorded_pane(previous: Endpoint, main_session_id: str) -> dict[str
 
 
 def recorded_pane_still_hosts(previous: Endpoint) -> bool:
+    """Whether herdr still places the recorded session in the recorded pane.
+
+    Only herdr's answer decides: a pane or agent it reports missing, or an
+    identity it reports as someone else's, means the session left. No answer
+    at all -- a timeout, a missing CLI, garbled output -- propagates, so a
+    transient failure against the old pane cannot let a move through early.
+    """
     try:
         validate_live_session(previous)
+    except HerdrUnavailableError:
+        raise
     except HerdrCommandError as exc:
         if exc.error_code in ENDPOINT_MISSING_ERROR_CODES:
             return False
@@ -140,11 +150,14 @@ def adopt_dispatch(instruction_path: str, main_session_id: str) -> dict[str, Any
             "adoption requires an in-progress dispatch; a pending one is rewritten by "
             "dispatch-task.py and a wrapped one needs no main endpoint"
         )
-    if instruction.get("main_agent_kind") != "claude":
-        raise ValueError(
-            "this recovery command covers a Claude main agent; a resumed Codex "
-            "coordinator uses rebind-dispatch.py"
+    main_agent_kind = instruction.get("main_agent_kind")
+    if main_agent_kind != "claude":
+        hint = (
+            "a resumed Codex coordinator uses rebind-dispatch.py"
+            if main_agent_kind == "codex"
+            else f"no adoption command exists for main agent kind {main_agent_kind!r}"
         )
+        raise ValueError(f"this recovery command covers a Claude main agent; {hint}")
 
     previous = resolve_endpoint(instruction, "main")
     current_pane = os.environ.get("HERDR_PANE_ID")

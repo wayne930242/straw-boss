@@ -370,6 +370,133 @@ class MainAgentAdoptionTests(DispatchedAgentLifecycleFixture, unittest.TestCase)
         self.assertIn("still hosts", result.stderr)
         self.assertEqual(instruction_path.read_text(), before)
 
+    def test_a_pane_move_refuses_when_herdr_cannot_answer_for_the_recorded_pane(
+        self,
+    ) -> None:
+        """A transport failure against the old pane is no answer about who holds
+        it, so it refuses the move instead of reading as "the session left"."""
+        instruction_path = self.orphaned_dispatch()
+        before = instruction_path.read_text()
+        fake_bin, capture = self.install_fake_herdr()
+        env = self.moved_coordinator_env(fake_bin, capture, recorded_pane_gone=False)
+        env["HERDR_GARBLED_PANES"] = json.dumps(["main-pane"])
+
+        result = self.run_script(
+            "adopt-dispatch.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--main-session-id",
+            "main-session",
+            extra_env=env,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("non-JSON", result.stderr)
+        self.assertEqual(instruction_path.read_text(), before)
+
+    def test_main_side_commands_follow_the_coordinator_to_its_new_pane(self) -> None:
+        """Every main-side command shares the sender guard, so the move has to
+        carry replies, messages, and pane closure -- not only status recovery."""
+        instruction_path = self.orphaned_dispatch()
+        fake_bin, capture = self.install_fake_herdr()
+        env = self.moved_coordinator_env(fake_bin, capture)
+        # The worker pane is live here, and Herdr exposes both sessions.
+        del env["HERDR_OMIT_AGENT_SESSION"]
+        env["HERDR_MISSING_PANES"] = json.dumps(["main-pane"])
+        env["HERDR_SESSIONS"] = json.dumps(
+            {"worker-pane": "worker-session", "new-pane": "main-session"}
+        )
+        worker_env = {**env, "HERDR_PANE_ID": "worker-pane"}
+        worker_env.pop("HERDR_PROCESS_INFO_CALLER")
+        stem = instruction_path.name.removesuffix(".json")
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+
+        def main_side_commands() -> list[list[str]]:
+            return [
+                [
+                    "send-dispatch-message.py",
+                    "--instruction-path",
+                    str(instruction_path),
+                    "--to",
+                    "worker",
+                    "--intent",
+                    "inform",
+                    "--message",
+                    "The fix branch is main.",
+                ],
+                [
+                    "reply-to-worker.py",
+                    "--worker-instruction-path",
+                    str(instruction_path),
+                    "--reply",
+                    "Proceed with option B.",
+                ],
+                ["close-worker-pane.py", "--instruction-path", str(instruction_path)],
+            ]
+
+        checkpoint = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "awaiting-main-agent",
+            "--note",
+            "Option A or B?",
+            extra_env=worker_env,
+        )
+        # The recorded main pane is gone, so the report is written but lands
+        # in the delivery ledger -- the situation adoption exists to repair.
+        self.assertNotEqual(checkpoint.returncode, 0)
+        self.assertIn("recorded undelivered", checkpoint.stderr)
+        self.assertEqual(json.loads(status_path.read_text())["status"], "awaiting-main-agent")
+
+        for command in main_side_commands():
+            blocked = self.run_script(*command, extra_env=env)
+            self.assertNotEqual(blocked.returncode, 0, command[0])
+            self.assertIn("sender pane mismatch", blocked.stderr, command[0])
+
+        adopt = self.run_script(
+            "adopt-dispatch.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--main-session-id",
+            "main-session",
+            extra_env=env,
+        )
+        self.assertEqual(adopt.returncode, 0, adopt.stderr)
+        message, reply, close = main_side_commands()
+
+        sent = self.run_script(*message, extra_env=env)
+        self.assertEqual(sent.returncode, 0, sent.stderr)
+        self.assertTrue(json.loads(sent.stdout)["submitted"])
+
+        replied = self.run_script(*reply, extra_env=env)
+        self.assertEqual(replied.returncode, 0, replied.stderr)
+
+        finished = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "done",
+            "--note",
+            "Done with option B.",
+            extra_env=worker_env,
+        )
+        self.assertEqual(finished.returncode, 0, finished.stderr)
+        closed = self.run_script(*close, extra_env=env)
+        self.assertEqual(closed.returncode, 0, closed.stderr)
+        self.assertEqual(json.loads(closed.stdout)["closed_pane_id"], "worker-pane")
+
+        prompts = [
+            json.loads(line)
+            for line in capture.read_text().splitlines()
+            if json.loads(line)[:2] == ["agent", "prompt"]
+        ]
+        self.assertEqual(
+            sorted({call[2] for call in prompts}), ["new-pane", "worker-pane"]
+        )
+
     def test_adoption_refuses_when_the_recorded_session_is_already_the_live_one(self) -> None:
         instruction_path = self.orphaned_dispatch()
         before = instruction_path.read_text()
@@ -427,6 +554,27 @@ class MainAgentAdoptionTests(DispatchedAgentLifecycleFixture, unittest.TestCase)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("rebind-dispatch.py", result.stderr)
+        self.assertEqual(instruction_path.read_text(), before)
+
+    def test_adoption_refuses_an_antigravity_main_agent_without_a_codex_hint(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude", main_agent_kind="agy")
+        self.set_worker_endpoint(instruction_path)
+        before = instruction_path.read_text()
+        fake_bin, capture = self.install_fake_herdr()
+        env = self.restarted_coordinator_env(fake_bin, capture)
+
+        result = self.run_script(
+            "adopt-dispatch.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--main-session-id",
+            "successor-session",
+            extra_env=env,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no adoption command exists for main agent kind 'agy'", result.stderr)
+        self.assertNotIn("rebind-dispatch.py", result.stderr)
         self.assertEqual(instruction_path.read_text(), before)
 
 

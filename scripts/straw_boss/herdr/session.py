@@ -50,6 +50,15 @@ class HerdrCommandError(ValueError):
         return code if isinstance(code, str) else None
 
 
+class HerdrUnavailableError(ValueError):
+    """herdr gave no answer: the CLI is missing, timed out, or returned non-JSON.
+
+    Distinct from `HerdrCommandError`, which carries an answer herdr chose to
+    give, so a caller deciding on an identity can tell "not there" from "could
+    not ask".
+    """
+
+
 def run_herdr_raw(args: list[str]) -> str:
     try:
         result = subprocess.run(
@@ -59,9 +68,9 @@ def run_herdr_raw(args: list[str]) -> str:
             timeout=SUBPROCESS_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired as exc:
-        raise ValueError(f"herdr {' '.join(args)!r} timed out") from exc
+        raise HerdrUnavailableError(f"herdr {' '.join(args)!r} timed out") from exc
     except FileNotFoundError as exc:
-        raise ValueError("herdr CLI not found on PATH") from exc
+        raise HerdrUnavailableError("herdr CLI not found on PATH") from exc
     if result.returncode != 0:
         raise HerdrCommandError(args, result.returncode, result.stderr)
     return result.stdout
@@ -72,7 +81,9 @@ def run_herdr(args: list[str]) -> dict[str, Any]:
     try:
         return json.loads(stdout)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"herdr {' '.join(args)!r} returned non-JSON output") from exc
+        raise HerdrUnavailableError(
+            f"herdr {' '.join(args)!r} returned non-JSON output"
+        ) from exc
 
 
 def resolve_endpoint(instruction: dict[str, Any], target: Target) -> Endpoint:
@@ -247,6 +258,8 @@ def validate_live_session(endpoint: Endpoint) -> str | None:
     try:
         if _claude_registry_corroborates(endpoint):
             return agent_status
+    except HerdrUnavailableError:
+        raise
     except (ValueError, OSError):
         pass
     raise ValueError(

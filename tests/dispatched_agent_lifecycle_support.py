@@ -160,6 +160,8 @@ class DispatchedAgentLifecycleFixture:
             "elif args[:2] == ['agent', 'get'] and os.environ.get('HERDR_FAIL_START') == '1':\n"
             "    print(json.dumps({'error': {'code': 'agent_not_found', 'message': 'no live agent'}}), file=sys.stderr)\n"
             "    raise SystemExit(1)\n"
+            "elif args[:2] == ['agent', 'get'] and args[2] in json.loads(os.environ.get('HERDR_GARBLED_PANES', '[]')):\n"
+            "    print('herdr: unexpected output while the daemon reconnects')\n"
             "elif args[:2] == ['agent', 'get'] and args[2] in json.loads(os.environ.get('HERDR_MISSING_PANES', '[]')):\n"
             "    print(json.dumps({'error': {'code': 'agent_not_found', 'message': 'no live agent'}}), file=sys.stderr)\n"
             "    raise SystemExit(1)\n"

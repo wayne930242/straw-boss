@@ -287,7 +287,10 @@ def coordinator_moved_to(
     A conversation resumed in another pane keeps its session id, so its
     dispatches still name it -- at a pane that is gone. Herdr's live index
     answers when it exposes the session; otherwise only the caller can say, by
-    being that session (`--mine`) in a pane other than the recorded one.
+    being that session (`--mine`) in a pane other than the recorded one. A
+    global roll call does not read process-info for every pane to find it, so
+    without `--mine` it reports the recorded pane as uncorroborated and leaves
+    the pane the session now occupies unnamed.
     """
     session = str(instruction.get("main_agent_session_id") or "")
     recorded = str(instruction.get("main_agent_herdr_pane_id") or "")
@@ -369,8 +372,9 @@ def dispatch_row(
         )
     elif main_session and not coordinator_live(instruction, live):
         note = (
-            f"{note}; its coordinator session is no longer live -- the session now in "
-            "that pane takes the dispatch over through adopt-dispatch.py"
+            f"{note}; nothing live corroborates its coordinator session in the recorded "
+            f"pane {instruction.get('main_agent_herdr_pane_id')} -- adopt-dispatch.py, "
+            "run from the pane that now holds the coordinating conversation, takes it over"
         )
 
     return (

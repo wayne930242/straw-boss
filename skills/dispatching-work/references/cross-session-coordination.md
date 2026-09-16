@@ -80,6 +80,7 @@ In the recorded main pane it rewrites the recorded main session alone; from anot
 Either way the caller's own process tree must run inside the pane it adopts from, and the Claude session registry keyed on that pane's foreground process must place the supplied session there.
 A new session adopts only from the recorded main pane, and the recorded session adopts from a new pane only while the recorded pane no longer hosts it, so a different conversation in a different pane is refused.
 A registry that still reports the recorded session in the recorded pane means nothing was replaced, and the refusal being chased has another cause.
+A move needs Herdr's answer about the recorded pane; a timeout or unreadable reply refuses the move instead of counting as the pane being gone.
 `roll-call.py` names the dispatches in either state; the worker then reports to the adopting pane through the normal instruction-keyed channel.
 
 ## Resume an older Codex dispatch
