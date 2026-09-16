@@ -74,7 +74,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/adopt-dispatch.py" \
   --instruction-path <instruction> --main-session-id <this session's id>
 ```
 
-It rewrites the recorded main session and terminal, keeping the contract, task, worker endpoint, and status, and appends the exchange to `main_agent_adoptions`.
+It rewrites the recorded main session alone, keeping the contract, task, worker endpoint, and status, and appends the exchange to `main_agent_adoptions`.
 Ownership follows the pane: the caller's own process tree must run inside the recorded main pane, and the Claude session registry keyed on that pane's foreground process must place the supplied session there.
 A registry that still reports the recorded session means nothing was replaced, and the refusal being chased has another cause.
 `roll-call.py` names the dispatches in this state; the worker then reports to the adopting session through the normal instruction-keyed channel.
