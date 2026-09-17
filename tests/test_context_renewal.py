@@ -242,6 +242,16 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         again = self.hook("orchestrator-priming.py", {**payload, "session_id": "third"}, HERDR_PANE_ID="p1")
         self.assertNotIn("Next action: run the suite.", again.stdout)
 
+    def test_agy_session_start_emits_its_structured_result(self) -> None:
+        self.write_record("p1", agent_kind="agy")
+        result = self.hook(
+            "orchestrator-priming.py",
+            {"conversationId": "new-conversation", "workspacePaths": [str(self.home)]},
+            HERDR_PANE_ID="p1",
+        )
+        steps = json.loads(result.stdout)["injectSteps"]
+        self.assertIn("Next action: run the suite.", steps[0]["ephemeralMessage"])
+
     def test_session_start_ignores_a_record_of_another_provider(self) -> None:
         self.write_record("p1", agent_kind="codex")
         result = self.hook("orchestrator-priming.py", {"session_id": "new-session"}, HERDR_PANE_ID="p1")

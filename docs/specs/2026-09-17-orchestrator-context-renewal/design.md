@@ -8,7 +8,7 @@ Spec: [spec.md](spec.md). Decisions: [decision.md](decision.md).
 |---|---|---|---|
 | Self-clear after the turn ends | A process detached with `start_new_session=True` runs `herdr agent wait <pane> --until idle --until done`, then `herdr agent prompt <pane> /clear`. Delivered. | Same; a plain `nohup … &` from the shell tool is killed with the turn, `start_new_session` survives. Delivered. | Same. Delivered. |
 | SessionStart after the clear | Fires at once, `source: "clear"`, new `session_id`. | Fires on the new thread's first turn, `source: "clear"`, new `session_id`. | Fires on the new conversation's first turn, new `conversationId`, no `source` field. |
-| Injection | Hook stdout reaches the model. | Hook stdout reaches the model. | Hook stdout reaches the model. |
+| Injection | Hook stdout reaches the model. | Hook stdout reaches the model. | Stdout is decoded as the SessionStart result; `{"injectSteps":[{"ephemeralMessage":"<text>"}]}` reaches the model (plain text is rejected). |
 | Stop hook blocks the turn end | `{"decision":"block","reason"}` | `{"decision":"block","reason"}` | `{"decision":"block","reason"}` in named-hook format. |
 | Context measure | `transcript_path` → last assistant `message.usage`: `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. | `transcript_path` → last `token_count` event `info.last_token_usage.input_tokens` (includes cached). | `~/.gemini/antigravity-cli/conversations/<conversationId>.db`, last `gen_metadata` row, protobuf fields `1.4.2` (uncached input) + `1.4.5` (cached input). Undocumented; the transcript carries no counts. |
 
@@ -33,6 +33,7 @@ Deterministic trigger in hooks, judgment in the model, delivery in a detached pr
 3. **SessionStart** `scripts/orchestrator-priming.py` checks `HERDR_PANE_ID` first:
    - A pending record for this pane, same `agent_kind`, whose `session_id` differs from the hook's session: consume it (`status: consumed`, `consumed_by`), adopt, and print role priming + the record.
    - Otherwise today's behavior unchanged (behavior 11, and "clear with no pending record").
+   - Under agy the text is wrapped as `injectSteps` / `ephemeralMessage`.
 4. **Adoption in the hook** (`scripts/straw_boss/renewal.py`), proven by `validate_current_process_in_pane(pane)` and by the instruction still naming the record's session in this pane:
    - Main agent: `main_agent_session_id` rewritten for instructions whose `main_agent_herdr_pane_id` is this pane and whose recorded session is the record's; appended to `main_agent_adoptions`. The orchestrator record keyed on the old fingerprint is re-keyed to the new session with the same scope.
    - Dispatched worker: `session_id` rewritten for instructions whose worker pane is this pane; appended to `worker_adoptions`.
@@ -76,3 +77,9 @@ Deterministic trigger in hooks, judgment in the model, delivery in a detached pr
 - Tried: reading agy context size from `transcript_full.jsonl` and hook payloads.
   Found: neither carries token counts; only the conversation DB `gen_metadata` does.
   Led by: decision.md "provider-specific context measurement … settled in Design"
+- Tried: plain-text SessionStart stdout under agy, judged by the model repeating the injected word.
+  Found: agy rejects non-JSON results in cli.log; the model had read the hook script itself. Only a side effect or cli.log proves injection.
+  Led by: none
+- Tried: sending `/effort low` to a live Claude test session.
+  Found: it persists `modelSettings.<model>.effortLevel` into the user's global settings.
+  Led by: none

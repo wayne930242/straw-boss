@@ -110,28 +110,35 @@ def renewal_priming(payload: dict[str, object], session_id: str) -> str | None:
     return "\n\n".join(sections)
 
 
+def priming_text(payload: dict[str, object]) -> str | None:
+    session_id = payload.get("session_id") or payload.get("conversationId")
+    if session_id:
+        renewed = renewal_priming(payload, str(session_id))
+        if renewed is not None:
+            return renewed
+        instruction = dispatched_instruction(str(session_id))
+        if instruction is not None:
+            if payload.get("source") in LIVE_SYSTEM_PROMPT_SOURCES:
+                return None
+            contract_path = Path(str(instruction.get("contract_path", "")))
+            return contract_path.read_text().strip() if contract_path.is_file() else None
+    return orchestrator_stance()
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
         return 0  # never block session start over a malformed hook payload
 
-    session_id = payload.get("session_id") or payload.get("conversationId")
-    if session_id:
-        renewed = renewal_priming(payload, str(session_id))
-        if renewed is not None:
-            print(renewed)
-            return 0
-        instruction = dispatched_instruction(str(session_id))
-        if instruction is not None:
-            if payload.get("source") in LIVE_SYSTEM_PROMPT_SOURCES:
-                return 0
-            contract_path = Path(str(instruction.get("contract_path", "")))
-            if contract_path.is_file():
-                print(contract_path.read_text().strip())
-            return 0
-
-    print(orchestrator_stance())
+    text = priming_text(payload)
+    if text is None:
+        return 0
+    if payload_agent_kind(payload) == "agy":
+        # Antigravity decodes hook stdout as its SessionStart result, not as text.
+        print(json.dumps({"injectSteps": [{"ephemeralMessage": text}]}))
+    else:
+        print(text)
     return 0
 
 
