@@ -71,11 +71,17 @@ def main() -> int:
     if pending_record_from(path, session):
         return 0
     tokens = context_tokens(payload, agent_kind)
-    if tokens is None or tokens <= RENEWAL_THRESHOLD_TOKENS:
+    if tokens is None:
+        return 0
+    record = load_record(path)
+    # Only a renewed session that never dropped below the threshold is exempt.
+    exempt = bool(record and record.get("consumed_by") == session and not record.get("settled"))
+    if tokens <= RENEWAL_THRESHOLD_TOKENS:
+        if exempt:
+            dump_json(path, {**record, "settled": True})
         return 0
 
-    record = load_record(path)
-    if record and record.get("consumed_by") == session:
+    if exempt:
         if record.get("reported_over_threshold"):
             return 0
         dump_json(path, {**record, "reported_over_threshold": True})

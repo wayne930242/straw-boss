@@ -185,6 +185,14 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         self.assertIn("do not renew again", first["reason"])
         self.assertEqual(self.hook("context-renewal-guard.py", payload, HERDR_PANE_ID="p1").stdout, "")
 
+    def test_renewed_session_renews_again_after_settling_below_threshold(self) -> None:
+        self.write_record("p1", status="consumed", consumed_by="s2")
+        small = {"session_id": "s2", "transcript_path": str(self.claude_transcript(90_000))}
+        self.assertEqual(self.hook("context-renewal-guard.py", small, HERDR_PANE_ID="p1").stdout, "")
+        large = {"session_id": "s2", "transcript_path": str(self.claude_transcript(260_000))}
+        reason = json.loads(self.hook("context-renewal-guard.py", large, HERDR_PANE_ID="p1").stdout)["reason"]
+        self.assertIn("renew-context.py", reason)
+
     def test_dispatched_worker_renewal_checkpoints_and_passes_the_stop_guard(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         self.set_worker_endpoint(instruction_path, pane="worker-pane", session="worker-session")
