@@ -24,7 +24,7 @@ The installed plugin (0.27.1) stayed untouched.
 | 6 Main agent continuity | Claude and Codex: `main_agent_session_id` was adopted with a `context-renewal` entry, the orchestrator record was re-keyed with the same scope, and worker `done` reached the renewed main agent, which acted on it. Codex delivery needed Herdr's Codex session hook, which is absent in the isolated test home; it was reported by hand, as `~/.codex/herdr-agent-state.sh` does in the real home. Agy main agent: not run. | pass (Claude, Codex); unknown (agy) |
 | 7 Dispatched worker continuity | Claude: `session_id` was adopted and the renewed worker's `send-dispatch-message` was accepted by the main agent. Codex and agy workers: not renewed live (Codex quota; agy scoped down for cost). | pass (Claude); unknown (Codex, agy) |
 | 8 Standalone worker | Claude, Codex, and agy each renewed with no dispatch record. | pass |
-| 9 User input during renewal | Claude: a message queued during renewal was answered (`42`) by the renewing session before the clear, not by the renewed session. Codex and agy: not run. | fail (deviation, see below) |
+| 9 User input during renewal | Claude: a message queued during renewal was answered (`42`) by the renewing session before the clear, not by the renewed session. Codex and agy: not run. | pass on Claude under the amended behavior 9; unknown (Codex, agy) |
 | 10 Backstop | Owned by the main agent in `weihung-user-claude`. | not in this task |
 | 11 Compaction priming | Priming with no record is unchanged; existing lifecycle tests pass. | pass (unit) |
 
