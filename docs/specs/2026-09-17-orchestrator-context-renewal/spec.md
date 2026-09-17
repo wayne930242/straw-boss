@@ -1,6 +1,6 @@
 Status: approved
 Approved at: 2026-09-17
-Approved from: User replied "好" to the proposed spec after reviewing its five flagged choices (5% target, single-use record, loop guard, live-run cost, provider fallback).
+Approved from: User replied "yes" (in Chinese) to the proposed spec after reviewing its five flagged choices (5% target, single-use record, loop guard, live-run cost, provider fallback).
 
 # Context renewal for long-lived Straw Boss sessions
 

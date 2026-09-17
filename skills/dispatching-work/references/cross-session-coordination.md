@@ -63,6 +63,12 @@ Self-compact is not cross-session communication.
 Once all next-turn state is durable, the main agent may submit `/compact <focus>` to its own pane.
 This does not replace any worker/main transport rule.
 
+## Context renewal
+
+A main agent, dispatched worker, or standalone worker whose turn ends above 200k context tokens renews in its own pane.
+The Stop hook `context-renewal-guard.py` asks the session to pipe its continuity payload to `renew-context.py`, which writes `~/.straw-boss/renewal/<pane>.json` and schedules `/clear` into the pane after the turn ends.
+The session that clear starts receives the record through SessionStart, primed for the recorded role, and adopts the routes its predecessor held in that pane.
+
 ## Adopt a dispatch whose Claude main agent was replaced or moved
 
 A coordinator pane and the conversation inside it can each outlive the other.

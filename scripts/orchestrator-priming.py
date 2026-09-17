@@ -32,7 +32,15 @@ import json
 import sys
 from pathlib import Path
 
-from straw_boss.dispatch.state import straw_boss_root
+from straw_boss.dispatch.state import load_json, straw_boss_root
+from straw_boss.herdr.session import validate_current_process_in_pane
+from straw_boss.renewal import (
+    adopt_renewed_session,
+    claimable_record,
+    consume_record,
+    current_record_path,
+    payload_agent_kind,
+)
 
 
 # Sources that keep the launched process, and with it the contract the
@@ -64,6 +72,44 @@ def orchestrator_stance() -> str:
     return text.strip()
 
 
+def renewal_priming(payload: dict[str, object], session_id: str) -> str | None:
+    """Continue a session renewed in this pane, primed for its recorded role."""
+    agent_kind = payload_agent_kind(payload)
+    path = current_record_path(payload, agent_kind)
+    record = claimable_record(path, agent_kind, session_id)
+    if record is None:
+        return None
+    record = consume_record(path, record, session_id)
+    adoption = ""
+    if record.get("pane_id"):
+        try:
+            validate_current_process_in_pane(str(record["pane_id"]))
+            adopted = adopt_renewed_session(record, session_id)
+        except (ValueError, OSError) as exc:
+            adoption = f"\nDispatch routes were not adopted: {exc}\n"
+        else:
+            if adopted:
+                adoption = "\nAdopted dispatch routes: " + ", ".join(adopted) + "\n"
+    role = record["role"]
+    sections = [
+        f"# Context renewal\n\nThis session continues a {role} renewed from {path}. "
+        "Continue the recorded next action now; do not ask the user to restate context."
+        + adoption,
+    ]
+    if role == "main-agent":
+        sections.append(orchestrator_stance())
+    elif role == "dispatched-worker":
+        for instruction_path in record.get("instruction_paths", []):
+            try:
+                contract = Path(str(load_json(Path(instruction_path)).get("contract_path", "")))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if contract.is_file():
+                sections.append(contract.read_text().strip())
+    sections.append("## Continuity record\n\n" + str(record["payload"]))
+    return "\n\n".join(sections)
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -72,6 +118,10 @@ def main() -> int:
 
     session_id = payload.get("session_id") or payload.get("conversationId")
     if session_id:
+        renewed = renewal_priming(payload, str(session_id))
+        if renewed is not None:
+            print(renewed)
+            return 0
         instruction = dispatched_instruction(str(session_id))
         if instruction is not None:
             if payload.get("source") in LIVE_SYSTEM_PROMPT_SOURCES:

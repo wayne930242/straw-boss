@@ -17,6 +17,7 @@ from straw_boss.dispatch.state import (
     resolve_instruction_status_path,
     straw_boss_root,
 )
+from straw_boss.renewal import current_record_path, payload_agent_kind, pending_record_from
 
 
 VALID_REPORTED_STATUSES = {
@@ -71,6 +72,11 @@ def main() -> int:
         return 0
     instruction_path, instruction = found
     if has_valid_report(instruction_path, instruction):
+        return 0
+    # A renewing worker checkpoints through its renewal record and progress log.
+    if pending_record_from(
+        current_record_path(hook_input, payload_agent_kind(hook_input)), str(session_id)
+    ):
         return 0
 
     status_script = Path(__file__).resolve().parent / "report-task-status.py"
