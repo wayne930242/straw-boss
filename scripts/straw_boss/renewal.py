@@ -25,6 +25,7 @@ CONTINUE_PROMPT = "Continue from the context renewal record injected at session 
 # An agy Stop payload carries no continuation flag, so a block is remembered
 # for this long; a stop inside the window is the same turn ending after it.
 AGY_BLOCK_WINDOW_SECONDS = 600
+UNBOUND_RECORD_MAX_AGE_SECONDS = 1800
 UNSAFE_KEY_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
 
 
@@ -242,16 +243,31 @@ def pending_record_from(path: Path, session_id: str) -> dict[str, Any] | None:
     return None
 
 
-def claimable_record(path: Path, agent_kind: str, session_id: str) -> dict[str, Any] | None:
-    """A pending record written by a previous session of this kind in this pane."""
+def claimable_record(
+    path: Path, agent_kind: str, session_id: str, source: object
+) -> dict[str, Any] | None:
+    """A pending record written by a previous session of this kind in this pane.
+
+    Outside Herdr the key is only the working directory, so a record there is
+    claimed only by a clear shortly after it was written, never by an
+    unrelated session that later opens in the same directory.
+    """
     record = load_record(path)
-    if (
+    if not (
         record
         and record.get("status") == "pending"
         and record.get("agent_kind") == agent_kind
         and record.get("session_id") != session_id
         and record.get("pane_id") == os.environ.get("HERDR_PANE_ID")
     ):
+        return None
+    if record.get("pane_id"):
+        return record
+    try:
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(str(record.get("created_at")))
+    except ValueError:
+        return None
+    if source == "clear" and age.total_seconds() <= UNBOUND_RECORD_MAX_AGE_SECONDS:
         return record
     return None
 

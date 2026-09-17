@@ -76,7 +76,7 @@ def renewal_priming(payload: dict[str, object], session_id: str) -> str | None:
     """Continue a session renewed in this pane, primed for its recorded role."""
     agent_kind = payload_agent_kind(payload)
     path = current_record_path(payload, agent_kind)
-    record = claimable_record(path, agent_kind, session_id)
+    record = claimable_record(path, agent_kind, session_id, payload.get("source"))
     if record is None:
         return None
     record = consume_record(path, record, session_id)

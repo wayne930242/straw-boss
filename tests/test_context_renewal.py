@@ -242,6 +242,24 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         again = self.hook("orchestrator-priming.py", {**payload, "session_id": "third"}, HERDR_PANE_ID="p1")
         self.assertNotIn("Next action: run the suite.", again.stdout)
 
+    def test_record_outside_herdr_is_claimed_only_by_a_prompt_clear(self) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        key = renewal.record_key(None, str(self.home), "claude")
+        path = self.home / ".straw-boss" / "renewal" / f"{key}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        base = {"pane_id": None, "agent_kind": "claude", "session_id": "old", "role": "standalone-worker",
+                "payload": "Next action: run the suite.", "instruction_paths": [], "status": "pending"}
+        stale = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        path.write_text(json.dumps({**base, "created_at": stale}))
+        payload = {"session_id": "new", "cwd": str(self.home), "source": "clear"}
+        self.assertNotIn("Next action", self.hook("orchestrator-priming.py", payload).stdout)
+
+        path.write_text(json.dumps({**base, "created_at": datetime.now(timezone.utc).isoformat()}))
+        startup = {**payload, "source": "startup"}
+        self.assertNotIn("Next action", self.hook("orchestrator-priming.py", startup).stdout)
+        self.assertIn("Next action", self.hook("orchestrator-priming.py", payload).stdout)
+
     def test_agy_session_start_emits_its_structured_result(self) -> None:
         self.write_record("p1", agent_kind="agy")
         result = self.hook(
