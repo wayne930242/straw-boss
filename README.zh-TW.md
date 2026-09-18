@@ -19,7 +19,7 @@
 - **worktree 隔離**——team-mode 任務可在各自的 feature branch 平行進行。
 - **跨 main agent 資源鎖**——worktree 隔不到的 port、共用 DB migration，跨 session 排隊。
 - **批次自己抓步調**——backlog 做不完一個 turn，`boss-say` 自己開 `/loop`。
-- **獨立 orchestrator 交接**——經你同意後，把一個 scope 移到具名的 Herdr tab；新 orchestrator 透過 `boss-say` 接手，原窗口離開該 scope。
+- **獨立 orchestrator 交接**——經你同意後，把一個 scope 與它進行中的派工移到具名的 Herdr tab；新 orchestrator 透過 `boss-say` 接手，原窗口離開該 scope。
 - **herdr 隨時介入**——旁觀或加入派出的 Claude Code、Codex CLI 或 Antigravity workroom，直接在裡面回答問題。
 
 ## 需求
@@ -88,27 +88,6 @@ agy plugin install wayne930242/straw-boss
 
 單一 app 的話 `init` 只是加分，裝好 plugin 就能直接用 `boss-say`。檢查 Herdr、設定 `forbidDirectCommit`/`localFiles` 這類選項、或設定 monorepo 多個 app，才需要跑。
 
-## Skills
-
-| Skill | 說明 |
-|-------|-------------|
-| `init` | 問要管哪些 app、寫設定、同步 root `AGENTS.md` 與 `CLAUDE.md`、設定包含 provider profile/model/effort 與可選 Claude advisor 的 work route、缺 agent system 的 app 主動提議建一套、檢查 Herdr 委派需求 |
-| `boss-say` | **工作入口。**選擇 owner 與執行層級，統一規劃及排程獨立或相依任務 |
-| `handoff-orchestrator` | 經明確同意後，把一個 scope 與最小延續狀態交給新的 orchestrator tab |
-| `boss-assistant` | 處理協調摩擦，與回報者驗證恢復結果，將原始碼問題交回開發流程 |
-| `contacting-orchestrators` | 登記本 orchestrator 的身分與一句話 scope、查看還有哪些 orchestrator 活著、送出帶著自己 herdr pane id 的事實 delta |
-| `i-am-orchestrator` | 依狀態事件維持協調迴圈；worker 與你負責 reality anchor 內的工作細節 |
-| `work-on` | 把請求對應到某個 app，處理 legacy redirect |
-| `dispatching-work` | 內部派工機制——選派工方式並解析完整 work route（provider/profile/model/effort，加上僅 Claude 支援的原生 advisor）、寫指令、實際派工、列出/收尾既有派工 |
-| `choosing-graph` | 工作開始前先定分工圖（single-loop、sub-agent 扇出／扇入、orchestrator-worker）與 reality anchor（testing、pseudo-human、human、對抗性審查）；anchor 只定類別和檢查點，裡面用什麼接縫、哪些案例仍由做事的 agent 和你決定 |
-| `shipping-task` | 依你怎麼認定這份工作決定 git 生命週期——team-mode（worktree → develop → MR → merge → archive）或 solo-mode（直接 commit）、派工、commit 和推送自己的 feature branch 都自由，merge 前（以及推到該分支以外的任何 push 前）才找你授權 |
-| `peeking-work` | 唯讀看一個派工現在在做什麼，不加入、不打斷 |
-| `reporting-to-user` | 工作收尾報告：把浮現的事情分成 Alert（建議立刻處理）、Warn（提醒你留意）、Info（純資訊條列），再由 Alert 與 Warn 導出 Next 建議清單，逐項問要不要加派工，答完後接受的項目合成一輪一起處理 |
-| `notifying-main-agent` | 派出去的 agent 用來聯絡 main agent、回報或問純資訊性問題 |
-| `asking-peer-agents` | 讓一個派出任務向另一個任務詢問實際進度或結論 |
-| `bringing-coworker` | 把一位 Claude Code、Codex CLI 或 Antigravity coworker 帶進互動式 worker 的同一個 Herdr tab 與 worktree |
-| `create-great-harness` | 幫沒有 agent system 的 app 建一套精簡版——以證據為基礎的 `AGENTS.md` 與 `CLAUDE.md`，以及由確認範圍或專案證據支持的可選 hook／rule |
-
 ## 怎麼用
 
 `init` 跑完，工作全丟給 main agent：
@@ -121,15 +100,24 @@ boss-say 把 docs/backlog.md 做掉
 
 剩下由 `boss-say` 決定：哪個 skill 負責、目前 agent 能否直接完成或需要獨立 workroom、採用哪一種協作圖與 reality anchor、是單一任務還是批次，以及 backlog 是否需要 `/loop` 自行抓步調。它會說明選擇，你不同意時可用一句話覆寫。
 
-想自己點名某個專責 skill 也行：
+## Skills
 
-- 哪個 app 管這個？→ `work-on`
-- 加入或打斷前先看一眼 → `peeking-work`
-- 沒有 agent system 的 app，建一套精簡版 → `create-great-harness`
-- 稽核現有程式碼，或研究現在怎麼運作的 → `boss-say`（只帶問題派工，方法由 worker 自己挑）
-- 東西壞了、原因不明 → `boss-say`（診斷與修復留在同一個 `shipping-task` 迴圈）
+情境對得上就直接叫該 skill；沒列到的都交給 `boss-say`。
 
-想知道現在有哪些派工在跑、或收尾一個，一樣問 `boss-say`。
+| 想做的事 | 用 |
+|-------|-------------|
+| 修 bug、做功能、稽核、研究、診斷、跑整份 backlog、問現在有哪些派工、收尾派工 | `boss-say` |
+| 設定 managed app 與 work route，或檢查 Herdr 是否就緒 | `init` |
+| 找出請求屬於哪個 app | `work-on` |
+| 不加入、不打斷，看一眼派工正在做什麼 | `peeking-work` |
+| 把一個 scope 與它進行中的派工移到新的 orchestrator tab | `handoff-orchestrator` |
+| 讓這個窗口接手另一個 main agent 協調的派工 | `boss-say`；只有你要求時才會接手 |
+| 處理 Straw Boss 本身的協調摩擦 | `boss-assistant` |
+| 幫沒有 `AGENTS.md` 或 `CLAUDE.md` 的 app 建一套精簡 agent system | `create-great-harness` |
+| 在派出去的 worker 裡找一位 coworker 一起審查或協作 | `bringing-coworker` |
+
+其餘 skill 由 main agent 與 worker 自行執行：`i-am-orchestrator`、`choosing-graph`、`dispatching-work`、`shipping-task`、`contacting-orchestrators`、`reporting-to-user`、`notifying-main-agent`、`asking-peer-agents`。
+各自的職責見 [docs/architecture.md](docs/architecture.md#components)。
 
 ## 設定
 

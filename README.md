@@ -19,7 +19,7 @@ Bounded work should stay bounded. When a task benefits from its own workroom, st
 - **Worktree isolation** — team-mode tasks can run side by side on their own feature branches.
 - **Cross-main-agent resource lock** — a file lock for ports and shared-DB migrations worktrees can't isolate.
 - **Self-paced batches** — a backlog too big for one turn gets its own `/loop`, started by `boss-say` itself.
-- **Independent orchestrator handoff** — with your approval, move one scope into a named Herdr tab whose orchestrator takes over through `boss-say`; the original window leaves that scope.
+- **Independent orchestrator handoff** — with your approval, move one scope and its in-progress dispatches into a named Herdr tab whose orchestrator takes over through `boss-say`; the original window leaves that scope.
 - **herdr for human-in-the-loop** — watch or join a dispatched Claude Code, Codex CLI, or Antigravity workroom and answer questions there.
 
 ## Requirements
@@ -91,27 +91,6 @@ Then run once per project:
 
 For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it to check Herdr readiness, configure per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 
-## Skills
-
-| Skill | Description |
-|-------|-------------|
-| `init` | Configure managed apps, work routes, and Herdr dispatch; sync the root `AGENTS.md` and `CLAUDE.md`, and offer to fill in each app's instruction files |
-| `boss-say` | **The entry point.** Resolves the owner and execution tier, and plans/schedules independent or dependent tasks |
-| `handoff-orchestrator` | After explicit approval, transfer one scope and its minimal continuity state to a new orchestrator tab |
-| `boss-assistant` | Resolve coordination friction, verify recovery with the reporting main agent, and carry source findings into the development workflow |
-| `contacting-orchestrators` | Register this orchestrator's identity and one-line scope, read which other orchestrators are live, and send one a factual delta carrying this session's herdr pane id |
-| `i-am-orchestrator` | Keep coordination event-driven while workers and the user own work details inside the named reality anchor |
-| `work-on` | Resolve a request to an app, apply any legacy redirect |
-| `dispatching-work` | Internal dispatch machinery — picks the transport and resolves a work route (provider/profile/model/effort, plus Claude-only native advisor), writes the instruction, dispatches, lists/wraps up existing dispatches |
-| `choosing-graph` | Pick the coordination graph (single-loop, sub-agent fan-out/fan-in, orchestrator-worker) and the reality anchor (testing, pseudo-human, human, adversarial review) before work starts — the anchor names the category, the agent doing the work still picks the method inside it |
-| `shipping-task` | Decide the git lifecycle from how you regard the work — team-mode (worktree → develop → MR → merge → archive) or solo-mode (direct commit) — dispatch, commit and push its own feature branch freely, get authorization before every merge (and any push outside that branch) |
-| `peeking-work` | Read-only peek at what a dispatch is currently doing, without joining or interrupting |
-| `reporting-to-user` | Close out finished work: grade what surfaced as Alert (act now), Warn (carry knowingly), or Info (informational), derive a Next recommendation list from the Alert and Warn findings, and ask item by item whether each one gets a follow-up dispatch before the accepted items open one batched follow-up round |
-| `notifying-main-agent` | Used by a dispatched agent to reach the main agent with a purely informational report or question |
-| `asking-peer-agents` | Let one dispatched task request a factual progress update or conclusion from another task |
-| `bringing-coworker` | Bring one Claude Code, Codex CLI, or Antigravity coworker into an interactive worker's exact Herdr tab and worktree |
-| `create-great-harness` | Write or complete `AGENTS.md` and `CLAUDE.md` from project evidence, adding an optional hook or rule within the confirmed scope |
-
 ## Usage
 
 Once `init`'s run, hand everything to the main agent:
@@ -127,15 +106,24 @@ carry the work or a separate workroom is useful, the coordination graph and
 reality anchor, one task or a batch, and `/loop` when a backlog needs its own
 pacing. It states what it picked, and you can override it in one sentence.
 
-Every specialist skill is also callable by name:
+## Skills
 
-- Which app owns this? → `work-on`
-- Peek before joining or interrupting → `peeking-work`
-- No agent system for an app yet → `create-great-harness`
-- Audit existing code, or research how something works now → `boss-say` (dispatched on the question alone; the worker picks its own method)
-- Something broke, cause unknown → `boss-say` (diagnosis and repair stay in one `shipping-task` loop)
+Call a skill by name when the situation fits; anything unlisted goes to `boss-say`.
 
-A status question or closing out a dispatch also goes through `boss-say`.
+| When you want to… | Use |
+|-------|-------------|
+| Fix, build, audit, research, or diagnose; work through a backlog; ask what is running; close out a dispatch | `boss-say` |
+| Set up managed apps and work routes, or check Herdr readiness | `init` |
+| Find which app owns a request | `work-on` |
+| See what a dispatch is doing without joining or interrupting it | `peeking-work` |
+| Move a scope and its in-progress dispatches to a new orchestrator tab | `handoff-orchestrator` |
+| Have this window take over dispatches another main agent coordinates | `boss-say`; it moves them only when you ask |
+| Resolve friction in Straw Boss's own coordination | `boss-assistant` |
+| Give an app without `AGENTS.md` or `CLAUDE.md` a minimal agent system | `create-great-harness` |
+| From inside a dispatched worker, bring in a coworker for review or pairing | `bringing-coworker` |
+
+The main agent and workers run the other skills on their own: `i-am-orchestrator`, `choosing-graph`, `dispatching-work`, `shipping-task`, `contacting-orchestrators`, `reporting-to-user`, `notifying-main-agent`, and `asking-peer-agents`.
+[docs/architecture.md](docs/architecture.md#components) describes each one.
 
 ## Configuration
 
