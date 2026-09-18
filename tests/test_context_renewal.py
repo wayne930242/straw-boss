@@ -281,8 +281,75 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         self.assertNotIn("Use the smallest sufficient loop", renewed.stdout)
         self.assertEqual(json.loads(path.read_text())["consumed_by"], "new-session")
 
+        # "new-session" confirms by reaching its own Stop below the threshold,
+        # so a further SessionStart in the pane can no longer take the record.
+        self.assertEqual(
+            self.hook(
+                "context-renewal-guard.py",
+                {"session_id": "new-session", "transcript_path": str(self.claude_transcript(50_000))},
+                HERDR_PANE_ID="p1",
+            ).stdout,
+            "",
+        )
+        self.assertTrue(json.loads(path.read_text())["confirmed"])
+
         again = self.hook("orchestrator-priming.py", {**payload, "session_id": "third"}, HERDR_PANE_ID="p1")
         self.assertNotIn("Next action: run the suite.", again.stdout)
+
+    def test_a_throwaway_session_that_never_turns_cannot_strand_the_record(self) -> None:
+        """Reproduces the 2026-09-18 pane wF:p5R incident: a duplicated /clear
+        starts a second session in the same pane a moment after the first,
+        before the first ever reaches its own Stop. The record must not be
+        stuck consumed_by the throwaway session that never ran a turn."""
+        path = self.write_record("p1")
+        payload = {"session_id": "throwaway", "source": "clear"}
+
+        first = self.hook("orchestrator-priming.py", payload, HERDR_PANE_ID="p1")
+        self.assertIn("Next action: run the suite.", first.stdout)
+        record = json.loads(path.read_text())
+        self.assertEqual(record["consumed_by"], "throwaway")
+        self.assertFalse(record["confirmed"])
+
+        # "throwaway" is cleared away again without ever reaching Stop; the
+        # session that the continue prompt actually lands on must still get it.
+        second = self.hook("orchestrator-priming.py", {**payload, "session_id": "real"}, HERDR_PANE_ID="p1")
+        self.assertIn("Next action: run the suite.", second.stdout)
+        record = json.loads(path.read_text())
+        self.assertEqual(record["consumed_by"], "real")
+        self.assertFalse(record["confirmed"])
+
+        # once "real" reaches its own Stop, the record is confirmed and a
+        # further SessionStart in the pane can no longer take it.
+        self.assertEqual(
+            self.hook(
+                "context-renewal-guard.py",
+                {"session_id": "real", "transcript_path": str(self.claude_transcript(50_000))},
+                HERDR_PANE_ID="p1",
+            ).stdout,
+            "",
+        )
+        self.assertTrue(json.loads(path.read_text())["confirmed"])
+        intruder = self.hook("orchestrator-priming.py", {**payload, "session_id": "intruder"}, HERDR_PANE_ID="p1")
+        self.assertNotIn("Next action: run the suite.", intruder.stdout)
+
+    def test_reclaimed_main_agent_adopts_routes_a_throwaway_claim_already_moved(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        instruction = json.loads(instruction_path.read_text())
+        old_main = instruction["main_agent_session_id"]
+        self.write_record(
+            "main-pane", session_id=old_main, role="main-agent",
+            instruction_paths=[str(instruction_path)],
+        )
+        env = self.renewal_env("main-pane")
+
+        self.hook("orchestrator-priming.py", {"session_id": "throwaway", "source": "clear"}, **env)
+        self.assertEqual(json.loads(instruction_path.read_text())["main_agent_session_id"], "throwaway")
+
+        self.hook("orchestrator-priming.py", {"session_id": "real", "source": "clear"}, **env)
+        adopted = json.loads(instruction_path.read_text())
+        self.assertEqual(adopted["main_agent_session_id"], "real")
+        self.assertEqual(adopted["main_agent_adoptions"][-1]["before"], {"main_agent_session_id": "throwaway"})
 
     def test_record_outside_herdr_is_claimed_only_by_a_prompt_clear(self) -> None:
         from datetime import datetime, timedelta, timezone

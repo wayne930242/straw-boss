@@ -31,18 +31,20 @@ Deterministic trigger in hooks, judgment in the model, delivery in a detached pr
    - Prints the one-line notice with the record path.
    - In Herdr: spawns detached `scripts/deliver-renewal.py <pane>` that waits for idle/done, sends the provider clear command (`/clear` on all three), waits for the cleared composer, and prompts `Continue from the context renewal record.` so Codex and agy fire SessionStart. Outside Herdr the notice asks the user to run `/clear`.
 3. **SessionStart** `scripts/orchestrator-priming.py` checks `HERDR_PANE_ID` first:
-   - A pending record for this pane, same `agent_kind`, whose `session_id` differs from the hook's session: consume it (`status: consumed`, `consumed_by`), adopt, and print role priming + the record.
+   - A pending record for this pane, same `agent_kind`, whose `session_id` differs from the hook's session: consume it (`status: consumed`, `consumed_by`, `confirmed: false`), adopt, and print role priming + the record.
+   - A record already `consumed` by a session in this pane that never confirmed it: reclaim it the same way, and set `reclaimed_from` to the abandoned session so adoption still finds the routes that session's own (also unconfirmed) adoption already moved. A record confirmed by its consumer cannot be reclaimed.
    - Otherwise today's behavior unchanged (behavior 11, and "clear with no pending record").
    - Under agy the text is wrapped as `injectSteps` / `ephemeralMessage`.
-4. **Adoption in the hook** (`scripts/straw_boss/renewal.py`), proven by `validate_current_process_in_pane(pane)` and by the instruction still naming the record's session in this pane:
-   - Main agent: `main_agent_session_id` rewritten for instructions whose `main_agent_herdr_pane_id` is this pane and whose recorded session is the record's; appended to `main_agent_adoptions`. The orchestrator record keyed on the old fingerprint is re-keyed to the new session with the same scope.
-   - Dispatched worker: `session_id` rewritten for instructions whose worker pane is this pane; appended to `worker_adoptions`.
+4. **Confirmation** `scripts/context-renewal-guard.py`, on the Stop of the session that consumed a record: sets `confirmed: true` before measuring context. A session a duplicated clear starts and then immediately clears away again never reaches this, so a later SessionStart in the same pane is still free to reclaim in step 3 instead of stranding the record.
+5. **Adoption in the hook** (`scripts/straw_boss/renewal.py`), proven by `validate_current_process_in_pane(pane)` and by the instruction still naming the record's session in this pane:
+   - Main agent: `main_agent_session_id` rewritten for instructions whose `main_agent_herdr_pane_id` is this pane and whose recorded session is `reclaimed_from` or, absent a reclaim, the record's original session; appended to `main_agent_adoptions`. The orchestrator record keyed on the old fingerprint is re-keyed to the new session with the same scope.
+   - Dispatched worker: `session_id` rewritten the same way for instructions whose worker pane is this pane; appended to `worker_adoptions`.
    - Agy identity is terminal-only when no session is recorded, so nothing is rewritten.
    - Standalone worker: no instruction, no adoption.
    - Main agent and dispatched worker: the hop is appended to `renewal/lineage.jsonl` and the old session's orchestrator message ledger moves to the new key; peer-reply validation accepts any session in a lineage.
-5. **Priming by role**: main agent → orchestrator stance + record; dispatched worker → its contract + record; standalone worker → record only. Only the main agent gets main-agent priming.
-6. **Stop guard**: `dispatched-agent-stop-guard.py` also accepts a pending renewal record from the stopping session, so the worker's turn ends without a fake status (the progress note is the checkpoint the spec names; status file format unchanged).
-7. **Agy hooks**: root `hooks.json` converted to the named format, which also restores priming and the stop guard under agy.
+6. **Priming by role**: main agent → orchestrator stance + record; dispatched worker → its contract + record; standalone worker → record only. Only the main agent gets main-agent priming.
+7. **Stop guard**: `dispatched-agent-stop-guard.py` also accepts a pending renewal record from the stopping session, so the worker's turn ends without a fake status (the progress note is the checkpoint the spec names; status file format unchanged).
+8. **Agy hooks**: root `hooks.json` converted to the named format, which also restores priming and the stop guard under agy.
 
 ## Interfaces touched
 

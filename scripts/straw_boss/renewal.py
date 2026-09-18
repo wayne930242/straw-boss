@@ -247,7 +247,10 @@ def pending_record_from(path: Path, session_id: str) -> dict[str, Any] | None:
 def claimable_record(
     path: Path, agent_kind: str, session_id: str, source: object
 ) -> dict[str, Any] | None:
-    """A pending record written by a previous session of this kind in this pane.
+    """A pending record written by a previous session of this kind in this pane,
+    or one a prior session in this pane consumed but never confirmed by
+    reaching its own Stop -- a throwaway session that raced the real one to a
+    clear cannot strand the record on itself; the next SessionStart reclaims it.
 
     Outside Herdr the key is only the working directory, so a record there is
     claimed only by a clear shortly after it was written, never by an
@@ -256,11 +259,20 @@ def claimable_record(
     record = load_record(path)
     if not (
         record
-        and record.get("status") == "pending"
         and record.get("agent_kind") == agent_kind
-        and record.get("session_id") != session_id
         and record.get("pane_id") == os.environ.get("HERDR_PANE_ID")
     ):
+        return None
+    status = record.get("status")
+    if status == "consumed":
+        if (
+            record.get("pane_id")
+            and not record.get("confirmed")
+            and record.get("consumed_by") != session_id
+        ):
+            return record
+        return None
+    if status != "pending" or record.get("session_id") == session_id:
         return None
     if record.get("pane_id"):
         return record
@@ -274,7 +286,19 @@ def claimable_record(
 
 
 def consume_record(path: Path, record: dict[str, Any], session_id: str) -> dict[str, Any]:
-    consumed = {**record, "status": "consumed", "consumed_by": session_id, "consumed_at": now_iso()}
+    """Claim the record for `session_id`, provisionally: `confirmed` only
+    flips true once this session reaches its own Stop (context-renewal-guard.py).
+    A prior claimant's session id survives as `reclaimed_from` so adoption can
+    still find routes an abandoned claim already moved."""
+    consumed = {
+        **record,
+        "status": "consumed",
+        "consumed_by": session_id,
+        "consumed_at": now_iso(),
+        "confirmed": False,
+    }
+    if record.get("status") == "consumed" and record.get("consumed_by"):
+        consumed["reclaimed_from"] = record["consumed_by"]
     dump_json(path, consumed)
     return consumed
 
@@ -316,9 +340,12 @@ def adopt_renewed_session(record: dict[str, Any], new_session: str) -> list[str]
 
     Only routes that still name the renewing session in this very pane move,
     so a record can never hand another pane's or another session's work over.
+    `reclaimed_from` (set by consume_record on a reclaim) is preferred over the
+    record's original session id, so routes an abandoned throwaway claim
+    already moved are still found.
     """
     pane_id = record.get("pane_id")
-    old_session = record.get("session_id")
+    old_session = record.get("reclaimed_from") or record.get("session_id")
     routes = RENEWAL_ROUTES.get(record["role"])
     if not pane_id or not old_session or routes is None:
         return []

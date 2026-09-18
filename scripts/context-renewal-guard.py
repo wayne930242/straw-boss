@@ -70,10 +70,15 @@ def main() -> int:
     path = current_record_path(payload, agent_kind)
     if pending_record_from(path, session):
         return 0
+    record = load_record(path)
+    if record and record.get("consumed_by") == session and not record.get("confirmed"):
+        # This session reached its own Stop, so it is not a throwaway that a
+        # later SessionStart in the pane may reclaim the record from.
+        record = {**record, "confirmed": True}
+        dump_json(path, record)
     tokens = context_tokens(payload, agent_kind)
     if tokens is None:
         return 0
-    record = load_record(path)
     # Only a renewed session that never dropped below the threshold is exempt.
     exempt = bool(record and record.get("consumed_by") == session and not record.get("settled"))
     if tokens <= RENEWAL_THRESHOLD_TOKENS:

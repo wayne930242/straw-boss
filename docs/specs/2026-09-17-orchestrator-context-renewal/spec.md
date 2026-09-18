@@ -18,7 +18,7 @@ A covered session is a main agent, a dispatched worker, or a standalone worker t
 2. **Continuity record.** Before clearing, the session writes one record under `~/.straw-boss/` keyed by its Herdr pane. The record holds the role (main agent, dispatched worker, or standalone worker), the continuity payload (goal and scope, confirmed decisions and user terms, current state and evidence, next action, exclusions), and the dispatch instruction paths the session owns or serves. A dispatched worker also writes its progress checkpoint, so the stop guard lets the turn end.
 3. **Notice.** The session prints one line naming the renewal and the record path, and asks no approval question.
 4. **Clear.** In Herdr, the session's own pane receives the provider's clear command after the turn ends. Outside Herdr, the notice asks the user to run that command.
-5. **Injection.** The session that the clear starts in that pane receives the record through its SessionStart hook, is primed for the recorded role, and continues the recorded next action without the user restating context. Only a main agent receives main-agent priming. The record is consumed once.
+5. **Injection.** The session that the clear starts in that pane receives the record through its SessionStart hook, is primed for the recorded role, and continues the recorded next action without the user restating context. Only a main agent receives main-agent priming. The record is consumed once confirmed: a session that never reaches its own Stop (a throwaway that a duplicated clear started and abandoned) cannot strand the record on itself, and the next SessionStart in the pane reclaims it.
 6. **Main agent continuity.** After renewal, the main agent's existing dispatches accept its commands, worker `done` and `failed` notifications reach it, the orchestrator directory lists the renewed session with the same scope, and peer questions it asked or received before the clear stay answerable.
 7. **Dispatched worker continuity.** After renewal, the worker's status reports, checkpoints, and stop guard accept the renewed session in the recorded worker pane, and its main agent sees no identity refusal.
 8. **Standalone worker.** Renewal completes with no dispatch record and no main agent.
@@ -33,6 +33,7 @@ A covered session is a main agent, a dispatched worker, or a standalone worker t
 - A record whose pane no longer exists is never injected into another pane.
 - A clear with no pending record behaves exactly as it does today.
 - A coworker pane in the same tab renews under its own pane key.
+- A duplicated clear starts two sessions in the same pane moments apart: the first to consume the record but never reach its own Stop is reclaimed by the second, and any dispatch routes the abandoned claim already moved are found by the reclaiming session.
 
 ## Compatibility constraints
 

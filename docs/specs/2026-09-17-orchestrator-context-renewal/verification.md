@@ -40,6 +40,16 @@ A read-only review of `49d467c..HEAD` found that outside Herdr, a record keyed o
 Fixed: outside Herdr, only a `source: clear` SessionStart within 30 minutes of the record claims it, so an agy session outside Herdr never auto-injects; this case is covered by a new unit test.
 Its other findings were not changed: the agy guard blocks once per turn by design, and the model-supplied `--session-id` only affects matching inside the same pane.
 
+## Fix 2026-09-19: a throwaway session stranded the record
+
+Incident: in Herdr pane `wF:p5R`, `deliver-renewal.py` delivered `/clear` and the continue prompt twice about 250ms apart (the live `CLAUDE_PLUGIN_ROOT` for that already-running pane still pointed at plugin 0.28.0, before the 0.29.1 `deliver-renewal.py` flock; no `pane-wF_p5R.deliver.lock` exists, unlike every other pane that renewed that day). The first of the two sessions the duplicated clear started consumed the record and then was cleared away again before ever reaching Stop; the second session — the one the continue prompt actually landed on — found the record already `consumed` and got no continuity.
+
+The duplicate `/clear` itself traces to that stale plugin root, not to a defect in this checkout (0.29.1 already serializes `deliver-renewal.py` per pane with `flock`; a session running that code cannot duplicate the send). The code defect fixed here is that `claimable_record()` treated `status: consumed` as terminal, so any such duplicate — from a stale plugin, or any future race — permanently strands the record on whichever session's SessionStart fires first, even one that never turns.
+
+Fix: `consume_record()` now marks a claim `confirmed: false`; `context-renewal-guard.py` flips it `true` on the claiming session's own Stop. `claimable_record()` lets a later SessionStart in the same pane reclaim a `consumed`-but-unconfirmed record, recording the abandoned claimant as `reclaimed_from` so `adopt_renewed_session()` still finds the dispatch routes that claimant's own adoption already moved. A confirmed record cannot be reclaimed.
+
+Verified by unit test only (`tests/test_context_renewal.py::test_a_throwaway_session_that_never_turns_cannot_strand_the_record` and `::test_reclaimed_main_agent_adopts_routes_a_throwaway_claim_already_moved`); no live Herdr run, since the fix is a pure record-lifecycle correction with no provider-mechanic change.
+
 ## Gaps
 
 - Agy main-agent and worker adoption, Codex worker renewal, and behavior 9 on Codex and agy were not exercised live.
