@@ -351,6 +351,39 @@ class OrchestratorHandoffTests(DispatchedAgentLifecycleFixture, unittest.TestCas
         handoff_dir = self.home / ".straw-boss" / "handoffs"
         self.assertEqual(list(handoff_dir.glob("*.json")), [])
 
+    def test_receiver_still_routing_the_offer_is_not_offered_again(self) -> None:
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "handoff-orchestrator.py",
+            *self.handoff_args(),
+            "--accept-timeout-seconds",
+            "0",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_WORKSPACE_ID": "workspace-1",
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_PROCESS_INFO_CALLER": "1",
+                "HERDR_AGENT_STATUSES": json.dumps({"new-pane": "working"}),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [call for call in calls if call[:2] == ["agent", "prompt"]]
+        self.assertEqual(len(prompts), 1)
+        self.assertIn(["tab", "close", "new-tab"], calls)
+
+    def test_default_acceptance_window_covers_a_receiver_routing_the_offer(self) -> None:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            module = runpy.run_path(str(ROOT / "scripts" / "handoff-orchestrator.py"))
+        finally:
+            sys.path.pop(0)
+        # A claude opus xhigh receiver accepted 31 seconds after its offer.
+        self.assertGreaterEqual(module["ACCEPT_TIMEOUT_SECONDS"], 120)
+
     def test_failed_receiver_cleanup_error_is_reported_and_source_stays_open(
         self,
     ) -> None:

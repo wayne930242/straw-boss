@@ -32,7 +32,9 @@ from straw_boss.dispatch.transfer import offer_dispatches
 
 MAX_CONTINUITY_CHARS = 1600
 MAX_PROMPT_CHARS = 3000
-ACCEPT_TIMEOUT_SECONDS = 20.0
+# A receiver loads its skills and establishes the route before accepting; a
+# claude opus xhigh receiver took 31 seconds.
+ACCEPT_TIMEOUT_SECONDS = 120.0
 ACCEPT_POLL_SECONDS = 0.25
 AGENT_START_PANE_READY_TIMEOUT_SECONDS = 15.0
 AGENT_START_PANE_READY_POLL_SECONDS = 0.25
@@ -258,6 +260,14 @@ def offer_prompt(pane_id: str, prompt: str) -> None:
     run_herdr(["agent", "prompt", pane_id, prompt])
 
 
+def receiver_working(pane_id: str) -> bool:
+    try:
+        agent = run_herdr(["agent", "get", pane_id]).get("result", {}).get("agent")
+    except ValueError:
+        return False
+    return isinstance(agent, dict) and agent.get("agent_status") == "working"
+
+
 def close_failed_receiver(tab_id: str, pane_id: str | None) -> str | None:
     errors: list[str] = []
     for _ in range(2):
@@ -333,15 +343,19 @@ def handoff(args: argparse.Namespace) -> dict[str, object]:
         accepted: dict[str, Any] | None = None
         timeout = args.accept_timeout_seconds
         prompt_error: ValueError | None = None
+        offered = False
         for _ in range(2):
             accepted = wait_for_acceptance(handoff_path, 0)
             if accepted is not None:
                 break
-            try:
-                offer_prompt(pane_id, prompt)
-            except ValueError as exc:
-                prompt_error = exc
-                continue
+            # A receiver still working on the delivered offer keeps it.
+            if not offered or not receiver_working(pane_id):
+                try:
+                    offer_prompt(pane_id, prompt)
+                except ValueError as exc:
+                    prompt_error = exc
+                    continue
+                offered = True
             accepted = wait_for_acceptance(handoff_path, timeout)
             if accepted is not None:
                 break

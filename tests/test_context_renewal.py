@@ -5,6 +5,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from typing import Any
@@ -223,6 +224,47 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         self.assertEqual(
             self.hook("dispatched-agent-stop-guard.py", stop, HERDR_PANE_ID="worker-pane").stdout, ""
         )
+
+    def test_rewritten_renewal_clears_its_pane_once(self) -> None:
+        fake_bin = self.home / "gated-bin"
+        fake_bin.mkdir()
+        capture = self.home / "herdr-calls.jsonl"
+        turn_end = self.home / "turn-ended"
+        (fake_bin / "herdr").write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, pathlib, sys, time\n"
+            "with open(os.environ['HERDR_CAPTURE'], 'a') as f:\n"
+            "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+            "if sys.argv[1:3] == ['agent', 'wait']:\n"
+            "    while not pathlib.Path(os.environ['HERDR_TURN_END']).exists():\n"
+            "        time.sleep(0.05)\n"
+        )
+        (fake_bin / "herdr").chmod(0o755)
+        env = self.env(
+            PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+            HERDR_CAPTURE=str(capture),
+            HERDR_TURN_END=str(turn_end),
+        )
+        deliver = [sys.executable, str(SCRIPTS / "deliver-renewal.py"), "--pane-id", "p1"]
+
+        def calls() -> list[list[str]]:
+            return [json.loads(line) for line in capture.read_text().splitlines()] if capture.exists() else []
+
+        first = subprocess.Popen(deliver, cwd=ROOT, env=env)
+        deadline = time.monotonic() + 10
+        while not any(call[:2] == ["agent", "wait"] for call in calls()):
+            self.assertLess(time.monotonic(), deadline, "the first deliverer never waited")
+            time.sleep(0.05)
+        second = subprocess.Popen(deliver, cwd=ROOT, env=env)
+        try:
+            self.assertEqual(second.wait(timeout=5), 0)
+        finally:
+            turn_end.touch()
+            first.wait(timeout=10)
+            second.wait(timeout=10)
+
+        clears = [call for call in calls() if call == ["agent", "prompt", "p1", renewal.CLEAR_COMMAND]]
+        self.assertEqual(len(clears), 1)
 
     # --- SessionStart ---
 

@@ -20,7 +20,8 @@ Omit empty fields and conversation text.
 Run `handoff-orchestrator.py` with `--user-approved`, this pane, cwd, provider, and the continuity fields.
 Pass `--dispatch` for each in-progress dispatch in the moving scope; a handoff that retains nothing lists every dispatch this pane coordinates.
 The script creates and labels an independent tab, starts the receiving orchestrator, prompts it to invoke `boss-say` and then accept, and verifies the handshake after that route is established.
-It retries once; final failure closes the new tab and leaves ownership here.
+It waits up to two 120-second acceptance windows, re-offering only to a receiver that stopped without accepting, so give the command a tool timeout of at least five minutes.
+Final failure closes the new tab and leaves ownership here.
 
 ## 4. Leave the scope
 
