@@ -306,10 +306,14 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         self.register("接收端", pane_id=BETA, agents=agents)
         self.register("發送端", pane_id=ALPHA, agents=agents)
         self.install_claude_session(BETA, "replacement-session")
-        result = self.send("--to", BETA, "--intent", "inform", "--message", "驗證替換。", pane_id=ALPHA, agents=agents)
+        result = self.send("--to", "orchestrator-b", "--intent", "inform", "--message", "驗證替換。", pane_id=ALPHA, agents=agents)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(json.loads(result.stdout)["submitted"])
         self.assertEqual(self.prompts(), [])
+        by_pane = self.send("--to", BETA, "--intent", "inform", "--message", "驗證目前佔用者。", pane_id=ALPHA, agents=agents)
+        self.assertEqual(by_pane.returncode, 0, by_pane.stderr)
+        self.assertTrue(json.loads(by_pane.stdout)["submitted"])
+        self.assertEqual(len(self.ledger("replacement-session")), 1)
 
     def test_registering_records_this_session_and_returns_the_live_directory(self) -> None:
         self.register("Coordinating the billing app.", pane_id=BETA)
@@ -531,7 +535,7 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         self.assertIn("at most two sentences", result.stderr)
         self.assertEqual(self.prompts(), [])
 
-    def test_an_unregistered_orchestrator_is_refused(self) -> None:
+    def test_an_unregistered_sender_delivers_and_names_its_pane(self) -> None:
         self.register("Coordinating the billing app.", pane_id=BETA)
 
         result = self.send(
@@ -544,8 +548,38 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
             pane_id=ALPHA,
         )
 
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)["submitted"])
+        envelope = self.prompts()[-1][3]
+        self.assertIn("from=orchestrator-alpha", envelope)
+        self.assertIn(f"pane={ALPHA}", envelope)
+        self.assertEqual(len(self.records()), 1)
+
+    def test_an_unregistered_live_agent_receives_and_answers_without_writes(self) -> None:
+        self.register("Coordinating the billing app.", pane_id=ALPHA)
+        before = {p: p.read_bytes() for p in self.records()}
+
+        asked = self.send("--to", BETA, "--intent", "question", "--message", "Does your work touch the layout?", pane_id=ALPHA)
+
+        self.assertEqual(asked.returncode, 0, asked.stderr)
+        self.assertTrue(json.loads(asked.stdout)["submitted"])
+        self.assertEqual(self.prompts()[-1][2], BETA)
+        question_id = json.loads(asked.stdout)["message_id"]
+        self.assertEqual(self.ledger("orchestrator-b")[0]["message_id"], question_id)
+        answered = self.send("--to", ALPHA, "--intent", "answer", "--in-reply-to", question_id, "--message", "It stays out of the layout.", pane_id=BETA)
+        self.assertEqual(answered.returncode, 0, answered.stderr)
+        self.assertTrue(json.loads(answered.stdout)["submitted"])
+        self.assertEqual(before, {p: p.read_bytes() for p in self.records()})
+        listed = self.run_directory_script("register-orchestrator.py", "--list", agents=[ALPHA_AGENT, BETA_AGENT])
+        self.assertEqual([row["herdr_pane_id"] for row in json.loads(listed.stdout)["directory"]], [ALPHA])
+
+    def test_an_address_without_a_verified_live_agent_is_refused(self) -> None:
+        agents = [ALPHA_AGENT, agent(BETA, None)]
+
+        result = self.send("--to", BETA, "--intent", "inform", "--message", "Nobody verified is home.", pane_id=ALPHA, agents=agents)
+
         self.assertEqual(result.returncode, 1)
-        self.assertIn("unregistered", result.stderr)
+        self.assertIn("no orchestrator or verified live agent matches", result.stderr)
         self.assertEqual(self.prompts(), [])
 
     def test_a_target_pane_holding_another_session_is_refused(self) -> None:

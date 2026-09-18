@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Send one factual delta to another registered orchestrator."""
+"""Send one factual delta to another orchestrator or verified live agent."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from straw_boss.orchestrator import ORCHESTRATOR_INTENTS, send
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--to", required=True, help="registered name, or its herdr pane id")
+    parser.add_argument("--to", required=True, help="name, herdr pane id, or session id of a live agent")
     parser.add_argument("--intent", required=True, choices=ORCHESTRATOR_INTENTS)
     parser.add_argument("--in-reply-to", help="the question id an answer replies to")
     parser.add_argument("--message", required=True, help="one delta, at most two sentences")

@@ -219,6 +219,37 @@ def directory(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def unregistered_rows(
+    agents: list[dict[str, Any]], rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Live agents with a verified fingerprint that no live row covers.
+
+    They are message endpoints, not directory entries: registration only adds
+    a declared scope, so sending never waits for it.
+    """
+    covered = {row["herdr_pane_id"] for row in rows if row["live"]}
+    found = []
+    for agent in agents:
+        pane = str(agent.get("pane_id"))
+        if pane in covered:
+            continue
+        try:
+            kind, session, terminal = agent_identity(agent)
+        except ValueError:
+            continue
+        found.append({
+            "name": agent.get("name"), "agent_kind": kind,
+            "scope": None, "scope_declared": False,
+            "cwd": agent.get("cwd"), "herdr_pane_id": pane,
+            "session_id": session, "herdr_terminal_id": terminal,
+            "agent_status": agent.get("agent_status"), "live": True,
+            "unavailable_reason": None, "updated_at": None,
+            "record_path": str(record_path(kind, session or str(terminal))),
+            "discovery_source": "live-agent",
+        })
+    return found
+
+
 def coordinator_instructions() -> list[tuple[Path, dict[str, Any]]]:
     """Read current and archived role evidence without changing shared state.
 
@@ -359,7 +390,7 @@ def resolve_target(address: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
         if address in {row["name"], row["herdr_pane_id"], row["session_id"]}
     ]
     if not matches:
-        raise ValueError(f"no registered orchestrator matches {address!r}")
+        raise ValueError(f"no orchestrator or verified live agent matches {address!r}")
     if len(matches) > 1:
         # A name outlives the session that registered it, and a pane is reused
         # by whatever agent occupies it next, so both collide with dead rows.
@@ -440,11 +471,8 @@ def send(
     agent = current_agent(agents)
     kind, session, terminal = agent_identity(agent)
     rows = directory(agents)
-    my_record = next((row for row in rows if row["live"] and row["herdr_pane_id"] == str(agent.get("pane_id"))), None)
-    if my_record is None:
-        raise ValueError(
-            "this orchestrator is unregistered; run register-orchestrator.py --scope first"
-        )
+    rows += unregistered_rows(agents, rows)
+    my_record = next(row for row in rows if row["live"] and row["herdr_pane_id"] == str(agent.get("pane_id")))
     my_path = Path(my_record["record_path"])
     source = Endpoint("orchestrator", str(agent.get("pane_id")), session, terminal, kind)
 

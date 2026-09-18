@@ -14,6 +14,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/register-orchestrator.py" --list
 Register before the first dispatch and update the record when scope changes.
 Use live directory rows to resolve names or panes.
 A `live: false` row carries an `unavailable_reason`; a discovered row can receive messages before declaring its own scope.
+Any live agent with a verified session sends and receives messages without registering; registration adds its declared scope to the directory.
 A pane with no verified identity remains unattributed.
 
 ## Exchange a delta
