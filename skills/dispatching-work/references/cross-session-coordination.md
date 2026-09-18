@@ -13,7 +13,7 @@ For every `herdr-pane` dispatch, record:
 
 - `--main-agent-kind <claude|codex>`;
 - `--main-agent-pane-id "$HERDR_PANE_ID"`;
-- for Claude, `--main-agent-session-id <agent_session.value from herdr agent get>`;
+- for Claude, `--main-agent-session-id <agent_session.value from herdr agent get>`, or `$CLAUDE_CODE_SESSION_ID` when Herdr exposes no session;
 - for Codex, `--main-agent-terminal-id <terminal_id>` and, when available, `--main-agent-session-id <agent_session.value>` from the same live record.
 
 The pane is an address; the provider session proves which conversation occupies it.
