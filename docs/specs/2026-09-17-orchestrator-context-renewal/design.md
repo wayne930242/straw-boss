@@ -39,6 +39,7 @@ Deterministic trigger in hooks, judgment in the model, delivery in a detached pr
    - Dispatched worker: `session_id` rewritten for instructions whose worker pane is this pane; appended to `worker_adoptions`.
    - Agy identity is terminal-only when no session is recorded, so nothing is rewritten.
    - Standalone worker: no instruction, no adoption.
+   - Main agent and dispatched worker: the hop is appended to `renewal/lineage.jsonl` and the old session's orchestrator message ledger moves to the new key; peer-reply validation accepts any session in a lineage.
 5. **Priming by role**: main agent → orchestrator stance + record; dispatched worker → its contract + record; standalone worker → record only. Only the main agent gets main-agent priming.
 6. **Stop guard**: `dispatched-agent-stop-guard.py` also accepts a pending renewal record from the stopping session, so the worker's turn ends without a fake status (the progress note is the checkpoint the spec names; status file format unchanged).
 7. **Agy hooks**: root `hooks.json` converted to the named format, which also restores priming and the stop guard under agy.

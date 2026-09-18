@@ -341,6 +341,8 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         (registry / f"claude-{old_main}.json").write_text(
             json.dumps({"agent_kind": "claude", "session_id": old_main, "scope": "Ship renewal"})
         )
+        question = json.dumps({"intent": "question", "message_id": "asked-before-clear"}) + "\n"
+        (registry / f"claude-{old_main}.messages.jsonl").write_text(question)
         self.write_record(
             "main-pane", session_id=old_main, role="main-agent",
             instruction_paths=[str(instruction_path)],
@@ -359,6 +361,13 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         moved = json.loads((registry / "claude-renewed-main.json").read_text())
         self.assertEqual(moved["scope"], "Ship renewal")
         self.assertFalse((registry / f"claude-{old_main}.json").exists())
+        self.assertEqual((registry / "claude-renewed-main.messages.jsonl").read_text(), question)
+        self.assertFalse((registry / f"claude-{old_main}.messages.jsonl").exists())
+        lineage = [json.loads(line) for line in (self.home / ".straw-boss" / "renewal" / "lineage.jsonl").read_text().splitlines()]
+        self.assertEqual(
+            [(hop["pane_id"], hop["old_session_id"], hop["new_session_id"]) for hop in lineage],
+            [("main-pane", old_main, "renewed-main")],
+        )
 
     def test_renewed_worker_adopts_only_its_own_route(self) -> None:
         mine, _ = self.write_dispatch("claude", slug="mine")

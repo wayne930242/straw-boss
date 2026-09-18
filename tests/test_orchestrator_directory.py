@@ -711,6 +711,42 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         self.assertIn("orchestrator-g", result.stderr)
         self.assertIn("orchestrator-h", result.stderr)
 
+    def renew(self, pane_id: str, old_session: str, new_session: str) -> None:
+        record = {"pane_id": pane_id, "session_id": old_session, "role": "main-agent", "agent_kind": "claude"}
+        code = (
+            "import json, sys; from straw_boss.renewal import adopt_renewed_session; "
+            "adopt_renewed_session(json.loads(sys.argv[1]), sys.argv[2])"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code, json.dumps(record), new_session],
+            env={**os.environ, "HOME": str(self.home), "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "scripts")},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_a_question_stays_answerable_after_both_sides_renew(self) -> None:
+        self.register("Coordinating the billing app.", pane_id=BETA)
+        self.register("Repairing this plugin.", pane_id=ALPHA)
+        asked = self.send("--to", BETA, "--intent", "question", "--message", "Does the billing app pin 0.18.21?", pane_id=ALPHA)
+        self.assertEqual(asked.returncode, 0, asked.stderr)
+        question_id = json.loads(asked.stdout)["message_id"]
+        replaced = [agent(ALPHA, "unrelated-session", name="orchestrator-alpha"), BETA_AGENT]
+
+        refused = self.send("--to", ALPHA, "--intent", "answer", "--in-reply-to", question_id, "--message", "It pins 0.18.33.", pane_id=BETA, agents=replaced)
+
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("different sender/receiver pair", refused.stderr)
+        self.renew(ALPHA, "orchestrator-a", "orchestrator-a2")
+        self.renew(BETA, "orchestrator-b", "orchestrator-b2")
+        renewed = [agent(ALPHA, "orchestrator-a2", name="orchestrator-alpha"), agent(BETA, "orchestrator-b2", name="orchestrator-beta")]
+
+        answered = self.send("--to", ALPHA, "--intent", "answer", "--in-reply-to", question_id, "--message", "It pins 0.18.33.", pane_id=BETA, agents=renewed)
+
+        self.assertEqual(answered.returncode, 0, answered.stderr)
+        self.assertTrue(json.loads(answered.stdout)["submitted"])
+        self.assertIn(f"in-reply-to={question_id}", self.prompts()[-1][3])
+
     def test_an_answer_names_the_question_it_replies_to(self) -> None:
         self.register("Coordinating the billing app.", pane_id=BETA)
         self.register("Repairing this plugin.", pane_id=ALPHA)

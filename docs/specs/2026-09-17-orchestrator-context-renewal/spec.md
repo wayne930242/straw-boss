@@ -19,7 +19,7 @@ A covered session is a main agent, a dispatched worker, or a standalone worker t
 3. **Notice.** The session prints one line naming the renewal and the record path, and asks no approval question.
 4. **Clear.** In Herdr, the session's own pane receives the provider's clear command after the turn ends. Outside Herdr, the notice asks the user to run that command.
 5. **Injection.** The session that the clear starts in that pane receives the record through its SessionStart hook, is primed for the recorded role, and continues the recorded next action without the user restating context. Only a main agent receives main-agent priming. The record is consumed once.
-6. **Main agent continuity.** After renewal, the main agent's existing dispatches accept its commands, worker `done` and `failed` notifications reach it, and the orchestrator directory lists the renewed session with the same scope.
+6. **Main agent continuity.** After renewal, the main agent's existing dispatches accept its commands, worker `done` and `failed` notifications reach it, the orchestrator directory lists the renewed session with the same scope, and peer questions it asked or received before the clear stay answerable.
 7. **Dispatched worker continuity.** After renewal, the worker's status reports, checkpoints, and stop guard accept the renewed session in the recorded worker pane, and its main agent sees no identity refusal.
 8. **Standalone worker.** Renewal completes with no dispatch record and no main agent.
 9. **User input.** A user message submitted while renewal runs is not lost; the renewing session may answer it before the clear.

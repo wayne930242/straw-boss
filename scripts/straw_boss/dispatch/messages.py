@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
+from straw_boss.session_lineage import session_lineage
+
 
 WORKER_TO_MAIN_INTENTS = frozenset({"question", "inform", "status"})
 MAIN_TO_WORKER_INTENTS = frozenset(
@@ -103,10 +105,12 @@ def validate_peer_reply(
         for record in records
         if isinstance(record, dict) and record.get("message_id") == in_reply_to
     ]
+    asker = session_lineage(endpoint.expected_session_id)
+    receiver = session_lineage(source.expected_session_id)
     if any(
         record.get("intent") == "question"
-        and record.get("source_session_id") == endpoint.expected_session_id
-        and record.get("target_session_id") == source.expected_session_id
+        and record.get("source_session_id") in asker
+        and record.get("target_session_id") in receiver
         for record in matches
     ):
         return

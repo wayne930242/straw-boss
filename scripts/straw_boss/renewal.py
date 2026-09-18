@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from straw_boss.dispatch.state import dump_json, load_json, straw_boss_root
+from straw_boss.session_lineage import record_renewal
 
 
 RENEWAL_THRESHOLD_TOKENS = 200_000
@@ -343,9 +344,26 @@ def adopt_renewed_session(record: dict[str, Any], new_session: str) -> list[str]
         if updated is not instruction:
             dump_json(path, updated)
             adopted.append(str(path))
+    record_renewal(record["agent_kind"], pane_id, old_session, new_session)
+    _carry_message_ledger(record["agent_kind"], old_session, new_session)
     if record["role"] == "main-agent":
         _rekey_orchestrator_record(record["agent_kind"], old_session, new_session)
     return adopted
+
+
+def _carry_message_ledger(agent_kind: str, old_session: str, new_session: str) -> None:
+    """Append the old session's orchestrator message ledger to the renewed one,
+    so questions it received before the clear stay answerable."""
+    from straw_boss.dispatch.messages import delivery_ledger_path
+    from straw_boss.orchestrator import record_path as orchestrator_record_path
+
+    old_ledger = delivery_ledger_path(orchestrator_record_path(agent_kind, old_session))
+    if not old_ledger.is_file():
+        return
+    new_ledger = delivery_ledger_path(orchestrator_record_path(agent_kind, new_session))
+    with new_ledger.open("a") as stream:
+        stream.write(old_ledger.read_text())
+    old_ledger.unlink()
 
 
 def _rekey_orchestrator_record(agent_kind: str, old_session: str, new_session: str) -> None:
