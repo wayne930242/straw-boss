@@ -153,6 +153,19 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         self.assertIn("now runs in pane wF:pP, not the recorded main-pane", row["note"])
         self.assertIn("adopt-dispatch.py from pane wF:pP", row["note"])
 
+    def test_a_coordinator_nothing_corroborates_names_adoption_and_user_requested_takeover(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch(slug="gone-coordinator")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+
+        report = self.roll_call([agent("wF:p9", "worker-session")])
+
+        row = self.row(report, "api--gone-coordinator")
+        self.assertIn("nothing live corroborates its coordinator session", row["note"])
+        self.assertIn("adopt-dispatch.py", row["note"])
+        self.assertIn("take-over-dispatch.py only when the user asks", row["note"])
+
     def test_mine_recognises_its_own_move_through_the_registry(self) -> None:
         """Herdr exposes no agent_session for the moved coordinator; the caller's
         own registry-backed fingerprint is what ties the dispatch to its new pane."""

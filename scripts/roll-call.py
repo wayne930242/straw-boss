@@ -374,7 +374,8 @@ def dispatch_row(
         note = (
             f"{note}; nothing live corroborates its coordinator session in the recorded "
             f"pane {instruction.get('main_agent_herdr_pane_id')} -- adopt-dispatch.py, "
-            "run from the pane that now holds the coordinating conversation, takes it over"
+            "run from the pane that now holds the coordinating conversation, takes it over; "
+            "another main agent takes it over with take-over-dispatch.py only when the user asks"
         )
 
     return (

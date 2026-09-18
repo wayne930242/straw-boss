@@ -534,5 +534,291 @@ class OrchestratorHandoffTests(DispatchedAgentLifecycleFixture, unittest.TestCas
         self.assertEqual(json.loads(path.read_text()), original)
 
 
+    RECEIVER_AGENT = {
+        "agent": "claude",
+        "agent_session": {"value": "receiver-session"},
+        "agent_status": "idle",
+        "pane_id": "new-pane",
+        "terminal_id": "terminal-new-pane",
+        "name": "receiver",
+    }
+
+    def transfer_env(self, fake_bin: Path, capture: Path, pane: str) -> dict[str, str]:
+        return {
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HERDR_CAPTURE": str(capture),
+            "HERDR_PANE_ID": pane,
+            "HERDR_PROCESS_INFO_CALLER": "1",
+            "HERDR_WORKSPACE_ID": "workspace-1",
+            "HERDR_SESSIONS": json.dumps(
+                {
+                    "main-pane": "main-session",
+                    "new-pane": "receiver-session",
+                    "worker-pane": "worker-session",
+                }
+            ),
+            "HERDR_AGENT_LIST": json.dumps([self.RECEIVER_AGENT]),
+        }
+
+    def live_dispatch_with_coworker(self) -> tuple[Path, Path]:
+        parent, _ = self.write_dispatch("claude", main_agent_kind="claude")
+        self.set_worker_endpoint(parent)
+        written = self.write_coworker(parent)
+        self.assertEqual(written.returncode, 0, written.stderr)
+        child = Path(json.loads(written.stdout)["instruction_path"])
+        self.set_worker_endpoint(child, pane="coworker-pane", session="coworker-session")
+        return parent, child
+
+    def offered_handoff(self, dispatches: list[dict[str, object]]) -> Path:
+        path = self.home / ".straw-boss" / "handoffs" / "offer.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "status": "offered",
+                    "scope": "API",
+                    "source_pane_id": "main-pane",
+                    "receiver_pane_id": "new-pane",
+                    "dispatches": dispatches,
+                }
+            )
+        )
+        return path
+
+    @staticmethod
+    def main_route(instruction_path: Path) -> dict[str, object]:
+        instruction = json.loads(instruction_path.read_text())
+        return {
+            field: instruction.get(f"main_agent_{field}")
+            for field in ("herdr_pane_id", "session_id", "herdr_terminal_id", "kind")
+        }
+
+    def test_handoff_refuses_to_close_the_source_over_an_unlisted_dispatch(self) -> None:
+        parent, _ = self.live_dispatch_with_coworker()
+        fake_bin, capture = self.install_fake_herdr()
+        capture.unlink(missing_ok=True)
+
+        result = self.run_script(
+            "handoff-orchestrator.py",
+            *self.handoff_args(),
+            extra_env=self.transfer_env(fake_bin, capture, "main-pane"),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not list", result.stderr)
+        self.assertIn(str(parent.resolve()), result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse(any(call[:2] == ["tab", "create"] for call in calls))
+
+    def test_retained_handoff_leaves_unlisted_dispatches_with_the_source(self) -> None:
+        parent, _ = self.live_dispatch_with_coworker()
+        before = parent.read_text()
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "handoff-orchestrator.py",
+            *self.handoff_args(retains=("API verification",)),
+            extra_env={
+                **self.transfer_env(fake_bin, capture, "main-pane"),
+                "HERDR_ACCEPT_HANDOFF_SCRIPT": str(ROOT / "scripts" / "accept-orchestrator-handoff.py"),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(parent.read_text(), before)
+
+    def test_accepted_handoff_moves_listed_dispatches_to_the_receiver(self) -> None:
+        parent, child = self.live_dispatch_with_coworker()
+        fake_bin, capture = self.install_fake_herdr()
+        capture.unlink(missing_ok=True)
+        base = self.transfer_env(fake_bin, capture, "main-pane")
+
+        result = self.run_script(
+            "handoff-orchestrator.py",
+            *self.handoff_args(),
+            "--dispatch",
+            str(parent),
+            extra_env={
+                **base,
+                "HERDR_ACCEPT_HANDOFF_SCRIPT": str(ROOT / "scripts" / "accept-orchestrator-handoff.py"),
+            },
+        )
+
+        accept_log = Path(f"{capture}.accept")
+        self.assertEqual(
+            result.returncode,
+            0,
+            result.stderr + (accept_log.read_text() if accept_log.exists() else ""),
+        )
+        output = json.loads(result.stdout)
+        self.assertEqual(output["transferred_dispatches"], [str(parent.resolve())])
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(calls[-1], ["pane", "close", "main-pane"])
+        self.assertEqual(
+            self.main_route(parent),
+            {
+                "herdr_pane_id": "new-pane",
+                "session_id": "receiver-session",
+                "herdr_terminal_id": "terminal-new-pane",
+                "kind": "claude",
+            },
+        )
+        moved = json.loads(parent.read_text())
+        transfer = moved["main_agent_transfers"][-1]
+        self.assertEqual(transfer["reason"], "orchestrator-handoff")
+        self.assertEqual(transfer["before"]["herdr_pane_id"], "main-pane")
+        self.assertEqual(transfer["before"]["session_id"], "main-session")
+        self.assertEqual(transfer["evidence"]["source_pane_id"], "main-pane")
+        self.assertEqual(moved["session_id"], "worker-session")
+        coworker = json.loads(child.read_text())
+        self.assertEqual(coworker["root_main_agent_herdr_pane_id"], "new-pane")
+        self.assertEqual(coworker["root_main_agent_session_id"], "receiver-session")
+        self.assertEqual(coworker["root_main_agent_transfers"][-1]["reason"], "orchestrator-handoff")
+        self.assertEqual(coworker["main_agent_herdr_pane_id"], "worker-pane")
+
+        capture.unlink()
+        report = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(parent),
+            "--status",
+            "awaiting-main-agent",
+            "--note",
+            "Need the API contract decision.",
+            extra_env={**base, "HERDR_PANE_ID": "worker-pane"},
+        )
+        self.assertEqual(report.returncode, 0, report.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        prompts = [call[2] for call in calls if call[:2] == ["agent", "prompt"]]
+        self.assertEqual(prompts, ["new-pane"])
+
+        closed_worker = {"HERDR_MISSING_PANES": json.dumps(["worker-pane"])}
+        source = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(parent),
+            "--status",
+            "failed",
+            "--note",
+            "Worker pane closed after the handoff.",
+            extra_env={**base, **closed_worker},
+        )
+        self.assertNotEqual(source.returncode, 0)
+        self.assertIn("sender pane mismatch", source.stderr)
+        receiver = self.run_script(
+            "recover-task-status.py",
+            "--instruction-path",
+            str(parent),
+            "--status",
+            "failed",
+            "--note",
+            "Worker pane closed after the handoff.",
+            extra_env={**base, **closed_worker, "HERDR_PANE_ID": "new-pane"},
+        )
+        self.assertEqual(receiver.returncode, 0, receiver.stderr)
+
+    def test_acceptance_refuses_a_dispatch_whose_route_changed_after_the_offer(self) -> None:
+        parent, child = self.live_dispatch_with_coworker()
+        offered = {**self.main_route(parent), "session_id": "earlier-session"}
+        path = self.offered_handoff([{"instruction_path": str(parent.resolve()), "route": offered}])
+        before = (parent.read_text(), child.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "accept-orchestrator-handoff.py",
+            "--handoff-path",
+            str(path),
+            *self.ROUTE_ARGS,
+            extra_env=self.transfer_env(fake_bin, capture, "new-pane"),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no longer carries the route the handoff offered", result.stderr)
+        self.assertEqual(json.loads(path.read_text())["status"], "offered")
+        self.assertEqual((parent.read_text(), child.read_text()), before)
+
+    def test_acceptance_skips_a_wrapped_dispatch_and_completes_an_interrupted_move(
+        self,
+    ) -> None:
+        parent, _ = self.live_dispatch_with_coworker()
+        offered = self.main_route(parent)
+        instruction = json.loads(parent.read_text())
+        instruction.update(
+            main_agent_herdr_pane_id="new-pane",
+            main_agent_session_id="receiver-session",
+            main_agent_herdr_terminal_id="terminal-new-pane",
+        )
+        parent.write_text(json.dumps(instruction, indent=2) + "\n")
+        wrapped = self.home / ".straw-boss" / "dispatch" / "api--wrapped.json"
+        path = self.offered_handoff(
+            [
+                {"instruction_path": str(parent.resolve()), "route": offered},
+                {"instruction_path": str(wrapped), "route": offered},
+            ]
+        )
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "accept-orchestrator-handoff.py",
+            "--handoff-path",
+            str(path),
+            *self.ROUTE_ARGS,
+            extra_env=self.transfer_env(fake_bin, capture, "new-pane"),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["transferred_dispatches"], [str(parent.resolve())])
+        self.assertEqual(output["skipped_dispatches"], [str(wrapped)])
+        self.assertNotIn("main_agent_transfers", json.loads(parent.read_text()))
+        self.assertEqual(json.loads(path.read_text())["status"], "accepted")
+
+
+    def test_handoff_refuses_a_listed_dispatch_this_pane_does_not_coordinate(self) -> None:
+        parent, _ = self.live_dispatch_with_coworker()
+        instruction = json.loads(parent.read_text())
+        instruction["main_agent_session_id"] = "another-coordinator"
+        parent.write_text(json.dumps(instruction, indent=2) + "\n")
+        fake_bin, capture = self.install_fake_herdr()
+        capture.unlink(missing_ok=True)
+
+        result = self.run_script(
+            "handoff-orchestrator.py",
+            *self.handoff_args(retains=("API verification",)),
+            "--dispatch",
+            str(parent),
+            extra_env=self.transfer_env(fake_bin, capture, "main-pane"),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("session mismatch", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse(any(call[:2] == ["tab", "create"] for call in calls))
+
+    def test_acceptance_refuses_a_receiver_herdr_cannot_identify(self) -> None:
+        parent, child = self.live_dispatch_with_coworker()
+        path = self.offered_handoff(
+            [{"instruction_path": str(parent.resolve()), "route": self.main_route(parent)}]
+        )
+        before = (parent.read_text(), child.read_text())
+        fake_bin, capture = self.install_fake_herdr()
+
+        result = self.run_script(
+            "accept-orchestrator-handoff.py",
+            "--handoff-path",
+            str(path),
+            *self.ROUTE_ARGS,
+            extra_env={
+                **self.transfer_env(fake_bin, capture, "new-pane"),
+                "HERDR_AGENT_LIST": "[]",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no live agent in pane 'new-pane'", result.stderr)
+        self.assertEqual(json.loads(path.read_text())["status"], "offered")
+        self.assertEqual((parent.read_text(), child.read_text()), before)
+
+
 if __name__ == "__main__":
     unittest.main()

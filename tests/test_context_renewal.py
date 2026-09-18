@@ -341,6 +341,54 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         stop = self.hook("dispatched-agent-stop-guard.py", {"session_id": "renewed-worker"})
         self.assertIn("block", stop.stdout)
 
+    def dispatch_with_coworker(self) -> tuple[Path, Path]:
+        parent, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent, pane="worker-pane", session="worker-session")
+        written = self.write_coworker(parent)
+        self.assertEqual(written.returncode, 0, written.stderr)
+        child = Path(json.loads(written.stdout)["instruction_path"])
+        self.set_worker_endpoint(child, pane="coworker-pane", session="coworker-session")
+        return parent, child
+
+    def test_renewed_main_agent_moves_its_coworkers_root_route(self) -> None:
+        parent, child = self.dispatch_with_coworker()
+        self.write_record(
+            "main-pane", session_id="main-session", role="main-agent",
+            instruction_paths=[str(parent)],
+        )
+
+        self.hook(
+            "orchestrator-priming.py", {"session_id": "renewed-main", "source": "clear"},
+            **self.renewal_env("main-pane"),
+        )
+
+        coworker = json.loads(child.read_text())
+        self.assertEqual(coworker["root_main_agent_session_id"], "renewed-main")
+        self.assertEqual(coworker["root_main_agent_adoptions"][-1]["reason"], "context-renewal")
+        self.assertEqual(coworker["main_agent_session_id"], "worker-session")
+        self.assertEqual(json.loads(parent.read_text())["main_agent_session_id"], "renewed-main")
+
+    def test_renewed_parent_worker_moves_its_coworkers_main_route(self) -> None:
+        parent, child = self.dispatch_with_coworker()
+        self.write_record(
+            "worker-pane", session_id="worker-session", role="dispatched-worker",
+            instruction_paths=[str(parent)],
+        )
+
+        self.hook(
+            "orchestrator-priming.py", {"session_id": "renewed-worker", "source": "clear"},
+            **self.renewal_env("worker-pane"),
+        )
+
+        coworker = json.loads(child.read_text())
+        self.assertEqual(coworker["main_agent_session_id"], "renewed-worker")
+        self.assertEqual(
+            coworker["main_agent_adoptions"][-1]["before"], {"main_agent_session_id": "worker-session"}
+        )
+        self.assertEqual(coworker["root_main_agent_session_id"], "main-session")
+        self.assertEqual(coworker["session_id"], None)
+        self.assertEqual(json.loads(parent.read_text())["session_id"], "renewed-worker")
+
     def test_adoption_refuses_a_caller_outside_the_pane(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         self.set_worker_endpoint(instruction_path, pane="worker-pane", session="worker-session")

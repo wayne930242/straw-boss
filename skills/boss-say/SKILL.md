@@ -30,6 +30,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/accept-orchestrator-handoff.py" \
 
 Use the established route facts.
 Carry the existing approval and scope exclusions from the handoff record.
+Acceptance moves the handoff's listed dispatches to this pane; coordinate its `transferred_dispatches` from here.
 
 ## Plan and schedule
 

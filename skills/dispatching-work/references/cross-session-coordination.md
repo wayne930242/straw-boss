@@ -89,6 +89,21 @@ A registry that still reports the recorded session in the recorded pane means no
 A move needs Herdr's answer about the recorded pane; a timeout or unreadable reply refuses the move instead of counting as the pane being gone.
 `roll-call.py` names the dispatches in either state; the worker then reports to the adopting pane through the normal instruction-keyed channel.
 
+## Take over another coordinator's dispatch at the user's request
+
+The user decides a takeover; a main agent runs one only when the user asks it to take over dispatches another main agent coordinates.
+From its own pane:
+
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/take-over-dispatch.py" \
+  --user-requested --instruction-path <instruction> [--instruction-path <instruction> ...]
+```
+
+It moves each dispatch's main route, and its coworker's root route, to this session and appends the move to `main_agent_transfers`; one refused dispatch writes nothing.
+No liveness check gates it.
+When the output marks `previous_coordinator_live`, send that coordinator one `inform` through [contacting-orchestrators](../../contacting-orchestrators/SKILL.md) naming the dispatches that moved.
+The worker then reports to this pane through the normal instruction-keyed channel.
+
 ## Resume an older Codex dispatch
 
 When terminal-only routing fails after a Herdr restart, inspect the original provider rollout to identify the main and worker sessions.

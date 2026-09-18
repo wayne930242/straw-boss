@@ -61,7 +61,7 @@ Between events, continue other coordination or the user's conversation.
 | Feature-branch push FYI | Relay the update; slot accounting and task status stay as recorded. |
 
 Read live progress through [peeking-work](../peeking-work/SKILL.md) when the user asks or evidence contradicts recorded state.
-[Cross-session coordination](references/cross-session-coordination.md) owns redirect, cancellation, and identity-rebind mechanics.
+[Cross-session coordination](references/cross-session-coordination.md) owns redirect, cancellation, identity-rebind, and user-requested takeover mechanics.
 
 ## List outstanding dispatches
 

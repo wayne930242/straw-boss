@@ -295,6 +295,21 @@ def _dispatch_instructions() -> list[tuple[Path, dict[str, Any]]]:
     return found
 
 
+# Each role's routes as (field prefix, audit field). A main agent is also the
+# root route of its dispatches' coworkers; a dispatched worker is also the main
+# route of its own coworker.
+RENEWAL_ROUTES = {
+    "main-agent": (
+        ("main_agent_", "main_agent_adoptions"),
+        ("root_main_agent_", "root_main_agent_adoptions"),
+    ),
+    "dispatched-worker": (
+        ("", "worker_adoptions"),
+        ("main_agent_", "main_agent_adoptions"),
+    ),
+}
+
+
 def adopt_renewed_session(record: dict[str, Any], new_session: str) -> list[str]:
     """Move the recorded session's dispatch routes to the renewed session.
 
@@ -303,35 +318,31 @@ def adopt_renewed_session(record: dict[str, Any], new_session: str) -> list[str]
     """
     pane_id = record.get("pane_id")
     old_session = record.get("session_id")
-    if not pane_id or not old_session:
-        return []
-    if record["role"] == "main-agent":
-        pane_field, session_field, log_field = (
-            "main_agent_herdr_pane_id", "main_agent_session_id", "main_agent_adoptions",
-        )
-    elif record["role"] == "dispatched-worker":
-        pane_field, session_field, log_field = "herdr_pane_id", "session_id", "worker_adoptions"
-    else:
+    routes = RENEWAL_ROUTES.get(record["role"])
+    if not pane_id or not old_session or routes is None:
         return []
     adopted = []
     for path, instruction in _dispatch_instructions():
-        if instruction.get(pane_field) != pane_id or instruction.get(session_field) != old_session:
-            continue
-        entry = {
-            "at": now_iso(),
-            "reason": "context-renewal",
-            "before": {session_field: old_session},
-            "after": {session_field: new_session},
-        }
-        dump_json(
-            path,
-            {
-                **instruction,
+        updated = instruction
+        for prefix, log_field in routes:
+            session_field = f"{prefix}session_id"
+            if (updated.get(f"{prefix}herdr_pane_id") != pane_id
+                    or updated.get(session_field) != old_session):
+                continue
+            entry = {
+                "at": now_iso(),
+                "reason": "context-renewal",
+                "before": {session_field: old_session},
+                "after": {session_field: new_session},
+            }
+            updated = {
+                **updated,
                 session_field: new_session,
-                log_field: [*instruction.get(log_field, []), entry],
-            },
-        )
-        adopted.append(str(path))
+                log_field: [*updated.get(log_field, []), entry],
+            }
+        if updated is not instruction:
+            dump_json(path, updated)
+            adopted.append(str(path))
     if record["role"] == "main-agent":
         _rekey_orchestrator_record(record["agent_kind"], old_session, new_session)
     return adopted

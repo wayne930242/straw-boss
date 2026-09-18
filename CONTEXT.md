@@ -61,9 +61,15 @@ the other.
 
 **Orchestrator handoff**:
 An explicitly user-approved transfer of one work scope to a receiving main agent
-in an independent Herdr tab. Acceptance moves ownership; the original keeps only
-the scope named as retained.
+in an independent Herdr tab. Acceptance moves ownership, including the routes of
+the in-progress dispatches the handoff lists; the original keeps only the scope
+named as retained.
 _Avoid_: worker dispatch, delegation, shared ownership
+
+**Dispatch takeover**:
+A user-requested move of dispatches another main agent coordinates to the
+requesting main agent. The user decides it; no liveness check gates it.
+_Avoid_: adoption, orphan claim
 
 **Continuity payload**:
 The minimal executable state carried across an orchestrator handoff: goal and

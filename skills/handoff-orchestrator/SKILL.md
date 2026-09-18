@@ -18,6 +18,7 @@ Omit empty fields and conversation text.
 ## 3. Launch and transfer
 
 Run `handoff-orchestrator.py` with `--user-approved`, this pane, cwd, provider, and the continuity fields.
+Pass `--dispatch` for each in-progress dispatch in the moving scope; a handoff that retains nothing lists every dispatch this pane coordinates.
 The script creates and labels an independent tab, starts the receiving orchestrator, prompts it to invoke `boss-say` and then accept, and verifies the handshake after that route is established.
 It retries once; final failure closes the new tab and leaves ownership here.
 

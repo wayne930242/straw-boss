@@ -27,6 +27,7 @@ from straw_boss.dispatch.state import (
     load_json,
     straw_boss_root,
 )
+from straw_boss.dispatch.transfer import offer_dispatches
 
 
 MAX_CONTINUITY_CHARS = 1600
@@ -293,6 +294,9 @@ def handoff(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError(f"handoff cwd is not a directory: {cwd}")
     continuity = continuity_payload(args)
     retained = compact_values(args.retains)
+    dispatches = offer_dispatches(
+        args.dispatch, source_pane_id=args.source_pane_id, retains_scope=bool(retained)
+    )
     workspace_id = source_workspace(args.source_pane_id)
     base_name = derive_agent_name("orchestrator", args.slug)
     tab_id: str | None = None
@@ -322,6 +326,8 @@ def handoff(args: argparse.Namespace) -> dict[str, object]:
             "receiver_name": name,
             "offered_at": datetime.now(timezone.utc).isoformat(),
         }
+        if dispatches:
+            record["dispatches"] = dispatches
         dump_json(handoff_path, record)
         prompt = render_prompt(handoff_path, continuity)
         accepted: dict[str, Any] | None = None
@@ -355,6 +361,9 @@ def handoff(args: argparse.Namespace) -> dict[str, object]:
             "accepted_at": accepted["accepted_at"],
             "route": accepted["route"],
         }
+        if dispatches:
+            result["transferred_dispatches"] = accepted.get("transferred_dispatches", [])
+            result["skipped_dispatches"] = accepted.get("skipped_dispatches", [])
         if tab_label_warning is not None:
             result["warning"] = tab_label_warning
         handoff_path.unlink(missing_ok=True)
@@ -400,6 +409,12 @@ def main() -> int:
     parser.add_argument("--next", dest="next_action", required=True)
     parser.add_argument("--exclude", action="append", default=[])
     parser.add_argument("--retains", action="append", default=[])
+    parser.add_argument(
+        "--dispatch",
+        action="append",
+        default=[],
+        help="in-progress dispatch instruction whose coordination moves with this scope",
+    )
     parser.add_argument(
         "--accept-timeout-seconds",
         type=float,

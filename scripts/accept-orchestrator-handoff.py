@@ -16,6 +16,7 @@ from pathlib import Path
 
 from straw_boss.herdr.session import validate_current_process_in_pane
 from straw_boss.dispatch.state import dump_json, load_json, straw_boss_root
+from straw_boss.dispatch.transfer import caller_route, move_main_routes
 
 
 VALID_COORDINATION_GRAPHS = {
@@ -49,6 +50,31 @@ def route_evidence(
         "reality_anchor": reality_anchor,
         "routed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def take_offered_dispatches(payload: dict[str, object]) -> tuple[list[str], list[str]]:
+    """Move the offered dispatches to this pane; a wrapped-up one is skipped."""
+    offered = payload.get("dispatches") or []
+    if not isinstance(offered, list):
+        raise ValueError("handoff dispatches must be a list")
+    moves = []
+    skipped = []
+    for entry in offered:
+        path = Path(str(entry["instruction_path"]))
+        if path.is_file():
+            moves.append((path, entry["route"]))
+        else:
+            skipped.append(str(path))
+    if not moves:
+        return [], skipped
+    result = move_main_routes(
+        moves,
+        caller_route(),
+        reason="orchestrator-handoff",
+        evidence={"source_pane_id": payload.get("source_pane_id"), "scope": payload["scope"]},
+    )
+    moved = [entry["instruction_path"] for entry in result["moved"]]
+    return [*moved, *result["already"]], skipped
 
 
 def accept(
@@ -85,6 +111,9 @@ def accept(
         return payload
     if payload.get("status") != "offered":
         raise ValueError(f"handoff is {payload.get('status')!r}, not offered")
+    transferred, skipped = take_offered_dispatches(payload)
+    payload["transferred_dispatches"] = transferred
+    payload["skipped_dispatches"] = skipped
     payload["status"] = "accepted"
     payload["accepted_by_pane"] = current
     payload["accepted_at"] = datetime.now(timezone.utc).isoformat()
@@ -114,7 +143,17 @@ def main() -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps({"accepted": True, "scope": result["scope"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "accepted": True,
+                "scope": result["scope"],
+                "transferred_dispatches": result.get("transferred_dispatches", []),
+                "skipped_dispatches": result.get("skipped_dispatches", []),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
