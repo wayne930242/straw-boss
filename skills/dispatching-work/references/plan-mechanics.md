@@ -109,7 +109,7 @@ The main agent creates and verifies each team-mode worktree with plain git, incl
 Resolve `<app_dir>` from the app configuration.
 
 ```bash
-git -C "<app_dir>" worktree add "<app_dir>-<slug>" -b "<branch>" "<base_branch>"
+git -C "<app_dir>" worktree add --no-track "<app_dir>-<slug>" -b "<branch>" "<base_branch>"
 git -C "<app_dir>-<slug>" rev-parse --show-toplevel
 ```
 
