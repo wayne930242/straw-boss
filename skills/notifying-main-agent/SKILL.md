@@ -24,6 +24,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
 
 Continue independent work.
 If the coordinator's answer becomes blocking, report `awaiting-main-agent`; a user-owned question remains `awaiting-user-input`.
+`awaiting-main-agent` means a coordinator action or fact is required. Waiting on your own subagent, review, or CI is progress: use `report-progress.py`, or stay in-progress.
 
 ## Report status
 
@@ -38,6 +39,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/report-task-status.py" \
 
 The command persists status before notifying the recorded main-agent Herdr endpoint.
 Delivery failure is surfaced and leaves durable state for watcher recovery.
+A reply to an `awaiting-main-agent` checkpoint leaves `status` unchanged and only marks that checkpoint resolved; report a fresh status here before stopping, since the resolved one no longer counts.
 
 ## Report a feature-branch push
 

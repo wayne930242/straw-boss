@@ -485,6 +485,150 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "")
 
+    def test_stop_hook_blocks_a_checkpoint_the_main_agent_already_resolved(self) -> None:
+        # reply-to-worker.py leaves `status` at awaiting-main-agent and only adds
+        # resolved_by_main_agent_at -- the worker never saw that become a fresh
+        # status, so the guard must not treat it as a report the worker made.
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        instruction["status"] = "in-progress"
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+        status_path = instruction_path.with_name("api--contract-claude.status.json")
+        status_path.write_text(
+            json.dumps(
+                {
+                    "status": "awaiting-main-agent",
+                    "note": "which branch?",
+                    "timestamp": "1",
+                    "resolved_by_main_agent_at": "2026-09-20T00:50:00+00:00",
+                    "main_agent_reply": "use main",
+                }
+            )
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
+            input=json.dumps({"session_id": instruction["session_id"]}),
+            cwd=ROOT,
+            env={**os.environ, "HOME": str(self.home)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        decision = json.loads(result.stdout)
+        self.assertEqual(decision["decision"], "block")
+        self.assertIn("awaiting-user-input", decision["reason"])
+        self.assertIn("awaiting-authorization", decision["reason"])
+
+    def test_stop_hook_allows_an_unresolved_checkpoint(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        instruction["status"] = "in-progress"
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+        status_path = instruction_path.with_name("api--contract-claude.status.json")
+        status_path.write_text(
+            json.dumps({"status": "awaiting-main-agent", "note": "which branch?", "timestamp": "1"})
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
+            input=json.dumps({"session_id": instruction["session_id"]}),
+            cwd=ROOT,
+            env={**os.environ, "HOME": str(self.home)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_stop_hook_allows_a_terminal_status_even_with_a_resolution_marker(self) -> None:
+        # A resolution marker only ever appears on a checkpoint status; this
+        # guards the terminal short-circuit against a change that starts
+        # checking the marker before the terminal check.
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = json.loads(instruction_path.read_text())
+        instruction["status"] = "in-progress"
+        instruction_path.write_text(json.dumps(instruction, indent=2) + "\n")
+        status_path = instruction_path.with_name("api--contract-claude.status.json")
+        status_path.write_text(
+            json.dumps(
+                {"status": "done", "note": "verified", "timestamp": "1", "resolved_by_main_agent_at": "1"}
+            )
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
+            input=json.dumps({"session_id": instruction["session_id"]}),
+            cwd=ROOT,
+            env={**os.environ, "HOME": str(self.home)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_stop_hook_allows_again_after_a_fresh_report_supersedes_a_resolved_checkpoint(
+        self,
+    ) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(instruction_path)
+        status_path = instruction_path.with_name("api--contract-claude.status.json")
+        status_path.write_text(
+            json.dumps({"status": "awaiting-main-agent", "note": "which branch?", "timestamp": "1"})
+        )
+        fake_bin, capture = self.install_fake_herdr()
+        herdr_env = {
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HERDR_CAPTURE": str(capture),
+            "HERDR_SESSIONS": json.dumps(
+                {"worker-pane": "worker-session", "main-pane": "main-session"}
+            ),
+        }
+
+        reply = self.run_script(
+            "reply-to-worker.py",
+            "--worker-instruction-path",
+            str(instruction_path),
+            "--reply",
+            "use main.",
+            extra_env={**herdr_env, "HERDR_PANE_ID": "main-pane"},
+        )
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("resolved_by_main_agent_at", json.loads(status_path.read_text()))
+
+        def stop_decision() -> dict[str, Any]:
+            result = subprocess.run(
+                [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
+                input=json.dumps({"session_id": "worker-session"}),
+                cwd=ROOT,
+                env={**os.environ, "HOME": str(self.home)},
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return json.loads(result.stdout) if result.stdout else {}
+
+        self.assertEqual(stop_decision().get("decision"), "block")
+
+        fresh_report = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--status",
+            "awaiting-user-input",
+            "--note",
+            "please approve the spec.",
+            extra_env={**herdr_env, "HERDR_PANE_ID": "worker-pane"},
+        )
+        self.assertEqual(fresh_report.returncode, 0, fresh_report.stderr)
+        self.assertNotIn("resolved_by_main_agent_at", json.loads(status_path.read_text()))
+
+        self.assertEqual(stop_decision(), {})
+
     def test_hook_registration_includes_the_stop_guard(self) -> None:
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())
         commands = [
