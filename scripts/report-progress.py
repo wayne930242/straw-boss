@@ -28,17 +28,26 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from straw_boss.dispatch.messages import normalize_references
+
 
 def progress_log_path(instruction_path: Path) -> Path:
     stem = instruction_path.name.removesuffix(".json")
     return instruction_path.with_name(f"{stem}.progress.jsonl")
 
 
-def append_progress(instruction_path: Path, note: str) -> Path:
+def append_progress(
+    instruction_path: Path,
+    note: str,
+    references: list[str] | tuple[str, ...] = (),
+) -> Path:
     if not instruction_path.is_file():
         raise ValueError(f"no instruction file at {instruction_path}")
+    normalized_references = normalize_references(references)
     log_path = progress_log_path(instruction_path)
     entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "note": note}
+    if normalized_references:
+        entry["refs"] = list(normalized_references)
     with log_path.open("a") as f:
         f.write(json.dumps(entry) + "\n")
     return log_path
@@ -48,10 +57,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--instruction-path", required=True, help="path to this dispatch's own instruction file")
     parser.add_argument("--note", required=True, help="free-text progress note")
+    parser.add_argument("--ref", action="append", default=[], help="artifact/evidence reference")
     args = parser.parse_args()
 
     try:
-        path = append_progress(Path(args.instruction_path), args.note)
+        path = append_progress(Path(args.instruction_path), args.note, args.ref)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
