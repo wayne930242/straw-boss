@@ -78,3 +78,14 @@ exists; this report records the release behavior and verification.
 The temporary profile/test-path lookup friction was a tool-use gap: the
 existing global profile fallback and graph discovery resolved it. The
 `solid-loop` pass requires no new instruction for that one-off lookup.
+
+## Launcher revert (0.30.8)
+
+0.30.7 also let the launcher accept an `agent_prompted` receipt from a
+`working` pane. At launch, `working` means the agent is still booting, and a
+booting Codex drops the typed task: a real launch returned `confirmed: true`
+with an empty composer and no rollout file. 0.30.8 restores the 0.30.6
+launcher, which requires the delivery marker in the transcript and resends on
+its absence. `test_launcher_resends_when_a_booting_pane_accepts_but_drops_the_task`
+fails on 0.30.7 and passes on 0.30.8. Checkpoint replies keep the 0.30.7
+receipt rule, since a worker that reports `working` mid-turn queues input.

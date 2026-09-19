@@ -10,7 +10,7 @@ from straw_boss.dispatch.launch.retry import prompt_retry_backoff_seconds
 from straw_boss.dispatch.state import sha256_text
 from straw_boss.herdr.transport import (
     HerdrCommandError,
-    confirm_prompt_delivery,
+    confirm_transcript_contains,
     prompt_delivery_args,
     run_herdr,
 )
@@ -53,32 +53,33 @@ def prompt_task_with_confirmation(
     marker = task_delivery_marker(task)
     prompt = task_start_prompt(task, contract_path)
     backoff = prompt_retry_backoff_seconds()
-    for attempt, delay in enumerate(backoff):
+    attempts_remaining = len(backoff)
+    while attempts_remaining:
+        delay = backoff[len(backoff) - attempts_remaining]
+        attempts_remaining -= 1
         if delay:
             sleep(delay)
         pre_send_status = live_agent(pane_id).get("agent_status")
         pre_send_status = pre_send_status if isinstance(pre_send_status, str) else None
         try:
-            receipt = run_herdr(prompt_delivery_args(pane_id, prompt, pre_send_status))
+            run_herdr(prompt_delivery_args(pane_id, prompt, pre_send_status))
         except HerdrCommandError as exc:
-            # Preserve the launcher's bounded startup recovery. Transcript
-            # absence after an accepted submission never takes this branch.
             if exc.error_code != "agent_prompt_stalled":
                 raise
-            if attempt + 1 < len(backoff):
-                continue
-            raise PromptDeliveryError(
-                f"herdr reported agent_prompt_stalled for {len(backoff)} initial "
-                f"task attempts in pane {pane_id!r}; refusing to write a launch receipt",
-                pane_id,
-            ) from exc
-        try:
-            confirm_prompt_delivery(receipt, pane_id, marker, agent_kind, pre_send_status)
-        except ValueError as exc:
-            raise PromptDeliveryError(
-                f"could not confirm initial task delivery to pane {pane_id!r}: {exc}; "
-                "the initial task was not resent; refusing to write a launch receipt",
-                pane_id,
-            ) from exc
-        return
-    raise PromptDeliveryError("no initial task submission attempts configured", pane_id)
+            if not attempts_remaining:
+                raise PromptDeliveryError(
+                    f"sent the initial task to pane {pane_id!r} via herdr "
+                    f"{len(backoff)} times but herdr confirmed no attempt started a turn "
+                    "(agent_prompt_stalled: the prompt likely reached only the composer, "
+                    "not a real turn); refusing to write a launch receipt",
+                    pane_id,
+                ) from exc
+            continue
+        if confirm_transcript_contains(pane_id, marker, agent_kind):
+            return
+    raise PromptDeliveryError(
+        f"sent the initial task to pane {pane_id!r} via herdr {len(backoff)} times but "
+        "could not confirm it landed in the transcript via its delivery marker; refusing "
+        "to write a launch receipt",
+        pane_id,
+    )
