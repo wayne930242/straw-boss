@@ -104,6 +104,46 @@ def confirm_transcript_contains(
     return False
 
 
+def confirm_prompt_delivery(
+    payload: dict[str, Any],
+    pane_id: str,
+    message: str,
+    agent_kind: str,
+    pre_send_status: str | None,
+) -> None:
+    """Accept a target-bound submission receipt or observed transcript text.
+
+    Herdr's agent_prompted receipt follows writing both text and Enter. A busy
+    pane queues that submission; idle/done/blocked submissions additionally
+    passed prompt_delivery_args' lifecycle gate. Unknown states still require
+    transcript evidence. A missing receipt or a truncated viewport is not
+    evidence of non-delivery, so callers leave the submission alone.
+    """
+    result = payload.get("result")
+    agent = result.get("agent") if isinstance(result, dict) else None
+    expected_kind = "agy" if agent_kind == "antigravity" else agent_kind
+    if (
+        isinstance(result, dict)
+        and result.get("type") == "agent_prompted"
+        and isinstance(agent, dict)
+        and agent.get("pane_id") == pane_id
+        and agent.get("agent") == expected_kind
+        and pre_send_status in LIFECYCLE_CONFIRMABLE_STATUSES | {"working"}
+    ):
+        return
+    if confirm_transcript_contains(pane_id, message, agent_kind):
+        return
+    raise ValueError(
+        f"herdr submission to pane {pane_id!r} returned successfully, but its "
+        f"receipt did not confirm acceptance (pre-send status={pre_send_status!r}, "
+        f"result type={result.get('type') if isinstance(result, dict) else None!r}, "
+        f"receipt pane={agent.get('pane_id') if isinstance(agent, dict) else None!r}, "
+        f"receipt provider={agent.get('agent') if isinstance(agent, dict) else None!r}); "
+        f"the confirmation text was absent from {TRANSCRIPT_CONFIRM_POLL_ATTEMPTS} "
+        "transcript reads; delivery remains unconfirmed and the message was not resent"
+    )
+
+
 def prompt_delivery_args(pane_id: str, text: str, pre_send_status: str | None) -> list[str]:
     """Build the `agent prompt` argv, using herdr's own lifecycle gate for
     confirmation when the pre-send state makes that gate meaningful.
@@ -159,6 +199,7 @@ def send_instruction_message(
     in_reply_to: str | None = None,
     message_id: str | None = None,
     references: list[str] | tuple[str, ...] = (),
+    confirm_delivery: bool = False,
 ) -> Endpoint:
     path = Path(instruction_path).resolve()
     if not path.is_file():
@@ -253,7 +294,7 @@ def send_instruction_message(
         in_reply_to=in_reply_to,
     )
     try:
-        run_herdr(prompt_delivery_args(endpoint.pane_id, envelope, pre_send_status))
+        receipt = run_herdr(prompt_delivery_args(endpoint.pane_id, envelope, pre_send_status))
     except HerdrCommandError as exc:
         if exc.error_code not in PROMPT_REFUSED_ERROR_CODES:
             raise
@@ -289,4 +330,8 @@ def send_instruction_message(
         in_reply_to,
         normalized_references,
     )
+    if confirm_delivery:
+        confirm_prompt_delivery(
+            receipt, endpoint.pane_id, message, endpoint.agent_kind, pre_send_status
+        )
     return endpoint

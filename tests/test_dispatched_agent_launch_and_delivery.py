@@ -467,7 +467,7 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertIsNone(instruction["session_id"])
         self.assertEqual(instruction["herdr_terminal_id"], "codex-terminal")
 
-    def test_launcher_retries_when_first_task_prompt_does_not_reach_codex_transcript(
+    def test_launcher_accepts_busy_submission_when_marker_is_hidden(
         self,
     ) -> None:
         instruction_path, _ = self.write_dispatch("codex")
@@ -484,7 +484,9 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
                 "HERDR_CAPTURE": str(capture),
                 "HERDR_AGENT_KIND": "codex",
                 "HERDR_OMIT_AGENT_SESSION": "1",
-                "HERDR_TRANSCRIPT_DELIVER_AFTER_PROMPTS": "2",
+                "HERDR_TRANSCRIPT_DELIVER_AFTER_PROMPTS": "99",
+                "HERDR_AGENT_STATUSES": json.dumps({"worker-pane": "working"}),
+                "HERDR_PROMPT_ACCEPTED": "1",
                 "HERDR_TRANSCRIPT_NOISE": "MCP startup incomplete. Usage limits notice.",
             },
             timeout_seconds=20,
@@ -497,11 +499,9 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
             for call in calls
             if call[:3] == ["agent", "prompt", "worker-pane"]
         ]
-        self.assertEqual(len(prompts), 2)
+        self.assertEqual(len(prompts), 1)
         reads = [call for call in calls if call[:3] == ["agent", "read", "worker-pane"]]
-        self.assertTrue(reads)
-        self.assertIn("--source", reads[0])
-        self.assertEqual(reads[0][reads[0].index("--source") + 1], "visible")
+        self.assertFalse(reads)
 
     def test_launcher_uses_a_bounded_start_prompt_for_a_long_task(self) -> None:
         instruction_path, _ = self.write_dispatch("codex")
@@ -602,7 +602,7 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_launcher_refuses_receipt_when_both_task_prompts_miss_transcript(
+    def test_launcher_keeps_one_unconfirmed_submission_without_resending(
         self,
     ) -> None:
         instruction_path, _ = self.write_dispatch("codex")
@@ -630,11 +630,12 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         )
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("could not confirm it landed in the transcript", result.stderr)
+        self.assertIn("confirmation text was absent", result.stderr)
+        self.assertIn("not resent", result.stderr)
         self.assertFalse(receipt_path.exists())
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
-        self.assertEqual(len(prompts), 2)
+        self.assertEqual(len(prompts), 1)
         self.assertNotIn(["pane", "close", "worker-pane"], calls)
         self.assertIn("is left open", result.stderr)
 

@@ -877,15 +877,68 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         status_path = instruction_path.with_name("api--contract-codex.status.json")
         self.assertEqual(json.loads(status_path.read_text())["status"], "done")
 
-    def test_reply_to_worker_does_not_retry_past_a_second_confirmed_stall(
+    def test_reply_accepted_while_busy_resolves_once_with_truncated_queue(self) -> None:
+        for kind in ("claude", "codex"):
+            with self.subTest(kind=kind):
+                instruction_path, _ = self.write_dispatch(kind)
+                self.set_worker_endpoint(instruction_path)
+                status_path = instruction_path.with_suffix(".status.json")
+                status_path.write_text(json.dumps({"status": "awaiting-main-agent"}))
+                fake_bin, capture = self.install_fake_herdr()
+                capture.unlink(missing_ok=True)
+                reply = "Quoted fixture: 繁體中文佇列測試 " + "long payload " * 80 + "\nContinue afterward."
+                result = self.run_script(
+                    "reply-to-worker.py", "--worker-instruction-path", str(instruction_path),
+                    "--reply", reply,
+                    extra_env={
+                        "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                        "HERDR_CAPTURE": str(capture), "HERDR_PANE_ID": "main-pane",
+                        "HERDR_SESSIONS": json.dumps({"worker-pane": "worker-session", "main-pane": "main-session"}),
+                        "HERDR_AGENT_KINDS": json.dumps({"worker-pane": kind}),
+                        "HERDR_AGENT_STATUSES": json.dumps({"worker-pane": "working"}),
+                        "HERDR_PROMPT_ACCEPTED": "1",
+                        "HERDR_TRANSCRIPT_DELIVER_AFTER_PROMPTS": "99",
+                        "HERDR_TRANSCRIPT_NOISE": "Messages to be submitted after next tool call\n  ↳ [main-agent reply] Quoted fixture: …",
+                    }, timeout_seconds=30,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                calls = [json.loads(line) for line in capture.read_text().splitlines()]
+                self.assertEqual(len([c for c in calls if c[:2] == ["agent", "prompt"]]), 1)
+                status = json.loads(status_path.read_text())
+                self.assertIn("resolved_by_main_agent_at", status)
+                self.assertEqual(status["main_agent_reply"], reply)
+
+    def test_unconfirmed_busy_reply_fails_once_and_preserves_status_bytes(self) -> None:
+        instruction_path, _ = self.write_dispatch("codex")
+        self.set_worker_endpoint(instruction_path)
+        status_path = instruction_path.with_suffix(".status.json")
+        original = '{"status": "awaiting-main-agent", "note": "keep this checkpoint"}\n'
+        status_path.write_text(original)
+        fake_bin, capture = self.install_fake_herdr()
+        result = self.run_script(
+            "reply-to-worker.py", "--worker-instruction-path", str(instruction_path),
+            "--reply", "continue after the current tool",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture), "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps({"worker-pane": "worker-session", "main-pane": "main-session"}),
+                "HERDR_AGENT_KINDS": json.dumps({"worker-pane": "codex"}),
+                "HERDR_AGENT_STATUSES": json.dumps({"worker-pane": "working"}),
+                "HERDR_TRANSCRIPT_DELIVER_AFTER_PROMPTS": "99",
+            }, timeout_seconds=20,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("6 transcript reads", result.stderr)
+        self.assertIn("not resent", result.stderr)
+        self.assertIn("status file left untouched", result.stderr)
+        self.assertEqual(status_path.read_text(), original)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertEqual(len([c for c in calls if c[:2] == ["agent", "prompt"]]), 1)
+
+    def test_reply_to_worker_leaves_a_stalled_submission_for_inspection(
         self,
     ) -> None:
-        # reply-to-worker.py already retries once (a distinct "reply-retry"
-        # intent) when the transcript never shows the reply. A stall herdr
-        # itself confirms on the first attempt must route into that same
-        # retry, but a second confirmed stall must fail outright rather than
-        # loop -- checkpoint replies get the same bounded-retry guarantee as
-        # the initial launch prompt.
+        # A missing turn transition does not prove the input missed the pane.
         instruction_path, _ = self.write_dispatch("claude")
         self.set_worker_endpoint(instruction_path)
         status_path = instruction_path.with_name("api--contract-claude.status.json")
@@ -921,7 +974,7 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("agent_prompt_stalled", result.stderr)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         prompts = [call for call in calls if call[:3] == ["agent", "prompt", "worker-pane"]]
-        self.assertEqual(len(prompts), 2)
+        self.assertEqual(len(prompts), 1)
         updated = json.loads(status_path.read_text())
         self.assertNotIn("resolved_by_main_agent_at", updated)
 

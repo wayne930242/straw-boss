@@ -11,8 +11,10 @@ action checkpoints". Only targets `mode: herdr-pane`; herdr provides the
 provider-neutral live addressing used for both supported agent kinds.
 
 It sends a short delta plus optional references through the shared
-session-validating transport, then confirms the text reached the transcript via a short herdr read poll and retries once if a full
-poll window never finds it. `status` stays `awaiting-main-agent` after a
+session-validating transport, then confirms Herdr accepted it or the transcript
+contains it. Busy panes may queue a reply without displaying its full text.
+An unconfirmed submission is left for inspection, without resending;
+`status` stays `awaiting-main-agent` after a
 successful reply -- only `resolved_by_main_agent_at`/`main_agent_reply`
 are added; the worker's own next terminal write closes it out.
 """
@@ -33,8 +35,6 @@ from straw_boss.dispatch.state import (
     resolve_instruction_status_path,
 )
 from straw_boss.herdr.transport import (
-    HerdrCommandError,
-    confirm_transcript_contains,
     normalize_references,
     send_instruction_message,
 )
@@ -52,9 +52,6 @@ def reply_to_worker(
         "agent kind",
         undispatched_hint="was dispatch confirmed?",
     )
-    herdr_pane_id = instruction["herdr_pane_id"]
-    agent_kind = instruction.get("agent_kind")
-
     status_path = resolve_instruction_status_path(inst_path, instruction)
     if not status_path.is_file():
         raise ValueError(f"no status file at {status_path} -- worker has not reported awaiting-main-agent")
@@ -67,35 +64,13 @@ def reply_to_worker(
         )
 
     normalized_references = normalize_references(references)
-    # A genuine herdr failure other than a confirmed non-start -- any
-    # HerdrCommandError whose code isn't agent_prompt_stalled, including an
-    # ambiguous timeout -- propagates immediately and never triggers a
-    # resend. Only a stall herdr itself confirmed, or a poll window that
-    # completes without ever finding the reply, retries below.
     try:
         send_instruction_message(
-            inst_path, "worker", "reply", reply, references=normalized_references
+            inst_path, "worker", "reply", reply,
+            references=normalized_references, confirm_delivery=True,
         )
-        delivered = confirm_transcript_contains(herdr_pane_id, reply, str(agent_kind))
-    except HerdrCommandError as exc:
-        if exc.error_code != "agent_prompt_stalled":
-            raise
-        delivered = False
-    if not delivered:
-        send_instruction_message(
-            inst_path,
-            "worker",
-            "reply-retry",
-            reply,
-            references=normalized_references,
-        )
-        if not confirm_transcript_contains(herdr_pane_id, reply, str(agent_kind)):
-            raise ValueError(
-                f"sent the reply to pane {herdr_pane_id!r} via herdr (that call itself succeeded) but could not "
-                f"confirm it landed in the transcript after one retry -- likely still queued in a "
-                f"busy pane rather than lost, but not certain either way. status file left untouched "
-                f"at {status_path}; inspect the pane through the dispatch tooling before resending "
-            )
+    except ValueError as exc:
+        raise ValueError(f"{exc}; status file left untouched at {status_path}") from exc
 
     status_payload["resolved_by_main_agent_at"] = datetime.now(timezone.utc).isoformat()
     status_payload["main_agent_reply"] = reply

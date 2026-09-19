@@ -258,6 +258,9 @@ class DispatchedAgentLifecycleFixture:
             "elif args[:2] == ['agent', 'prompt'] and args[2] == os.environ.get('HERDR_FAIL_PROMPT_PANE'):\n"
             "    print('prompt failed', file=sys.stderr)\n"
             "    raise SystemExit(1)\n"
+            "elif args[:2] == ['agent', 'prompt'] and os.environ.get('HERDR_PROMPT_ACCEPTED') == '1':\n"
+            "    kind = json.loads(os.environ.get('HERDR_AGENT_KINDS', '{}')).get(args[2], os.environ.get('HERDR_AGENT_KIND', 'claude'))\n"
+            "    print(json.dumps({'result': {'type': 'agent_prompted', 'agent': {'pane_id': args[2], 'agent': kind, 'agent_status': 'working'}}}))\n"
             "else:\n"
             "    print(json.dumps({'result': {'agent': {'name': 'worker', 'agent_status': 'idle'}}}))\n"
         )
