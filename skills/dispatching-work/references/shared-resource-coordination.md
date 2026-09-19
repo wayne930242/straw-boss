@@ -25,8 +25,8 @@ The actual server bind still verifies availability after the claim.
 Claim once, run the server, then release; a repeated claim sees an existing lock or the caller's own listener as contention.
 
 For a frontend human or pseudo-human checkpoint, the main agent claims before dispatch, using the instruction stem or checkout path as `--key`.
-Put the returned number in the brief and choose a TTL covering the task's lifetime.
-The worker binds that assigned number using the existing claim.
+Put the returned number and the claim result's `release_command` in the brief verbatim, and choose a TTL covering the task's lifetime.
+The worker binds that assigned number using the existing claim, and releases with the exact `release_command` rather than reconstructing the resource identity by hand -- stopping the listening process frees the OS-level port but leaves the lock held.
 
 A fixed port retains its required value, including when another service's origin/CORS configuration constrains it.
 Use `wait` on that exact port resource.

@@ -930,6 +930,56 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertEqual(len(recorded["attempts"]), 1)
         self.assertFalse(recorded["attempts"][0]["retryable"])
 
+    def test_launcher_reports_a_codex_hook_review_gate_instead_of_submitting_into_it(
+        self,
+    ) -> None:
+        # Codex 0.155 keys hook trust to each hook's own hash: a new or changed
+        # project hook stops a worker on this screen before its first turn, and
+        # herdr classifies the pane `idle` here, not `blocked` -- unlike the
+        # Claude gate above, there is no blocked-status signal to fall back on
+        # at all. Submitting the opening prompt (or a blind enter) into this
+        # screen sends real keystrokes to a menu whose options include
+        # trusting the hook, which is the user's own security decision, so
+        # nothing may be sent and the launch must fail fast and name the gate.
+        instruction_path, _ = self.write_dispatch("codex")
+        fake_bin, capture = self.install_fake_herdr()
+        failure_path = instruction_path.with_name(
+            "api--contract-codex.launch-failure.json"
+        )
+
+        result = self.run_script(
+            "launch-dispatched-agent.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--name",
+            "hook-gated-codex-worker",
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_TEXT": "Hooks need review\n"
+                "1 hook is new or changed.\n"
+                "Hooks can run outside the sandbox after you trust them.\n\n"
+                "› 1. Review hooks\n"
+                "  2. Trust all and continue\n"
+                "  3. Continue without trusting (hooks won't run)\n\n"
+                "Press enter to confirm or esc to go back",
+                "STRAW_BOSS_LAUNCH_RETRY_BACKOFF_SECONDS": "0,0,0",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("waiting for the user to review hooks", result.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        self.assertFalse([call for call in calls if call[:2] == ["agent", "prompt"]])
+        self.assertFalse([call for call in calls if call[:2] == ["agent", "send-keys"]])
+        self.assertNotIn(["pane", "close", "worker-pane"], calls)
+        self.assertEqual(len([c for c in calls if c[:2] == ["agent", "start"]]), 1)
+        recorded = json.loads(failure_path.read_text())
+        self.assertEqual(len(recorded["attempts"]), 1)
+        self.assertFalse(recorded["attempts"][0]["retryable"])
+        self.assertTrue(recorded["attempts"][0]["pane_left_open"])
+        self.assertIn("Hooks need review", recorded["attempts"][0]["pane_excerpt"])
+
     def test_launcher_keeps_the_pane_when_bookkeeping_fails_after_confirmed_delivery(
         self,
     ) -> None:

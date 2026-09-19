@@ -13,6 +13,7 @@ from time import sleep
 from typing import Any
 
 from straw_boss.dispatch.launch.agent import (
+    codex_hook_review_gate,
     decoy_orchestrator_warning,
     ensure_coordinator_named,
     live_agent,
@@ -281,6 +282,20 @@ class _LaunchAttempt:
             gate = startup_gate(pane_id, agent) if self.agent_kind == "claude" else None
             if gate is not None or agent.get("agent_status") == "blocked":
                 self._clear_startup_gate(pane_id, gate)
+            if self.agent_kind == "codex":
+                hook_gate_excerpt = codex_hook_review_gate(pane_id)
+                if hook_gate_excerpt is not None:
+                    raise LaunchAttemptError(
+                        f"Codex is waiting for the user to review hooks in pane {pane_id!r} "
+                        "before its first turn, so the task cannot be submitted: trusting a "
+                        "hook is the user's own security decision. Answer it in the Herdr tab "
+                        "(or run `/hooks` there), then close that pane and run this launch "
+                        "again",
+                        retryable=False,
+                        pane_id=pane_id,
+                        keep_pane=True,
+                        pane_excerpt=hook_gate_excerpt,
+                    )
 
             contract_path = (
                 self.contract_path

@@ -39,6 +39,13 @@ AGENT_SETTLE_POLL_INTERVAL_SECONDS = 0.5
 # text.
 STARTUP_GATE_PANE_MARKER = "No, exit"
 
+# Codex 0.155 keys hook trust to each hook's own hash, independent of folder
+# trust: a new or changed project hook stops the worker on this screen before
+# its first turn, and herdr classifies the pane `idle` here, not `blocked` --
+# unlike the Claude folder-trust gate above, there is no blocked-status signal
+# to fall back on at all, so the pane text is the only way to see this coming.
+CODEX_HOOK_REVIEW_PANE_MARKER = "Hooks need review"
+
 DEPRECATED_ORCHESTRATOR_NAME_MARKER = "straw-boss-orchestrator"
 
 def live_agent(pane_id: str) -> dict[str, object]:
@@ -221,4 +228,18 @@ def startup_gate(pane_id: str, agent: dict[str, object]) -> tuple[str, bool] | N
     ) in normalize_transcript_text(excerpt)
     if marker_seen or agent.get("agent_status") == "blocked":
         return excerpt, marker_seen
+    return None
+
+def codex_hook_review_gate(pane_id: str) -> str | None:
+    """The pane's text when Codex is stopped on its hook-review screen.
+
+    Trusting a hook is the user's own security decision, so this is checked
+    before ever prompting rather than sending keystrokes to dismiss it -- both
+    "Review hooks" and "Trust all and continue" are options a blind send must
+    not risk picking, and a bare `enter` on this screen's own default
+    selection is "Review hooks", not a safe no-op either.
+    """
+    excerpt = pane_excerpt(pane_id)
+    if normalize_transcript_text(CODEX_HOOK_REVIEW_PANE_MARKER) in normalize_transcript_text(excerpt):
+        return excerpt
     return None

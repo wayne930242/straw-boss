@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -179,6 +180,32 @@ class SharedResourcePortClaimTests(unittest.TestCase):
         reclaimed = self.claim_port(key="/wt/a", holder="webapp--task-c", base=base)
         self.assertEqual(reclaimed["port"], base)
 
+    def test_claim_port_returns_a_copy_pasteable_release_command(self) -> None:
+        # A worker handed a dispatch-time port never ran claim-port itself (the
+        # main agent claims on its behalf), so the resource identity's exact
+        # spelling -- `port--<app>--<port>`, not a bare port number or a
+        # `port:<port>` guess -- has to travel with the claim result, ready to
+        # run, or nothing tells the worker how to release what it never
+        # claimed.
+        base = reserve_free_base(1)
+        claimed = self.claim_port(key="/wt/release-cmd", holder="webapp--task-a", base=base)
+
+        self.assertIn("release_command", claimed)
+        release_args = shlex.split(str(claimed["release_command"]))
+        self.assertIn(f"port--webapp--{base}", release_args)
+        self.assertIn("webapp--task-a", release_args)
+
+        result = subprocess.run(
+            release_args,
+            cwd=ROOT,
+            env={**os.environ, "HOME": str(self.home)},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.locks / f"port--webapp--{base}.json").is_file())
+
     def test_the_same_holder_reclaiming_its_own_key_lands_on_another_port(self) -> None:
         """Why a worker handed a dispatch-time port never re-runs the claim.
 
@@ -203,6 +230,28 @@ class SharedResourcePortClaimTests(unittest.TestCase):
         for port in (base, base + 1):
             lock = json.loads((self.locks / f"port--webapp--{port}.json").read_text())
             self.assertEqual(lock["holder"], "webapp--ui-task")
+
+    def test_releasing_a_resource_nobody_holds_fails_loudly(self) -> None:
+        # A worker that reconstructs the wrong resource spelling (a bare port
+        # number, `port:NNNN`, or any other guess) must see this fail, not
+        # print `released: true` for a lock that was never actually cleared.
+        result = self.run_claim(
+            "release", "--resource", "port--webapp--59999", "--holder", "webapp--task-a"
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no lock held", result.stderr)
+
+    def test_releasing_someone_elses_lock_fails_loudly_without_force(self) -> None:
+        base = reserve_free_base(1)
+        claimed = self.claim_port(key="/wt/wrong-holder", holder="webapp--task-a", base=base)
+
+        result = self.run_claim(
+            "release", "--resource", str(claimed["resource"]), "--holder", "webapp--task-b"
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("is held by", result.stderr)
+        self.assertTrue((self.locks / f"{claimed['resource']}.json").is_file())
 
     def test_an_exhausted_band_fails_loudly_instead_of_assigning_a_held_port(self) -> None:
         base = reserve_free_base(1)

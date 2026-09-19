@@ -75,6 +75,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 
 from straw_boss.resource_lock import (
@@ -183,6 +184,17 @@ def main() -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+    if args.action in {"acquire", "wait", "claim-port"} and result.get("acquired"):
+        # The exact command to undo this grant, invoked the same way this call
+        # was -- so whatever reads this JSON (the claiming main agent composing
+        # a worker's brief, or a worker that claimed for itself) has a
+        # copy-pasteable release, not just a resource id and holder string to
+        # reconstruct by hand. A worker that never ran claim-resource.py itself
+        # has no other way to learn the exact `--resource` spelling it needs.
+        result["release_command"] = shlex.join(
+            ["uv", "run", "--script", sys.argv[0], "release", "--resource", result["resource"], "--holder", result["holder"]]
+        )
 
     print(json.dumps(result, indent=2))
     return 0
