@@ -154,6 +154,7 @@ class DispatchTakeoverTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         env = {
             **self.takeover_env(),
             "HERDR_AGENT_LIST": json.dumps([taker]),
+            "CODEX_THREAD_ID": "codex-session",
             "HERDR_AGENT_KINDS": json.dumps({"taker-pane": "codex"}),
             "HERDR_TERMINAL_IDS": json.dumps({"taker-pane": "terminal-codex"}),
             "HERDR_SESSIONS": json.dumps(

@@ -659,6 +659,7 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "HERDR_CAPTURE": str(capture),
                 "HERDR_PANE_ID": "coworker-pane",
+                "CODEX_THREAD_ID": "coworker-session",
                 "HERDR_SESSIONS": json.dumps(
                     {
                         "coworker-pane": "coworker-session",
@@ -710,6 +711,7 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "HERDR_CAPTURE": str(capture),
                 "HERDR_PANE_ID": "coworker-pane",
+                "CODEX_THREAD_ID": "coworker-session",
                 "HERDR_FAIL_PROMPT_PANE": "worker-pane",
                 "HERDR_SESSIONS": json.dumps(
                     {

@@ -141,14 +141,9 @@ class _LaunchAttempt:
                 *self.base_provider_args,
             ]
         if self.agent_kind == "codex":
-            return [
-                "-c",
-                (
-                    "developer_instructions=Before any task action, read and follow "
-                    f"the mandatory contract at {self.contract_path}."
-                ),
-                *self.base_provider_args,
-            ]
+            # Consolidation clones provider config. Keep this worker's contract
+            # in its opening task message, which belongs to this conversation.
+            return [*self.base_provider_args]
         if self.agent_kind in {"agy", "antigravity"}:
             return [
                 *self.base_provider_args,
@@ -289,7 +284,7 @@ class _LaunchAttempt:
 
             contract_path = (
                 self.contract_path
-                if self.agent_kind in {"agy", "antigravity"}
+                if self.agent_kind in {"codex", "agy", "antigravity"}
                 else None
             )
             prompt_task_with_confirmation(

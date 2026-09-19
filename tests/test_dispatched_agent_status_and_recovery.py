@@ -794,6 +794,7 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         env = {
             **os.environ,
             "HOME": str(self.home),
+            "CODEX_THREAD_ID": "worker-session",
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERDR_CAPTURE": str(capture),
             "HERDR_PANE_ID": "worker-pane",

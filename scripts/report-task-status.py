@@ -128,7 +128,10 @@ def live_instruction_for_plan_task(plan_slug: str | None, task_id: str | None) -
             continue
         if (
             isinstance(instruction, dict)
-            and instruction.get("plan") == plan_slug
+            and (
+                instruction.get("plan") == plan_slug
+                or instruction.get("plan_id") == f"p-{plan_slug}"
+            )
             and instruction.get("task_id") == task_id
         ):
             return candidate

@@ -173,7 +173,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         *args: str,
         extra_env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        env = {**os.environ, "HOME": str(self.home)}
+        env = {**os.environ, "HOME": str(self.home), "CODEX_THREAD_ID": "worker-session"}
         if extra_env:
             env.update(extra_env)
         return subprocess.run(
@@ -292,7 +292,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
             "if [ \"$2\" = get ]; then\n"
             "  if [ \"$3\" = 'worker:pane' ]; then terminal='terminal-worker-pane'; else terminal='terminal-main-pane'; fi\n"
-            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\"}}}\"\n"
+            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\",\\\"agent_session\\\":{\\\"value\\\":\\\"worker-session\\\"}}}}\"\n"
             "else\n"
             "  [ -f \"$EXPECTED_STATUS_PATH\" ] || exit 9\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
@@ -342,7 +342,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "printf '%s\\n' \"$*\" > \"$HERDR_CAPTURE\"\n"
             "if [ \"$2\" = get ]; then\n"
             "  if [ \"$3\" = 'worker:pane' ]; then terminal='terminal-worker-pane'; else terminal='terminal-main-pane'; fi\n"
-            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\"}}}\"\n"
+            "  printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\",\\\"agent_session\\\":{\\\"value\\\":\\\"worker-session\\\"}}}}\"\n"
             "else\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
             "fi\n"
@@ -451,7 +451,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "case \"$2\" in\n"
-            "  get) if [ \"$3\" = 'main:pane' ]; then terminal='terminal-main-pane'; else terminal='terminal-worker-pane'; fi; printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"name\\\":\\\"codex-task\\\",\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\"}}}\" ;;\n"
+            "  get) if [ \"$3\" = 'main:pane' ]; then terminal='terminal-main-pane'; else terminal='terminal-worker-pane'; fi; printf '%s\\n' \"{\\\"result\\\":{\\\"agent\\\":{\\\"name\\\":\\\"codex-task\\\",\\\"agent\\\":\\\"codex\\\",\\\"pane_id\\\":\\\"$3\\\",\\\"terminal_id\\\":\\\"$terminal\\\",\\\"agent_session\\\":{\\\"value\\\":\\\"worker-session\\\"}}}}\" ;;\n"
             "  prompt) printf '%s\\n' '{\"result\":{}}' ;;\n"
             "  read) printf '%s\\n' 'continue with' 'the dependency' ;;\n"
             "  *) exit 2 ;;\n"
@@ -500,7 +500,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             "  if [ \"$3\" = 'worker:pane' ]; then\n"
             "    printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"claude\",\"pane_id\":\"worker:pane\",\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
             "  else\n"
-            "    printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"main:pane\",\"terminal_id\":\"terminal-main-pane\"}}}'\n"
+            "    printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"main:pane\",\"terminal_id\":\"terminal-main-pane\",\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
             "  fi\n"
             "else\n"
             "  printf '%s\\n' '{\"result\":{}}'\n"
@@ -534,7 +534,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "if [ \"$2\" = get ] && [ \"$3\" = 'worker:pane' ]; then\n"
-            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"worker:pane\",\"terminal_id\":\"terminal-worker-pane\"}}}'\n"
+            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"worker:pane\",\"terminal_id\":\"terminal-worker-pane\",\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
             "  exit 0\n"
             "fi\n"
             "exit 7\n"
@@ -568,7 +568,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         fake_herdr.write_text(
             "#!/bin/sh\n"
             "if [ \"$2\" = get ] && [ \"$3\" = 'main:pane' ]; then\n"
-            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"main:pane\",\"terminal_id\":\"terminal-main-pane\"}}}'\n"
+            "  printf '%s\\n' '{\"result\":{\"agent\":{\"agent\":\"codex\",\"pane_id\":\"main:pane\",\"terminal_id\":\"terminal-main-pane\",\"agent_session\":{\"value\":\"worker-session\"}}}}'\n"
             "  exit 0\n"
             "fi\n"
             "exit 7\n"

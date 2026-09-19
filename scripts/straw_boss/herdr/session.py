@@ -221,7 +221,9 @@ def agent_matches_identity(
     )
 
 
-def validate_live_session(endpoint: Endpoint) -> str | None:
+def validate_live_session(
+    endpoint: Endpoint, *, sender_thread_id: str | None = None
+) -> str | None:
     payload = run_herdr(["agent", "get", endpoint.pane_id])
     agent = payload.get("result", {}).get("agent")
     if not isinstance(agent, dict) or agent.get("pane_id") != endpoint.pane_id:
@@ -236,6 +238,11 @@ def validate_live_session(endpoint: Endpoint) -> str | None:
             raise ValueError(
                 f"{endpoint.target} agent kind mismatch for pane {endpoint.pane_id!r}: "
                 f"expected {endpoint.agent_kind!r}, live {agent.get('agent')!r}; refusing to send"
+            )
+        if sender_thread_id is not None and session_value(agent) != sender_thread_id:
+            raise ValueError(
+                f"sender thread mismatch for pane {endpoint.pane_id!r}: "
+                f"caller {sender_thread_id!r}, live {session_value(agent)!r}; refusing to send"
             )
         if agent_matches_identity(
             agent, expected_kind, endpoint.expected_session_id, endpoint.expected_terminal_id
@@ -312,7 +319,16 @@ def validate_current_sender(endpoint: Endpoint) -> None:
         raise ValueError(
             f"sender pane mismatch: expected {endpoint.pane_id!r}, current {current_pane!r}; refusing to send"
         )
-    validate_live_session(endpoint)
+    if endpoint.agent_kind == "codex":
+        # Background consolidation and nested agents share the terminal but
+        # Codex injects their own thread id into each shell invocation. Compare
+        # it with Herdr's live conversation even for legacy null-id dispatches.
+        thread_id = os.environ.get("CODEX_THREAD_ID", "").strip()
+        if not thread_id:
+            raise ValueError("Codex sender thread is unavailable: CODEX_THREAD_ID is required")
+        validate_live_session(endpoint, sender_thread_id=thread_id)
+    else:
+        validate_live_session(endpoint)
 
 
 def validate_current_process_in_pane(pane_id: str) -> None:

@@ -89,6 +89,7 @@ class ResumedCodexCliTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         env = {
             "PATH": f"{fake}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERDR_CAPTURE": str(capture), "HERDR_PANE_ID": "main-pane",
+            "CODEX_THREAD_ID": "main-original",
             "HERDR_AGENT_KINDS": json.dumps({"worker-pane":"codex", "main-pane":"codex"}),
             "HERDR_SESSIONS": json.dumps({"worker-pane":"worker-original", "main-pane":"main-original"}),
             "HERDR_TERMINAL_IDS": json.dumps({"worker-pane":"new-worker-terminal", "main-pane":"new-main-terminal"}),
@@ -102,7 +103,7 @@ class ResumedCodexCliTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         path, env, capture = self.setup_dispatch()
         result = self.run_script("report-task-status.py", "--instruction-path", str(path),
             "--status", "done", "--note", "Verified resumed completion.",
-            extra_env={**env, "HERDR_PANE_ID":"worker-pane"})
+            extra_env={**env, "HERDR_PANE_ID":"worker-pane", "CODEX_THREAD_ID":"worker-original"})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(path.with_suffix('.status.json').read_text())["status"],"done")
         calls=[json.loads(line) for line in capture.read_text().splitlines()]

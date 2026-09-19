@@ -30,6 +30,9 @@ class DispatchedAgentLifecycleFixture:
         env = {
             **os.environ,
             "HOME": str(self.home),
+            # Fake callers have their own thread identity, independent of the
+            # real Codex session running the suite.
+            "CODEX_THREAD_ID": "worker-session",
             # The launcher holds its post-start reading open for a few seconds
             # to catch a startup gate herdr has not classified yet; the fake
             # herdr answers instantly, so that window would only buy wall-clock.

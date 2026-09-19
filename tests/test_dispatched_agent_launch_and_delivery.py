@@ -187,7 +187,7 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
             self.assertEqual(start.count(flag), 1)
             self.assertEqual(start[start.index(flag) + 1], value)
 
-    def test_launcher_injects_codex_developer_instructions(self) -> None:
+    def test_launcher_scopes_codex_contract_to_the_opening_task(self) -> None:
         instruction_path, _ = self.write_dispatch("codex")
         instruction = json.loads(instruction_path.read_text())
         contract = Path(str(instruction["contract_path"])).read_text()
@@ -212,13 +212,13 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertNotIn("pane_id", public_result)
         calls = [json.loads(line) for line in capture.read_text().splitlines()]
         start = next(call for call in calls if call[:2] == ["agent", "start"])
-        config_index = start.index("-c")
-        developer_arg = start[config_index + 1]
-        self.assertTrue(developer_arg.startswith("developer_instructions="))
-        self.assertIn(str(instruction["contract_path"]), developer_arg)
-        self.assertNotIn(contract, developer_arg)
-        self.assertNotIn("\n", developer_arg)
-        self.assertNotIn("`", developer_arg)
+        self.assertFalse(any("developer_instructions=" in arg for arg in start))
+        self.assertFalse(any(str(instruction["contract_path"]) in arg for arg in start))
+        prompt = next(call[3] for call in calls if call[:2] == ["agent", "prompt"])
+        self.assertIn(str(instruction["contract_path"]), prompt)
+        self.assertIn("Before any task action", prompt)
+        self.assertIn("Begin contract task.", prompt)
+        self.assertNotIn(contract, prompt)
 
     def test_launcher_recovers_when_start_reports_a_live_blocked_agent(self) -> None:
         instruction_path, _ = self.write_dispatch("codex")
@@ -538,11 +538,12 @@ class DispatchedAgentLaunchAndDeliveryTests(DispatchedAgentLifecycleFixture, uni
         digest = base64.urlsafe_b64encode(hashlib.sha256(task.encode()).digest()).decode().rstrip("=")
         self.assertEqual(
             prompts[0][3],
-            "Begin contract task.\n"
+            "Before any task action, read and follow the mandatory contract at "
+            f"{instruction['contract_path']}.\nBegin contract task.\n"
             f"[sb256:{digest}]",
         )
         self.assertNotIn(task, prompts[0][3])
-        self.assertLess(len(prompts[0][3]), 256)
+        self.assertLess(len(prompts[0][3]), len(instruction["contract_path"]) + 160)
         self.assertGreater(len(task), 256)
 
     def test_launcher_confirms_delivery_in_an_extremely_narrow_claude_viewport(
