@@ -107,36 +107,31 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("Azure Storage connection string", contract)
         self.assertNotIn(secret_value, contract)
 
-    def test_write_withholds_a_sensitive_notes_quoted_secret_value(self) -> None:
-        repo_root = self.home / "hazard-repo-quoted-secret"
+    def _write_hazard_repo(self, repo_root: Path, app_payload: dict[str, Any]) -> None:
         app_dir = repo_root / "apps" / "infra-dashboard"
         app_dir.mkdir(parents=True)
         (repo_root / ".straw-boss").mkdir()
-        secret_value = "AccountKey=do-not-leak-this-value"
         (repo_root / ".straw-boss" / "apps.json").write_text(json.dumps({
             "apps": [
                 {
                     "name": "infra-dashboard",
                     "dir": "apps/infra-dashboard",
                     "match": ["infra dashboard"],
-                    "localFiles": [
-                        {
-                            "path": ".env",
-                            "sensitive": True,
-                            "note": f"Azure key: {secret_value}",
-                        }
-                    ],
+                    **app_payload,
                 }
             ]
         }))
 
-        result = self.run_script(
+    def _write_dispatch_expecting_failure(
+        self, repo_root: Path, slug: str
+    ) -> subprocess.CompletedProcess[str]:
+        return self.run_script(
             "dispatch-task.py",
             "write",
             "--app",
             "infra-dashboard",
             "--slug",
-            "hazard-notes-quoted-secret",
+            slug,
             "--task",
             "Exercise the tool against the live, empty infra-center Loki.",
             "--mode",
@@ -152,13 +147,58 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             "--main-agent-session-id",
             "main-session",
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        output = json.loads(result.stdout)
-        contract = Path(str(output["contract_path"])).read_text()
 
-        self.assertIn(".env", contract)
-        self.assertNotIn(secret_value, contract)
-        self.assertIn("withheld", contract.lower())
+    def test_write_refuses_a_local_file_note_that_quotes_a_credential(self) -> None:
+        repo_root = self.home / "hazard-repo-quoted-secret"
+        secret_value = "AccountKey=do-not-leak-this-value"
+        self._write_hazard_repo(repo_root, {
+            "localFiles": [
+                {
+                    "path": ".env",
+                    "sensitive": True,
+                    "note": f"Azure key: {secret_value}",
+                }
+            ],
+        })
+
+        result = self._write_dispatch_expecting_failure(repo_root, "hazard-notes-quoted-secret")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(secret_value, result.stdout)
+        self.assertNotIn(secret_value, result.stderr)
+        self.assertIn("apps.json", result.stderr)
+        self.assertIn("infra-dashboard", result.stderr)
+        self.assertIn("localFiles", result.stderr)
+        self.assertFalse(
+            list((repo_root / ".straw-boss").parent.glob("**/*.contract.md")),
+            "a dispatch that fails the credential check must not write a contract",
+        )
+
+    def test_write_refuses_an_app_level_note_that_quotes_a_credential(self) -> None:
+        repo_root = self.home / "hazard-repo-app-note-secret"
+        secret_value = "AccountKey=do-not-leak-this-value"
+        self._write_hazard_repo(repo_root, {"note": f"Storage key is {secret_value}"})
+
+        result = self._write_dispatch_expecting_failure(repo_root, "hazard-notes-app-secret")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(secret_value, result.stdout)
+        self.assertNotIn(secret_value, result.stderr)
+        self.assertIn("apps.json", result.stderr)
+        self.assertIn("'note'", result.stderr)
+
+    def test_write_refuses_a_note_that_quotes_a_bare_credential_token(self) -> None:
+        repo_root = self.home / "hazard-repo-bare-token"
+        token = "ghp_" + "a" * 36
+        self._write_hazard_repo(repo_root, {
+            "localFiles": [{"path": ".env", "sensitive": True, "note": f"quotes {token}"}],
+        })
+
+        result = self._write_dispatch_expecting_failure(repo_root, "hazard-notes-bare-token")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(token, result.stdout)
+        self.assertNotIn(token, result.stderr)
 
     def test_write_renders_no_app_hazards_section_without_a_configured_app(self) -> None:
         instruction_path, output = self.write_dispatch("claude")

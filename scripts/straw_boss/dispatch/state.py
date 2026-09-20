@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from straw_boss import PLUGIN_ROOT, SCRIPTS_DIR
-from straw_boss.apps import AppHazards, LocalFileHazard
+from straw_boss.apps import AppHazards
 
 
 def straw_boss_root() -> Path:
@@ -175,37 +175,14 @@ def _uses_managed_plugin_cache(root: Path) -> bool:
     return "/.claude/plugins/cache/" in normalized or "/.codex/plugins/cache/" in normalized
 
 
-_SECRET_ASSIGNMENT_RE = re.compile(r"\S+=\S{6,}")
-
-
-def _local_file_risk_suffix(entry: LocalFileHazard) -> str:
-    """The ` : <risk>` suffix for one `localFiles` entry's contract line.
-
-    `entry.risk` is meant to be a description of the danger, not the file's
-    actual contents, but `apps.json` is hand-maintained and nothing upstream
-    guarantees that. For a `sensitive: true` entry, a `KEY=value`-shaped
-    assignment inside the note is treated as an accidentally quoted
-    credential and withheld rather than rendered -- a heuristic for that one
-    common shape, not a guarantee against every way a value could be pasted
-    in, so a note that reads safe is not a substitute for keeping the actual
-    secret out of apps.json in the first place.
-    """
-    if not entry.risk:
-        return ""
-    if entry.sensitive and _SECRET_ASSIGNMENT_RE.search(entry.risk):
-        return (
-            ": note withheld -- it looks like it quotes a credential value "
-            "(a KEY=value shape); rewrite apps.json to describe the risk, not the value"
-        )
-    return f": {entry.risk}"
-
-
 def render_app_hazards_section(app_hazards: AppHazards | None) -> str:
     """The resolved app's `apps.json` hazard facts, as a distinct contract
-    section -- so a worker sees them without knowing to open that file. Never
-    renders a `localFiles` entry's actual file contents, only its declared
-    `path` and risk description; see `_local_file_risk_suffix` for the one
-    check applied to a `sensitive: true` entry's note before it is rendered."""
+    section -- so a worker sees them without knowing to open that file.
+    Renders every note faithfully and never renders a `localFiles` entry's
+    actual file contents, only its declared `path` and risk description.
+    `straw_boss.apps.resolve_app_hazards` is what refuses, at read time, to hand
+    back a note that looks like it quotes a credential's value -- by the time
+    `app_hazards` reaches this function, that check has already passed."""
     if not app_hazards:
         return ""
     lines: list[str] = []
@@ -213,7 +190,8 @@ def render_app_hazards_section(app_hazards: AppHazards | None) -> str:
         lines.append(f"- {app_hazards.note}")
     for entry in app_hazards.local_files:
         tag = " (sensitive -- name only, never reproduce its contents)" if entry.sensitive else ""
-        lines.append(f"- `{entry.path}`{tag}{_local_file_risk_suffix(entry)}")
+        suffix = f": {entry.risk}" if entry.risk else ""
+        lines.append(f"- `{entry.path}`{tag}{suffix}")
     return "\n## App hazards\n\n" + "\n".join(lines) + "\n"
 
 

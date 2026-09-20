@@ -82,6 +82,14 @@ def with_registration_mutex(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     or by neither. While the mutex is held, no other register() call touches
     the registry at all, so raising on contention rather than retrying keeps
     the loser's own read-then-write from ever starting mid-sequence.
+
+    `register()` is the only caller and the only writer that ever sets a
+    role to a non-`None` value, so serializing it is sufficient for the
+    role-exclusivity invariant -- `release_role` (which only ever clears a
+    role to `None`, and so cannot produce two holders of one) and
+    `auto_register_from_dispatch` (which never claims a role and must never
+    raise, since registry bookkeeping must not block a dispatch) both write
+    the registry outside this mutex and stay that way on purpose.
     """
     registry_root().mkdir(parents=True, exist_ok=True)
     mutex_path = registry_root() / ".register.mutex"
