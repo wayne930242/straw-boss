@@ -16,6 +16,62 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class JevPruningTests(unittest.TestCase):
+    def test_existing_storage_is_made_private_before_writing(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"STRAW_BOSS_HOME": directory}):
+            root = Path(directory) / "jev"
+            root.mkdir(mode=0o755)
+            (root / "runs").mkdir(mode=0o755)
+            benchmark = root / "benchmark.jsonl"
+            benchmark.write_text("")
+            benchmark.chmod(0o644)
+            jev_storage.persist({"record": {"run_id": "private", "decisions": []}, "original_messages": []})
+            for path in (root, root / "runs"):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(benchmark.stat().st_mode & 0o777, 0o600)
+
+    def test_storage_rejects_symlinks_without_changing_targets(self):
+        for name in ("jev", "jev/runs", "jev/benchmark.jsonl", "jev/benchmark.lock", "jev/runs/private.json"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"STRAW_BOSS_HOME": directory}):
+                target = Path(directory) / "outside"
+                if name in ("jev", "jev/runs"):
+                    target.mkdir(mode=0o755)
+                else:
+                    target.write_text("unchanged")
+                link = Path(directory) / name
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(target)
+                before = target.stat().st_mode
+                with self.assertRaises((OSError, ValueError)):
+                    jev_storage.persist({"record": {"run_id": "private", "decisions": []}, "original_messages": []})
+                self.assertEqual(target.stat().st_mode, before)
+                if target.is_file():
+                    self.assertEqual(target.read_text(), "unchanged")
+                else:
+                    self.assertEqual(list(target.iterdir()), [])
+
+    def test_storage_rejects_hardlinks_special_files_and_foreign_ownership(self):
+        for kind in ("hardlink", "fifo", "foreign-owner"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"STRAW_BOSS_HOME": directory}):
+                root = Path(directory) / "jev"
+                root.mkdir()
+                benchmark = root / "benchmark.jsonl"
+                if kind == "hardlink":
+                    target = Path(directory) / "target"
+                    target.write_text("untouched")
+                    os.link(target, benchmark)
+                elif kind == "fifo":
+                    os.mkfifo(benchmark)
+                if kind == "foreign-owner":
+                    with patch("straw_boss.jev_private.os.getuid", return_value=os.getuid() + 1):
+                        with self.assertRaises(ValueError):
+                            jev_storage.persist({"record": {"run_id": "private", "decisions": []}, "original_messages": []})
+                    self.assertEqual(list(root.iterdir()), [])
+                else:
+                    with self.assertRaises((OSError, ValueError)):
+                        jev_storage.persist({"record": {"run_id": "private", "decisions": []}, "original_messages": []})
+                    if kind == "hardlink":
+                        self.assertEqual(target.read_text(), "untouched")
+
     def test_pair_bytes_vary_with_real_content_and_ignore_mirrored_host_metadata(self):
         call = {"tool_use_id": "a", "tool": "Read", "input": {"file_path": "x"}}
         short = {"tool_use_id": "a", "text": "ok"}

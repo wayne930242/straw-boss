@@ -35,9 +35,12 @@ Insufficient reduction, unavailable measurement, Jev failure, or recovery-storag
 failure delegates to built-in compaction. At a turn boundary, renewal runs only
 when the resulting measured context still exceeds 300k.
 
-The first and latest six messages stay intact. Reads of governing dispatch
-contracts/instruction JSON and AGENTS/CLAUDE/GEMINI/SKILL guidance also stay intact,
-including combined commands that contain those paths. Other paired calls use
+The first and latest six messages stay intact. Pairs whose serialized tool input matches the shared path patterns stay intact,
+including explicit dispatch paths, `cd ~/.straw-boss/dispatch && cat task.json`,
+and literal AGENTS/CLAUDE/GEMINI/SKILL filenames. This is input-pattern recognition,
+not complete provenance tracking: `cat task.json` with an implicit working directory
+and `f=CLAUDE; cat "$f.md"` can miss the lock and receive ordinary Jev scores.
+Use explicit governing paths in tool inputs when evaluating pruning. Other paired calls use
 two Jev scores at 0.5: retain both, retain the call and a 300-character result
 prefix, or remove both. User and assistant text remains verbatim.
 
@@ -53,7 +56,8 @@ the Codex runtime adapter.
   the next backend usage observation arrives, including across session restart.
 - `~/.straw-boss/jev/runs/<run_id>.json`: complete original and candidate message
   views, plus the record. Modified decisions also carry original tool content
-  and positions. Files are user-private (0600; new directories 0700).
+  and positions. Files and store directories are enforced as user-private (0600/0700), including
+  existing paths; symlinks, hard-linked files, and foreign-owned paths are rejected.
 - `~/.straw-boss/jev/observations/<session_id>.json`: the observed backend usage.
 
 `decision: apply` means the hook selected the candidate. `outcome: applied` means
@@ -80,7 +84,10 @@ metadata is excluded; the complete original host objects remain in recovery.
 Recover a tool output by reading the decision's `original_content` or the run's
 `original_messages`. The entire run JSON is sufficient to reconstruct the original
 hook message view without rerunning one-shot actions. Keep these records local:
-they contain the original task data.
+both benchmark rows and recovery snapshots contain original task data, potentially
+including credentials printed by earlier tools. They are sensitive, lossless
+records with no redaction or automatic expiry, not metrics-only exports. This also
+applies when `STRAW_BOSS_HOME` relocates the store; keep it outside repositories.
 
 The backend counter uses the current Anthropic API key or Claude OAuth credential
 (local credential store, macOS Keychain fallback); credentials stay in the host

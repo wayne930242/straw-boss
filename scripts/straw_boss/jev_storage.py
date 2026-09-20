@@ -6,9 +6,10 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+
+from .jev_private import private_file, private_read, private_replace, private_unlink, root
 
 
 def canonical(value: object) -> bytes:
@@ -32,29 +33,13 @@ def pair_bytes(call: dict | None, result: dict | None) -> int:
     return len(canonical(pair))
 
 
-def root() -> Path:
-    return Path(os.environ.get("STRAW_BOSS_HOME", str(Path.home() / ".straw-boss"))) / "jev"
-
-
 def private_write(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd, temporary = tempfile.mkstemp(dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as file:
-            json.dump(data, file, ensure_ascii=False)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary, path)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
+    private_replace(path, json.dumps(data, ensure_ascii=False))
 
 
 @contextmanager
 def benchmark_lock():
-    directory = root()
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(directory / "benchmark.lock", os.O_WRONLY | os.O_CREAT, 0o600)
-    with os.fdopen(fd, "w") as lock:
+    with private_file(root() / "benchmark.lock", os.O_WRONLY | os.O_CREAT, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
 
@@ -63,7 +48,10 @@ def pending(session: str) -> dict | None:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", session):
         raise ValueError("invalid-session-id")
     path = root() / "pending" / f"{session}.json"
-    return json.loads(path.read_text()) if path.is_file() else None
+    try:
+        return json.loads(private_read(path))
+    except FileNotFoundError:
+        return None
 
 
 def observe(data: dict) -> dict:
@@ -73,7 +61,7 @@ def observe(data: dict) -> dict:
         return {"observed": False}
     with benchmark_lock():
         path = root() / "benchmark.jsonl"
-        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        rows = [json.loads(line) for line in private_read(path).splitlines()]
         for record in rows:
             if record["run_id"] != data["run_id"]:
                 continue
@@ -89,20 +77,12 @@ def observe(data: dict) -> dict:
             if record.get("decision") == "apply":
                 record["outcome"] = "applied" if verified else None
             recovery = Path(record["recovery_path"])
-            snapshot = json.loads(recovery.read_text())
+            snapshot = json.loads(private_read(recovery))
             snapshot["record"] = record
             private_write(recovery, snapshot)
-        fd, temporary = tempfile.mkstemp(dir=path.parent)
-        try:
-            with os.fdopen(fd, "w") as file:
-                file.write("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
-                file.flush()
-                os.fsync(file.fileno())
-            os.replace(temporary, path)
-        finally:
-            Path(temporary).unlink(missing_ok=True)
+        private_replace(path, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
     private_write(root() / "observations" / f"{session}.json", data)
-    (root() / "pending" / f"{session}.json").unlink(missing_ok=True)
+    private_unlink(root() / "pending" / f"{session}.json")
     return {"observed": True}
 
 
@@ -112,7 +92,6 @@ def persist(data: dict) -> dict:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", run):
         raise ValueError("invalid-run-id")
     directory = root()
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     recovery = directory / "runs" / f"{run}.json"
     original = data["original_messages"]
     candidate = data.get("candidate_messages") or original
@@ -148,8 +127,7 @@ def persist(data: dict) -> dict:
                              "candidate_messages": data.get("candidate_messages")})
     benchmark = directory / "benchmark.jsonl"
     with benchmark_lock():
-        fd = os.open(benchmark, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        with os.fdopen(fd, "a") as file:
+        with private_file(benchmark, os.O_WRONLY | os.O_CREAT | os.O_APPEND, "a") as file:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
             file.flush()
             os.fsync(file.fileno())

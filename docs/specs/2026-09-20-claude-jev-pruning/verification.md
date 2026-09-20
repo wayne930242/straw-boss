@@ -6,9 +6,12 @@ Contract: [spec.md](spec.md). Operation: [../../jev-pruning.md](../../jev-prunin
 
 The user directed shipment on 2026-09-20 with activation off and subsequent
 behavior review through benchmark records. Additional live branch coverage is
-explicitly deferred. The main agent owns a fresh-context review as follow-up and
-confirmed it does not block this opt-in release. Self-review covered the completed
-source against both repository standards and the amended contract.
+explicitly deferred. The main agent commissioned a fresh-context review without blocking the opt-in
+release. That review requested changes for indirect governing paths (P1) and
+identified existing storage permissions/link handling (P2). The 0.30.17 follow-up
+fixes dispatch-directory matching, states the remaining recognition limits, and
+hardens storage access. Self-review covered standards and the amended contract;
+independent re-review of the follow-up remains with the coordinator.
 
 Durable machine-local evidence:
 `~/.straw-boss/evidence/jev-claude-integration/`.
@@ -28,7 +31,7 @@ The Round 2 baseline remains at
 | 7 Backend 10% gate and distinct actual usage | Anthropic count_tokens on native blocks; full session input as conservative denominator; schema v2 pending decision becomes applied only after real next-request usage | pass |
 | 8 Built-in fallback and renewal | Fake-engine gate/failure/storage-error tests delegate original event; renewal tests distinguish 200k ordinary and 300k opt-in, and ignore pre-compaction usage | pass at automated boundary; live fallback deferred |
 | 9 Benchmark metrics and outcomes | `benchmark-final.jsonl`; real response model/usage, per-request timings, criteria/policy hashes, decision/application split, scalar and per-pair fields | pass; development schema v1 rows explicitly marked unverified |
-| 10 Recoverable original content and private storage | Exact original message/pair equality tests, modified-content snapshots and positions, 0600 files; varying-content byte test excludes duplicated host metadata | pass |
+| 10 Recoverable original content and private storage | Exact original message/pair equality and byte tests; review-follow-up tests enforce existing 0700/0600 modes and reject symlink/hardlink/FIFO/foreign-owned paths | pass at focused automated boundary |
 | 11 Documentation and opt-in installation | README and operation guide contain explicit launch on/off; release installation/readback is recorded in dispatch evidence after commit | documentation pass; installation result carried by final dispatch report |
 
 ## Actual Claude runtime
@@ -118,3 +121,32 @@ Applied `solid-loop` to the design friction notes:
 
 Commit, push, installation, and the independent review disposition are distinct
 release events, reported through the dispatch lifecycle after this source check.
+
+## Independent review follow-up: 0.30.17
+
+The original review is retained at
+`/tmp/straw-boss-jev-claude-review-20260920/review.md` and in the private release
+evidence. The findings were reproduced before implementation: the `cd` path
+fixture failed, existing-mode assertions failed, and all five symlink cases
+failed. After repair:
+
+- Python storage/renewal and instruction-quality checks: **46 passed, 155 subtests**.
+- TypeScript suites: **40 passed**; library/hook typecheck and build passed.
+- `cd ~/.straw-boss/dispatch && cat task.json` retains its pair with zero Jev
+  requests; absolute dispatch paths and literal guidance filenames also retain.
+- Explicit negative cases record that bare `cat task.json` and
+  `f=CLAUDE; cat "$f.md"` remain unmatched. Universal provenance protection is
+  not claimed; policy v3 fixes the recognized directory boundary only.
+- Existing-mode, symlink (root, child directory, benchmark, lock, snapshot),
+  hardlink, FIFO, and simulated foreign-owner cases pass. Reads/updates use
+  the same descriptor-based private access, and original recovery stays exact.
+- Benchmark rows are documented as sensitive raw records, including potentially
+  printed credentials; they have no automatic expiry or redacted-export behavior.
+
+No new live compaction or full-suite run was added for this focused follow-up.
+The prior real compaction evidence and fixed-history measurements describe policy
+v2; this boundary extension does not constitute a new savings measurement.
+Review disposition: original **REQUEST CHANGES**, findings addressed at the
+scoped test/documentation boundary; independent follow-up verdict pending.
+Reflexive: the recognition and creation-mode assumptions were gaps closed in code
+and its operation guide; shell helper invocation was a local tool-use correction.

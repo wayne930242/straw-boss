@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { collectToolCalls } from '../src/state.js';
 import { register } from '../../../hooks/jev-pruning.js';
 
 const policy = JSON.parse(readFileSync(new URL('../../../config/jev-policy.json', import.meta.url), 'utf8'));
@@ -41,6 +42,13 @@ function engine(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Straw Boss compaction boundary',()=>{
+  it.each(['cat task.json', 'f=CLAUDE; cat "$f.md"'])('documents unmatched indirect input %s', (command)=>{
+    const messages=fixture();
+    messages[1].toolUses[0].input.file_path=command;
+    const calls=collectToolCalls(messages, policy.preserve_recent_messages, policy.protected_input_patterns);
+    expect(calls[0].governingSource).toBeUndefined();
+    expect(calls[0].pinned).toBe(false);
+  });
   it('missing and empty keys delegate silently without recording',async()=>{
     for(const key of [undefined,'',' ']){
       const h=engine();h.env.TYPESAFE_API_KEY=key as any;
@@ -49,7 +57,7 @@ describe('Straw Boss compaction boundary',()=>{
       expect(next).toBe(1);expect(h.writes).toEqual([]);expect(h.notices).toEqual([]);
     }
   });
-  it('applies only measured candidates, retaining text and locked engine handles',async()=>{
+  it('applies only measured candidates, retaining text with fresh engine identities',async()=>{
     const h=engine();const messages=fixture();
     const result=await h.events['session.compact'](h.$,{trigger:'manual',messages},()=>{throw Error('unexpected fallback');});
     expect(result.messages[0].text).toBe(messages[0].text);
@@ -84,9 +92,9 @@ describe('Straw Boss compaction boundary',()=>{
     expect(h.writes[0].record.fallback_reason).toBe('jev-http-500');
     expect(JSON.stringify(h.writes)).not.toContain('private server detail');
   });
-  it('keeps governing-source pairs even when the judge would discard them',async()=>{
+  it.each(['/home/user/.straw-boss/dispatch/task.json', 'cd ~/.straw-boss/dispatch && cat task.json', 'cat CLAUDE.md', 'cat .claude/CLAUDE.md'])('keeps recognized governing input %s even when the judge would discard it',async(input)=>{
     const h=engine();const messages=fixture();
-    messages[1].toolUses[0].input.file_path='/home/user/.straw-boss/dispatch/task.json';
+    messages[1].toolUses[0].input.file_path=input;
     let next=0;
     await h.events['session.compact'](h.$,{trigger:'manual',messages},async()=>{next++;return {messages:[]};});
     expect(next).toBe(1);

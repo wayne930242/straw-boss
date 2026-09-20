@@ -62,11 +62,16 @@ The main agent relayed the user's authorization to complete implementation and
 specification decisions autonomously on 2026-09-20. Five wording variants showed
 that a 0.5 semantic threshold alone alternates between losing the governing
 instruction read and retaining nearly everything. Preserve governing-source
-reads mechanically in addition to the first/recent locks: dispatch contracts and
+reads recognized by the shared input patterns mechanically in addition to the first/recent locks: dispatch contracts and
 instruction JSON, project AGENTS/CLAUDE/GEMINI guidance, and skill instructions.
 Use the separated call/result criteria (v4) for all other eligible pairs.
 
-This extends the settled lock set to enforce the user's newly confirmed retention
-requirement; it does not change 0.5 scoring, 10% savings, verbatim text, or fallback.
+This extends the settled lock set for recognized governing reads; it does not change 0.5 scoring, 10% savings, verbatim text, or fallback.
 Its exact patterns and policy version are shared with Codex. Document the extension
 as a settled-design amendment and verify both retained provenance and savings.
+
+Review clarification: recognition operates on serialized tool input. Policy v3
+adds dispatch-directory references without a trailing slash; arbitrary shell
+variables and implicit working directories remain outside the recognized set.
+This is a reproducible lock for matching inputs, not universal provenance detection.
+The coordinator explicitly allowed correcting that claim while shipping opt-in.

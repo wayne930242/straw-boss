@@ -79,3 +79,28 @@ The user directed 0.30.16 commit, push and installation with activation off,
 and deferred further live branch coverage to benchmark review. The main agent
 owns an independent follow-up review and explicitly released it from the ship
 checkpoint. Shell dotfiles remain unchanged.
+
+## Review follow-up (2026-09-20)
+
+Policy v3 recognizes the dispatch directory itself as well as paths beneath it.
+This fixes `cd ~/.straw-boss/dispatch && cat task.json`. Input-pattern recognition
+has a bounded scope: implicit working directories, shell variable expansion,
+and other indirect reads may still be judged. The operation guide now states
+that limit rather than promising universal governing-source protection.
+
+Recovery access uses directory descriptors, validates ownership and object type,
+rejects symlinks inside the store and hard-linked files, and enforces 0700/0600
+before sensitive reads/writes. The configured parent is resolved once; child
+operations stay relative to validated directory descriptors. Existing lock files,
+benchmark rows, snapshots, pending records and observations share that access path.
+
+- Tried: relied on path-string matching to retain every governing read.
+  Found: a dispatch directory without a trailing slash missed the pattern, and
+  indirect shell inputs do not identify their source path.
+  Led by: none
+- Tried: used creation modes to describe all recovery files as private.
+  Found: existing directories and files kept permissive modes and opens followed links.
+  Led by: none
+- Tried: invoked the test-edit helper with `python`.
+  Found: this shell provides `python3`; tests had not yet been added.
+  Led by: none
