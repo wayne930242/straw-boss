@@ -136,3 +136,22 @@ Configuration is read from `.straw-boss/apps.json` first, falling back to `.clau
 ## License
 
 [MIT](./LICENSE)
+
+## Experimental Claude Jev pruning
+
+Jev pruning is opt-in and leaves ordinary context renewal unchanged. Enable it
+for one newly launched Claude session (with `TYPESAFE_API_KEY` in the environment):
+
+```sh
+STRAW_BOSS_JEV=1 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude
+```
+
+Start a session with the experiment explicitly off:
+
+```sh
+STRAW_BOSS_JEV=0 claude
+```
+
+Restart or resume with the desired switch; keep pruning off globally during the
+renewal acceptance window through 2026-09-25. See
+[benchmark, recovery, and implementation limits](docs/jev-pruning.md).

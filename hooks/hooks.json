@@ -26,5 +26,8 @@
         ]
       }
     ]
-  }
+  },
+  "modules": [
+    "./jev-pruning.ts"
+  ]
 }

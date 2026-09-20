@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "keep_threshold": 0.5,
+  "min_reduction_ratio": 0.1,
+  "preserve_recent_messages": 6,
+  "max_state_tokens": 25000,
+  "max_request_tokens": 30000,
+  "truncate_head_chars": 300,
+  "renewal_threshold_tokens": 300000,
+  "protected_input_patterns": [
+    "\\.straw-boss[/\\\\]+dispatch[/\\\\]+",
+    "\\.contract\\.md\\b",
+    "\\b(?:AGENTS|CLAUDE|GEMINI|SKILL)\\.md\\b"
+  ]
+}
