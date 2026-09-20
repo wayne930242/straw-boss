@@ -116,7 +116,7 @@ boss-say 把 docs/backlog.md 做掉
 | 幫沒有 `AGENTS.md` 或 `CLAUDE.md` 的 app 建一套精簡 agent system | `create-great-harness` |
 | 在派出去的 worker 裡找一位 coworker 一起審查或協作 | `bringing-coworker` |
 
-其餘 skill 由 main agent 與 worker 自行執行：`i-am-orchestrator`、`choosing-graph`、`dispatching-work`、`shipping-task`、`contacting-orchestrators`、`reporting-to-user`、`notifying-main-agent`、`asking-peer-agents`。
+其餘 skill 由 main agent 與 worker 自行執行：`i-am-orchestrator`、`choosing-graph`、`dispatching-work`、`shipping-task`、`contacting-orchestrators`、`reporting-to-user`、`notifying-main-agent`、`asking-peer-agents`、`agent-feedback`。
 各自的職責見 [docs/architecture.md](docs/architecture.md#components)。
 
 ## 設定

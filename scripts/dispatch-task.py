@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from straw_boss.apps import resolve_app_hazards
 from straw_boss.dispatch.permission import detect_claude_tier
 from straw_boss.dispatch.state import (
     confirm_dispatch,
@@ -231,6 +232,7 @@ def write_instruction(
         mode=mode,
         agent_kind=agent_kind,
         shared_checkpoint=shared_checkpoint,
+        app_hazards=resolve_app_hazards(Path(repo_root), app),
     )
     contract_digest = sha256_text(contract)
     payload: dict[str, Any] = {

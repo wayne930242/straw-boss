@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from straw_boss import PLUGIN_ROOT, SCRIPTS_DIR
+from straw_boss.apps import AppHazards
 
 
 def straw_boss_root() -> Path:
@@ -174,6 +175,24 @@ def _uses_managed_plugin_cache(root: Path) -> bool:
     return "/.claude/plugins/cache/" in normalized or "/.codex/plugins/cache/" in normalized
 
 
+def render_app_hazards_section(app_hazards: AppHazards | None) -> str:
+    """The resolved app's `apps.json` hazard facts, as a distinct contract
+    section -- so a worker sees them without knowing to open that file. Never
+    renders a `localFiles` entry's actual contents, only its declared `path`
+    and risk description, which is safe by construction even for a
+    `sensitive: true` entry (`apps.json` never stores the secret value itself)."""
+    if not app_hazards:
+        return ""
+    lines: list[str] = []
+    if app_hazards.note:
+        lines.append(f"- {app_hazards.note}")
+    for entry in app_hazards.local_files:
+        tag = " (sensitive -- name only, never reproduce its contents)" if entry.sensitive else ""
+        risk = f": {entry.risk}" if entry.risk else ""
+        lines.append(f"- `{entry.path}`{tag}{risk}")
+    return "\n## App hazards\n\n" + "\n".join(lines) + "\n"
+
+
 def render_dispatch_contract(
     instruction_path: Path,
     coworker_context: dict[str, Any] | None = None,
@@ -181,6 +200,7 @@ def render_dispatch_contract(
     mode: str = "herdr-pane",
     agent_kind: str = "claude",
     shared_checkpoint: bool = False,
+    app_hazards: AppHazards | None = None,
 ) -> str:
     if mode != "herdr-pane":
         raise ValueError(f"unsupported dispatch mode {mode!r}")
@@ -236,10 +256,11 @@ def render_dispatch_contract(
         )
     else:
         terminal_report = "carrying the finished change-set's review disposition"
+    hazards_section = render_app_hazards_section(app_hazards)
     return f"""# Straw Boss dispatched-agent contract
 
 This contract is mandatory for this dispatched session.
-
+{hazards_section}
 - Your canonical instruction path is `{instruction_path}`, and its `task` field is the work you are here to do.
 - You are an independent agent: you and the user own the specification, design, implementation, and the verification method inside the reality anchor this dispatch names -- settling the anchor yourselves when it names none -- and the main agent accepts those decisions. Investigate this working directory yourself.
 {coworker_rules}- Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or agent names for cross-session communication.

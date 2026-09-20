@@ -374,11 +374,11 @@ class SkillInstructionQualityTests(unittest.TestCase):
 
     def test_skill_names_and_metadata_remain_discoverable(self) -> None:
         expected = {
-            "asking-peer-agents", "boss-assistant", "boss-say", "bringing-coworker",
-            "choosing-graph", "contacting-orchestrators", "create-great-harness",
-            "dispatching-work", "handoff-orchestrator", "i-am-orchestrator", "init",
-            "notifying-main-agent", "peeking-work", "reporting-to-user",
-            "shipping-task", "work-on",
+            "agent-feedback", "asking-peer-agents", "boss-assistant", "boss-say",
+            "bringing-coworker", "choosing-graph", "contacting-orchestrators",
+            "create-great-harness", "dispatching-work", "handoff-orchestrator",
+            "i-am-orchestrator", "init", "notifying-main-agent", "peeking-work",
+            "reporting-to-user", "shipping-task", "work-on",
         }
         paths = list((ROOT / "skills").glob("*/SKILL.md"))
         self.assertEqual({p.parent.name for p in paths}, expected)
@@ -537,7 +537,9 @@ class SkillInstructionQualityTests(unittest.TestCase):
 
     def test_boss_assistant_hands_source_repair_to_development_owner(self) -> None:
         source = normalized(ROOT / "skills/boss-assistant/SKILL.md")
-        self.assertIn("leveraging-tasks, which owns design, implementation, and verification", source)
+        self.assertIn("Straw Boss's own leveraging-tasks route is [handoff-orchestrator]", source)
+        self.assertIn("rather than editing plugin source from whichever project session hit the friction", source)
+        self.assertIn("bump plugin.json's version, push, run bash scripts/install.sh", source)
         self.assertIn("relevant baseline", source)
         self.assertIn("actual UAT outcome", source)
         self.assertIn("user's publication decision", source)

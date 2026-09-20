@@ -122,7 +122,7 @@ Call a skill by name when the situation fits; anything unlisted goes to `boss-sa
 | Give an app without `AGENTS.md` or `CLAUDE.md` a minimal agent system | `create-great-harness` |
 | From inside a dispatched worker, bring in a coworker for review or pairing | `bringing-coworker` |
 
-The main agent and workers run the other skills on their own: `i-am-orchestrator`, `choosing-graph`, `dispatching-work`, `shipping-task`, `contacting-orchestrators`, `reporting-to-user`, `notifying-main-agent`, and `asking-peer-agents`.
+The main agent and workers run the other skills on their own: `i-am-orchestrator`, `choosing-graph`, `dispatching-work`, `shipping-task`, `contacting-orchestrators`, `reporting-to-user`, `notifying-main-agent`, `asking-peer-agents`, and `agent-feedback`.
 [docs/architecture.md](docs/architecture.md#components) describes each one.
 
 ## Configuration

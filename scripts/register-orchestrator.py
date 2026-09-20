@@ -11,7 +11,7 @@ import argparse
 import json
 import sys
 
-from straw_boss.orchestrator import directory, live_agents, register
+from straw_boss.orchestrator import directory, live_agents, register, release_role
 
 
 def main() -> int:
@@ -23,13 +23,27 @@ def main() -> int:
         action="store_true",
         help="read the directory without registering",
     )
+    group.add_argument(
+        "--release-role",
+        action="store_true",
+        help="drop whatever named role this session's own record currently holds, without touching its scope",
+    )
+    parser.add_argument(
+        "--role",
+        default=None,
+        help="claim a named exclusive coordination role (e.g. boss-assistant) alongside --scope; "
+        "revokes it from any other record that currently holds it, live or not",
+    )
     args = parser.parse_args()
+    if args.role is not None and args.scope is None:
+        parser.error("--role requires --scope")
     try:
-        result = (
-            {"directory": directory(live_agents())}
-            if args.list
-            else register(args.scope)
-        )
+        if args.list:
+            result = {"directory": directory(live_agents())}
+        elif args.release_role:
+            result = release_role()
+        else:
+            result = register(args.scope, args.role)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

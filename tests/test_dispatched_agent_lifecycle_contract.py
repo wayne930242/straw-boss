@@ -43,6 +43,75 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("independent agent", contract)
         self.assertIn("notifies the main agent through Herdr", contract)
 
+    def test_write_renders_apps_json_hazards_into_the_contract_without_leaking_secrets(
+        self,
+    ) -> None:
+        repo_root = self.home / "hazard-repo"
+        app_dir = repo_root / "apps" / "infra-dashboard"
+        app_dir.mkdir(parents=True)
+        (repo_root / ".straw-boss").mkdir()
+        (repo_root / ".straw-boss" / "apps.json").write_text(json.dumps({
+            "apps": [
+                {
+                    "name": "infra-dashboard",
+                    "dir": "apps/infra-dashboard",
+                    "match": ["infra dashboard"],
+                    "note": (
+                        "`bun run dev` defaults to acting against production -- "
+                        "requires INSTRUMENTATION_DISABLED=1 for local dev."
+                    ),
+                    "localFiles": [
+                        {
+                            "path": ".env",
+                            "sensitive": True,
+                            "note": "Azure Storage connection string + Ansible Vault password",
+                        }
+                    ],
+                }
+            ]
+        }))
+        secret_value = "AccountKey=do-not-leak-this-value"
+        (app_dir / ".env").write_text(f"AZURE_STORAGE_CONNECTION_STRING={secret_value}\n")
+
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "infra-dashboard",
+            "--slug",
+            "hazard-notes",
+            "--task",
+            "Exercise the tool against the live, empty infra-center Loki.",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(repo_root),
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+            "--main-agent-pane-id",
+            "main-pane",
+            "--main-agent-session-id",
+            "main-session",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        contract = Path(str(output["contract_path"])).read_text()
+
+        self.assertIn("bun run dev", contract)
+        self.assertIn("production", contract)
+        self.assertIn("INSTRUMENTATION_DISABLED=1", contract)
+        self.assertIn(".env", contract)
+        self.assertIn("sensitive", contract.lower())
+        self.assertIn("Azure Storage connection string", contract)
+        self.assertNotIn(secret_value, contract)
+
+    def test_write_renders_no_app_hazards_section_without_a_configured_app(self) -> None:
+        instruction_path, output = self.write_dispatch("claude")
+        contract = Path(str(output["contract_path"])).read_text()
+        self.assertNotIn("App hazards", contract)
+
     def test_write_records_provider_profile_and_claude_advisor(self) -> None:
         instruction_path, _ = self.write_dispatch(
             "claude",
@@ -168,6 +237,10 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         (state_module.parent / "__init__.py").write_text("")
         state_module.write_text(
             (SCRIPTS / "straw_boss" / "dispatch" / "state.py").read_text()
+        )
+        # state.py imports straw_boss.apps for its app-hazards rendering.
+        (state_module.parent.parent / "apps.py").write_text(
+            (SCRIPTS / "straw_boss" / "apps.py").read_text()
         )
         managed_contract = subprocess.run(
             [

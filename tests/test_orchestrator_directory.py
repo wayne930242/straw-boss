@@ -202,16 +202,28 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         *,
         pane_id: str,
         agents: list[dict[str, object]] | None = None,
+        role: str | None = None,
     ) -> dict[str, object]:
+        args = ["register-orchestrator.py", "--scope", scope]
+        if role is not None:
+            args += ["--role", role]
         result = self.run_directory_script(
-            "register-orchestrator.py",
-            "--scope",
-            scope,
+            *args,
             agents=agents if agents is not None else [ALPHA_AGENT, BETA_AGENT],
             pane_id=pane_id,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
+
+    def release_role(
+        self, *, pane_id: str, agents: list[dict[str, object]] | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        return self.run_directory_script(
+            "register-orchestrator.py",
+            "--release-role",
+            agents=agents if agents is not None else [ALPHA_AGENT, BETA_AGENT],
+            pane_id=pane_id,
+        )
 
     def send(
         self,
@@ -480,6 +492,79 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
 
         self.assertEqual(output["retired"], [])
         self.assertEqual(len(self.records()), 2)
+
+    def test_claiming_a_role_is_exclusive_and_revokes_the_previous_holder(self) -> None:
+        self.register("Coordinating Straw Boss friction.", pane_id=BETA, role="boss-assistant")
+
+        output = self.register("Repairing this plugin.", pane_id=ALPHA, role="boss-assistant")
+
+        beta_record = json.loads(
+            (self.home / ".straw-boss" / "orchestrators" / "claude-orchestrator-b.json").read_text()
+        )
+        self.assertIsNone(beta_record["role"])
+        alpha_record = json.loads(
+            (self.home / ".straw-boss" / "orchestrators" / "claude-orchestrator-a.json").read_text()
+        )
+        self.assertEqual(alpha_record["role"], "boss-assistant")
+        self.assertEqual(
+            output["role_revoked_from"],
+            [str(self.home / ".straw-boss" / "orchestrators" / "claude-orchestrator-b.json")],
+        )
+
+    def test_a_role_is_sticky_across_a_plain_scope_update(self) -> None:
+        self.register("Coordinating Straw Boss friction.", pane_id=ALPHA, role="boss-assistant")
+
+        self.register("Coordinating Straw Boss friction and graph repair.", pane_id=ALPHA)
+
+        record = json.loads(self.records()[0].read_text())
+        self.assertEqual(record["role"], "boss-assistant")
+        self.assertEqual(record["scope"], "Coordinating Straw Boss friction and graph repair.")
+
+    def test_releasing_a_role_drops_it_without_touching_scope(self) -> None:
+        self.register("Coordinating Straw Boss friction.", pane_id=ALPHA, role="boss-assistant")
+
+        result = self.release_role(pane_id=ALPHA)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        released = json.loads(result.stdout)
+        self.assertEqual(released["released_role"], "boss-assistant")
+        record = json.loads(self.records()[0].read_text())
+        self.assertIsNone(record["role"])
+        self.assertEqual(record["scope"], "Coordinating Straw Boss friction.")
+
+    def test_releasing_a_role_without_a_registration_is_an_error(self) -> None:
+        result = self.release_role(pane_id=ALPHA)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("nothing to release", result.stderr)
+
+    def test_a_dead_claim_does_not_shadow_a_live_directory_row(self) -> None:
+        self.register("Coordinating Straw Boss friction.", pane_id=ALPHA, role="boss-assistant")
+
+        listed = self.run_directory_script("register-orchestrator.py", "--list", agents=[BETA_AGENT])
+
+        rows = json.loads(listed.stdout)["directory"]
+        row = next(r for r in rows if r["herdr_pane_id"] == ALPHA)
+        self.assertEqual(row["role"], "boss-assistant")
+        self.assertFalse(row["live"])
+
+    def test_role_requires_scope_and_a_valid_identifier(self) -> None:
+        missing_scope = self.run_directory_script(
+            "register-orchestrator.py", "--release-role", "--role", "boss-assistant",
+            agents=[ALPHA_AGENT], pane_id=ALPHA,
+        )
+        # argparse's own parser.error() exits 2, not the 1 a caught ValueError
+        # produces, so this only checks failure, not the specific exit code.
+        self.assertNotEqual(missing_scope.returncode, 0)
+        self.assertIn("--role requires --scope", missing_scope.stderr)
+
+        invalid_role = self.run_directory_script(
+            "register-orchestrator.py", "--scope", "Repairing this plugin.",
+            "--role", "Boss Assistant", agents=[ALPHA_AGENT], pane_id=ALPHA,
+        )
+        self.assertEqual(invalid_role.returncode, 1)
+        self.assertIn("kebab-case", invalid_role.stderr)
+        self.assertEqual(self.records(), [])
 
     def test_a_delta_reaches_the_other_orchestrator_naming_this_pane(self) -> None:
         self.register("Coordinating the billing app.", pane_id=BETA)

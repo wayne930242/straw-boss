@@ -5,19 +5,8 @@ description: Use when named by the user or when a main agent reports Straw Boss 
 
 ## Resolve the recipient
 
-Read the directory through [contacting-orchestrators](../contacting-orchestrators/SKILL.md).
-A live scope starting with `[boss-assistant]` identifies the assistant.
-Route a report to the existing assistant; with several, use the user's selection or ask which one.
-If none exists, ask whether this session should take the role unless the user already named it.
-
-Register the selected session:
-
-```bash
-uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/register-orchestrator.py" \
-  --scope '[boss-assistant] coordinate main agents on Straw Boss friction and graph repair'
-```
-
-Use [handoff-orchestrator](../handoff-orchestrator/SKILL.md) when a separately approved user window is needed.
+Find or open the assistant through [agent-feedback](../agent-feedback/SKILL.md).
+Route a report to the existing assistant.
 Keep a report's blocked step pending until its recipient is reachable; independent work can continue.
 
 ## Repair the coordination relationship
@@ -40,7 +29,8 @@ Locate a Straw Boss checkout from cwd, the orchestrator directory, or configured
 Confirm its git root and remote and read local instructions and working-tree state.
 The installed cache identifies the running version; the confirmed checkout owns source edits.
 
-Carry the finding and reproduction into `leveraging-tasks`, which owns design, implementation, and verification.
+Straw Boss's own `leveraging-tasks` route is [handoff-orchestrator](../handoff-orchestrator/SKILL.md): hand the confirmed scope, finding, and reproduction to an orchestrator rooted in that checkout rather than editing plugin source from whichever project session hit the friction, and dispatch the source work from there.
+Once that dispatch reports done, bump `plugin.json`'s version, push, run `bash scripts/install.sh` in that checkout, then resume the original work.
 For performance or storage friction, carry a relevant baseline, affected ownership/recovery contract, and the same workload for comparison.
 Return the measured result and actual UAT outcome to the reporting agents, including whether the running version contains the repair.
 

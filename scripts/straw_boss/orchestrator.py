@@ -51,6 +51,16 @@ MAX_SCOPE_CHARS = 200
 # enough that the directory keeps reading as who is coordinating now.
 RETIRED_RECORD_TTL_DAYS = 7
 UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
+ROLE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
+def validate_role(role: str) -> str:
+    text = role.strip()
+    if not ROLE_RE.match(text):
+        raise ValueError(
+            f"role {role!r} must be a lowercase kebab-case identifier matching {ROLE_RE.pattern!r}"
+        )
+    return text
 
 
 def registry_root() -> Path:
@@ -171,6 +181,7 @@ def directory(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "name": (live.get("name") if live else None) or record.get("name"),
                 "agent_kind": record.get("agent_kind"),
                 "scope": record.get("scope"),
+                "role": record.get("role"),
                 "cwd": (live.get("cwd") if live else None) or record.get("cwd"),
                 "herdr_pane_id": (
                     str(live["pane_id"]) if live else record.get("herdr_pane_id")
@@ -206,7 +217,7 @@ def directory(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
             _, session, terminal = agent_identity(agent)
             rows.append({
                 "name": agent.get("name"), "agent_kind": kind,
-                "scope": "自動偵測，未宣告 scope", "scope_declared": False,
+                "scope": "自動偵測，未宣告 scope", "scope_declared": False, "role": None,
                 "cwd": agent.get("cwd"), "herdr_pane_id": pane,
                 "session_id": session, "herdr_terminal_id": terminal,
                 "agent_status": agent.get("agent_status"), "live": True,
@@ -239,7 +250,7 @@ def unregistered_rows(
             continue
         found.append({
             "name": agent.get("name"), "agent_kind": kind,
-            "scope": None, "scope_declared": False,
+            "scope": None, "scope_declared": False, "role": None,
             "cwd": agent.get("cwd"), "herdr_pane_id": pane,
             "session_id": session, "herdr_terminal_id": terminal,
             "agent_status": agent.get("agent_status"), "live": True,
@@ -294,8 +305,19 @@ def prune_retired(agents: list[dict[str, Any]]) -> list[str]:
     return retired
 
 
-def register(scope: str) -> dict[str, Any]:
+def register(scope: str, role: str | None = None) -> dict[str, Any]:
+    """Registers or updates this session's own record.
+
+    `role` is sticky across an ordinary scope update: passing `None` keeps
+    whatever role a previous registration already claimed, so editing scope
+    wording never silently drops it. Use `release_role` to drop it on purpose.
+    Naming a role here revokes it from every other record that currently
+    carries it -- the same role can never be held by two records at once,
+    live or not, so a stale claim can never coexist with a fresh one.
+    """
     scope = validate_scope(scope)
+    if role is not None:
+        role = validate_role(role)
     agents = live_agents()
     agent = current_agent(agents)
     kind, session, terminal = agent_identity(agent)
@@ -304,6 +326,7 @@ def register(scope: str) -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     name = agent.get("name")
     cwd = agent.get("cwd")
+    resolved_role = role if role is not None else (previous or {}).get("role")
     record = {
         "agent_kind": kind,
         "session_id": session,
@@ -312,6 +335,7 @@ def register(scope: str) -> dict[str, Any]:
         "name": name if isinstance(name, str) and name else None,
         "cwd": str(cwd) if isinstance(cwd, str) and cwd else None,
         "scope": scope,
+        "role": resolved_role,
         "registered_at": (previous or {}).get("registered_at", now),
         "updated_at": now,
     }
@@ -323,11 +347,44 @@ def register(scope: str) -> dict[str, Any]:
     for other_path, other in load_records():
         if other_path != path and live_match(other, [agent]) is not None:
             other_path.unlink(missing_ok=True)
+    role_revoked_from: list[str] = []
+    if resolved_role:
+        for other_path, other in load_records():
+            if other_path == path or other.get("role") != resolved_role:
+                continue
+            other["role"] = None
+            dump_json(other_path, other)
+            role_revoked_from.append(str(other_path))
     retired = prune_retired(agents)
     return {
         "record_path": str(path),
         "record": record,
         "retired": retired,
+        "role_revoked_from": role_revoked_from,
+        "directory": directory(agents),
+    }
+
+
+def release_role() -> dict[str, Any]:
+    """Drops whatever role this session's own record currently holds, without
+    touching its scope -- the missing counterpart to claiming one with
+    `register`, so a session that stops being the assistant can say so."""
+    agents = live_agents()
+    agent = current_agent(agents)
+    kind, session, terminal = agent_identity(agent)
+    path = record_path(kind, session or str(terminal))
+    if not path.is_file():
+        raise ValueError(
+            "this session has no orchestrator registration -- nothing to release"
+        )
+    record = load_json(path)
+    released_role = record.get("role")
+    record["role"] = None
+    record["updated_at"] = datetime.now(timezone.utc).isoformat()
+    dump_json(path, record)
+    return {
+        "record_path": str(path),
+        "released_role": released_role,
         "directory": directory(agents),
     }
 
