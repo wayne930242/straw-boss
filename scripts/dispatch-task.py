@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -78,6 +79,48 @@ def mark_plan_task(plan_slug: str, task_id: str, status: str) -> None:
     plan, task = load_plan_and_task(plan_slug, task_id)
     task["status"] = status
     dump_json(plan_path(plan_slug), plan)
+
+
+def _git(repo_root: str, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_root, *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip()
+
+
+def detect_worktree(repo_root: str) -> dict[str, str] | None:
+    """The worktree path and branch, when `repo_root` is a linked git worktree.
+
+    A linked worktree's `--git-dir` sits under the main checkout's `--git-dir`
+    while its `--git-common-dir` still names the main checkout; the two match
+    only for the main worktree itself. Returns None for anything else --
+    including a plain non-git directory -- so an undetected worktree records
+    nothing rather than a guess.
+    """
+    root = Path(repo_root)
+    git_dir = _git(repo_root, "rev-parse", "--git-dir")
+    common_dir = _git(repo_root, "rev-parse", "--git-common-dir")
+    if git_dir is None or common_dir is None:
+        return None
+
+    def resolved(value: str) -> Path:
+        path = Path(value)
+        return (path if path.is_absolute() else root / path).resolve()
+
+    if resolved(git_dir) == resolved(common_dir):
+        return None
+    toplevel = _git(repo_root, "rev-parse", "--show-toplevel")
+    branch = _git(repo_root, "rev-parse", "--abbrev-ref", "HEAD")
+    if toplevel is None or branch is None:
+        return None
+    return {"path": toplevel, "branch": branch}
 
 
 def normalize_coworker_writable_paths(
@@ -260,7 +303,13 @@ def write_instruction(
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "repo_root": repo_root,
+        "worktree_path": None,
+        "worktree_branch": None,
     }
+    worktree = detect_worktree(repo_root)
+    if worktree is not None:
+        payload["worktree_path"] = worktree["path"]
+        payload["worktree_branch"] = worktree["branch"]
     if plan_slug is not None:
         payload["plan_id"] = f"p-{plan_slug}"
         payload["task_id"] = task_id

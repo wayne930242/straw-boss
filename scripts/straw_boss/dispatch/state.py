@@ -83,6 +83,37 @@ def standalone_status_path(instruction_path: Path) -> Path:
     )
 
 
+def remaining_teardown_steps(
+    instruction: dict[str, Any], instruction_path: Path
+) -> list[str]:
+    """The pane close and worktree removal wrap-up-task.py never performs itself.
+
+    Both wrap-up-task.py (announcing what is left once it archives an
+    instruction) and roll-call.py (naming the same commands for a wrapped-up
+    dispatch whose pane herdr still holds open) build this from the archived
+    instruction, so the close command always names the archived path -- whose
+    siblings, including the terminal status file, wrap-up already moved there.
+    """
+    steps: list[str] = []
+    if instruction.get("mode") == "herdr-pane" and instruction.get("herdr_pane_id"):
+        steps.append(
+            shlex.join(
+                [
+                    "uv",
+                    "run",
+                    "--script",
+                    str(SCRIPTS_DIR / "close-worker-pane.py"),
+                    "--instruction-path",
+                    str(instruction_path),
+                ]
+            )
+        )
+    worktree_path = instruction.get("worktree_path")
+    if worktree_path:
+        steps.append(shlex.join(["git", "worktree", "remove", str(worktree_path)]))
+    return steps
+
+
 def plan_status_path(plan_slug: str, task_id: str) -> Path:
     return straw_boss_root() / "plans" / plan_slug / "status" / f"{task_id}.json"
 

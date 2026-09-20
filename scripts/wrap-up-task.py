@@ -9,7 +9,8 @@ See skills/dispatching-work/references/dispatch-mechanics.md (instruction
 lifecycle) and references/plan-mechanics.md (plan status). This script
 only moves/edits JSON bookkeeping files -- it never closes the worker pane or
 removes a worktree. Those stay live tool calls the main agent makes itself; the
-shared coordinator tab is never part of dispatch cleanup.
+shared coordinator tab is never part of dispatch cleanup. The result names
+those remaining steps as exact commands instead of leaving them implicit.
 
 For a plan task, wrap-up only proceeds once the task's own status file
 reports a terminal state (done/failed/cancelled) -- never on
@@ -29,6 +30,7 @@ from straw_boss.dispatch.state import (
     dump_json,
     instruction_sibling_paths,
     load_json,
+    remaining_teardown_steps,
     standalone_status_path,
     straw_boss_root,
 )
@@ -134,7 +136,11 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
         task["status"] = plan_status
         dump_json(plan_path(plan_slug), plan)
 
-    return {"archived_path": str(dest), "plan_status": plan_status}
+    return {
+        "archived_path": str(dest),
+        "plan_status": plan_status,
+        "remaining_steps": remaining_teardown_steps(payload, dest),
+    }
 
 
 def main() -> int:
