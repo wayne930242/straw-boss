@@ -29,7 +29,7 @@ Locate a Straw Boss checkout from cwd, the orchestrator directory, or configured
 Confirm its git root and remote and read local instructions and working-tree state.
 The installed cache identifies the running version; the confirmed checkout owns source edits.
 
-Straw Boss's own `leveraging-tasks` route is [handoff-orchestrator](../handoff-orchestrator/SKILL.md): hand the confirmed scope, finding, and reproduction to an orchestrator rooted in that checkout rather than editing plugin source from whichever project session hit the friction, and dispatch the source work from there.
+Straw Boss's own `leveraging-tasks` route is [handoff-orchestrator](../handoff-orchestrator/SKILL.md), which owns design, implementation, and verification: hand the confirmed scope, finding, and reproduction to an orchestrator rooted in that checkout rather than editing plugin source from whichever project session hit the friction, and dispatch the source work from there.
 Once that dispatch reports done, bump `plugin.json`'s version, push, run `bash scripts/install.sh` in that checkout, then resume the original work.
 For performance or storage friction, carry a relevant baseline, affected ownership/recovery contract, and the same workload for comparison.
 Return the measured result and actual UAT outcome to the reporting agents, including whether the running version contains the repair.

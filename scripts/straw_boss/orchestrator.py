@@ -16,9 +16,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from straw_boss.dispatch.messages import (
     append_delivery_record,
@@ -63,8 +64,52 @@ def validate_role(role: str) -> str:
     return text
 
 
+REGISTRATION_MUTEX_STALE_SECONDS = 10  # generous multiple of a register() call's own duration
+
+
 def registry_root() -> Path:
     return straw_boss_root() / "orchestrators"
+
+
+def with_registration_mutex(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Serializes one whole register() call -- read the previous record, write
+    the new one, and (when it claims a role) revoke every other holder of
+    that role -- behind a short-lived mutex file. This is the same technique
+    `resource_lock.with_reclaim_mutex` uses and documents at length: two
+    concurrent claims of the same role each write their own record first and
+    only then revoke the other's, so without a mutex around the whole
+    sequence, the interleaving decides whether the role ends up held by both
+    or by neither. While the mutex is held, no other register() call touches
+    the registry at all, so raising on contention rather than retrying keeps
+    the loser's own read-then-write from ever starting mid-sequence.
+    """
+    registry_root().mkdir(parents=True, exist_ok=True)
+    mutex_path = registry_root() / ".register.mutex"
+    for _ in range(2):
+        try:
+            fd = os.open(mutex_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                mtime = mutex_path.stat().st_mtime
+            except FileNotFoundError:
+                continue  # vanished between our failed open and our stat -- retry
+            if time.time() - mtime > REGISTRATION_MUTEX_STALE_SECONDS:
+                mutex_path.unlink(missing_ok=True)
+                continue
+            raise ValueError(
+                "another session is registering with the orchestrator directory right now "
+                "-- try again shortly"
+            )
+        else:
+            os.close(fd)
+            break
+    else:
+        raise ValueError("could not acquire the orchestrator registration mutex -- try again shortly")
+
+    try:
+        return fn()
+    finally:
+        mutex_path.unlink(missing_ok=True)
 
 
 def record_path(agent_kind: str, fingerprint: str) -> Path:
@@ -313,7 +358,12 @@ def register(scope: str, role: str | None = None) -> dict[str, Any]:
     wording never silently drops it. Use `release_role` to drop it on purpose.
     Naming a role here revokes it from every other record that currently
     carries it -- the same role can never be held by two records at once,
-    live or not, so a stale claim can never coexist with a fresh one.
+    live or not, so a stale claim can never coexist with a fresh one. This
+    holds against a concurrent caller too: the read of the previous record,
+    the write of this one, and any revocation run as one uninterrupted step
+    behind `with_registration_mutex`, so two sessions claiming the same role
+    at once cannot interleave into the role ending up held twice or by
+    neither.
     """
     scope = validate_scope(scope)
     if role is not None:
@@ -322,47 +372,51 @@ def register(scope: str, role: str | None = None) -> dict[str, Any]:
     agent = current_agent(agents)
     kind, session, terminal = agent_identity(agent)
     path = record_path(kind, session or str(terminal))
-    previous = load_json(path) if path.is_file() else None
-    now = datetime.now(timezone.utc).isoformat()
-    name = agent.get("name")
-    cwd = agent.get("cwd")
-    resolved_role = role if role is not None else (previous or {}).get("role")
-    record = {
-        "agent_kind": kind,
-        "session_id": session,
-        "herdr_terminal_id": terminal,
-        "herdr_pane_id": str(agent.get("pane_id")),
-        "name": name if isinstance(name, str) and name else None,
-        "cwd": str(cwd) if isinstance(cwd, str) and cwd else None,
-        "scope": scope,
-        "role": resolved_role,
-        "registered_at": (previous or {}).get("registered_at", now),
-        "updated_at": now,
-    }
-    registry_root().mkdir(parents=True, exist_ok=True)
-    dump_json(path, record)
-    # A Codex session first registered by terminal id and later exposing a
-    # conversation id would otherwise leave a second record addressing this
-    # same live agent. Only records this very agent answers to are removed.
-    for other_path, other in load_records():
-        if other_path != path and live_match(other, [agent]) is not None:
-            other_path.unlink(missing_ok=True)
-    role_revoked_from: list[str] = []
-    if resolved_role:
+
+    def claim() -> dict[str, Any]:
+        previous = load_json(path) if path.is_file() else None
+        now = datetime.now(timezone.utc).isoformat()
+        name = agent.get("name")
+        cwd = agent.get("cwd")
+        resolved_role = role if role is not None else (previous or {}).get("role")
+        record = {
+            "agent_kind": kind,
+            "session_id": session,
+            "herdr_terminal_id": terminal,
+            "herdr_pane_id": str(agent.get("pane_id")),
+            "name": name if isinstance(name, str) and name else None,
+            "cwd": str(cwd) if isinstance(cwd, str) and cwd else None,
+            "scope": scope,
+            "role": resolved_role,
+            "registered_at": (previous or {}).get("registered_at", now),
+            "updated_at": now,
+        }
+        registry_root().mkdir(parents=True, exist_ok=True)
+        dump_json(path, record)
+        # A Codex session first registered by terminal id and later exposing a
+        # conversation id would otherwise leave a second record addressing this
+        # same live agent. Only records this very agent answers to are removed.
         for other_path, other in load_records():
-            if other_path == path or other.get("role") != resolved_role:
-                continue
-            other["role"] = None
-            dump_json(other_path, other)
-            role_revoked_from.append(str(other_path))
-    retired = prune_retired(agents)
-    return {
-        "record_path": str(path),
-        "record": record,
-        "retired": retired,
-        "role_revoked_from": role_revoked_from,
-        "directory": directory(agents),
-    }
+            if other_path != path and live_match(other, [agent]) is not None:
+                other_path.unlink(missing_ok=True)
+        role_revoked_from: list[str] = []
+        if resolved_role:
+            for other_path, other in load_records():
+                if other_path == path or other.get("role") != resolved_role:
+                    continue
+                other["role"] = None
+                dump_json(other_path, other)
+                role_revoked_from.append(str(other_path))
+        retired = prune_retired(agents)
+        return {
+            "record_path": str(path),
+            "record": record,
+            "retired": retired,
+            "role_revoked_from": role_revoked_from,
+            "directory": directory(agents),
+        }
+
+    return with_registration_mutex(claim)
 
 
 def release_role() -> dict[str, Any]:

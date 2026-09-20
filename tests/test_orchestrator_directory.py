@@ -5,12 +5,15 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+from straw_boss import orchestrator as orchestrator_module
 from tests.dispatched_agent_lifecycle_support import DispatchedAgentLifecycleFixture
 
 
@@ -565,6 +568,59 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         self.assertEqual(invalid_role.returncode, 1)
         self.assertIn("kebab-case", invalid_role.stderr)
         self.assertEqual(self.records(), [])
+
+    def test_two_concurrent_role_claims_never_end_up_held_twice_or_lost(self) -> None:
+        """register()'s revoke-the-previous-holder pass runs after its own
+        write is already visible to another concurrent caller; two claims in
+        sequence (the exclusivity test above) never exercise that window.
+        Driving both calls in-process, past a barrier, forces the two
+        threads' critical sections to actually contend for
+        `with_registration_mutex`'s file, instead of merely running one
+        after the other."""
+        registry_home = self.home / ".straw-boss"
+        agents = [ALPHA_AGENT, BETA_AGENT]
+        pane_for_thread = threading.local()
+
+        def fake_live_agents() -> list[dict[str, object]]:
+            return agents
+
+        def fake_current_agent(candidates: list[dict[str, object]]) -> dict[str, object]:
+            return next(a for a in candidates if a["pane_id"] == pane_for_thread.pane_id)
+
+        for name, replacement in (
+            ("live_agents", fake_live_agents),
+            ("current_agent", fake_current_agent),
+            ("straw_boss_root", lambda: registry_home),
+        ):
+            original = getattr(orchestrator_module, name)
+            self.addCleanup(setattr, orchestrator_module, name, original)
+            setattr(orchestrator_module, name, replacement)
+
+        barrier = threading.Barrier(2)
+        outcomes: dict[str, object] = {}
+
+        def claim(pane_id: str) -> None:
+            pane_for_thread.pane_id = pane_id
+            barrier.wait()
+            try:
+                outcomes[pane_id] = orchestrator_module.register(
+                    "Racing for the assistant role.", "boss-assistant"
+                )
+            except ValueError as exc:
+                outcomes[pane_id] = exc
+
+        threads = [threading.Thread(target=claim, args=(pane,)) for pane in (ALPHA, BETA)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        failures = [value for value in outcomes.values() if isinstance(value, Exception)]
+        self.assertLessEqual(len(failures), 1, outcomes)
+
+        records = [json.loads(path.read_text()) for path in self.records()]
+        holders = [record for record in records if record.get("role") == "boss-assistant"]
+        self.assertEqual(len(holders), 1, records)
 
     def test_a_delta_reaches_the_other_orchestrator_naming_this_pane(self) -> None:
         self.register("Coordinating the billing app.", pane_id=BETA)

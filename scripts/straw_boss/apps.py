@@ -62,9 +62,12 @@ def resolve_app_hazards(repo_root: Path, app_name: str) -> AppHazards | None:
 
     Returns `None` when apps.json doesn't exist, has no entry for this app, or
     the entry carries no hazard facts -- a dispatch must not fail just because
-    hazard notes are absent. `localFiles[].note` is already a risk description,
-    never the file's actual contents, so rendering it verbatim cannot leak a
-    secret value even for a `sensitive: true` entry.
+    hazard notes are absent. `localFiles[].note` is meant to be a risk
+    description, not the file's actual contents, but `apps.json` is
+    hand-maintained: nothing here rejects a note that quotes a value by
+    mistake. `dispatch.state.render_app_hazards_section` is what actually
+    withholds a sensitive entry's note when it looks like it quotes one --
+    this function only reads what apps.json says, unfiltered.
     """
     try:
         config = read_apps_config(repo_root)

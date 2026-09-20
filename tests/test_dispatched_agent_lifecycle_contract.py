@@ -107,6 +107,59 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("Azure Storage connection string", contract)
         self.assertNotIn(secret_value, contract)
 
+    def test_write_withholds_a_sensitive_notes_quoted_secret_value(self) -> None:
+        repo_root = self.home / "hazard-repo-quoted-secret"
+        app_dir = repo_root / "apps" / "infra-dashboard"
+        app_dir.mkdir(parents=True)
+        (repo_root / ".straw-boss").mkdir()
+        secret_value = "AccountKey=do-not-leak-this-value"
+        (repo_root / ".straw-boss" / "apps.json").write_text(json.dumps({
+            "apps": [
+                {
+                    "name": "infra-dashboard",
+                    "dir": "apps/infra-dashboard",
+                    "match": ["infra dashboard"],
+                    "localFiles": [
+                        {
+                            "path": ".env",
+                            "sensitive": True,
+                            "note": f"Azure key: {secret_value}",
+                        }
+                    ],
+                }
+            ]
+        }))
+
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "infra-dashboard",
+            "--slug",
+            "hazard-notes-quoted-secret",
+            "--task",
+            "Exercise the tool against the live, empty infra-center Loki.",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(repo_root),
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+            "--main-agent-pane-id",
+            "main-pane",
+            "--main-agent-session-id",
+            "main-session",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        contract = Path(str(output["contract_path"])).read_text()
+
+        self.assertIn(".env", contract)
+        self.assertNotIn(secret_value, contract)
+        self.assertIn("withheld", contract.lower())
+
     def test_write_renders_no_app_hazards_section_without_a_configured_app(self) -> None:
         instruction_path, output = self.write_dispatch("claude")
         contract = Path(str(output["contract_path"])).read_text()

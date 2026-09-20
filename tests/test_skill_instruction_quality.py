@@ -538,6 +538,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
     def test_boss_assistant_hands_source_repair_to_development_owner(self) -> None:
         source = normalized(ROOT / "skills/boss-assistant/SKILL.md")
         self.assertIn("Straw Boss's own leveraging-tasks route is [handoff-orchestrator]", source)
+        self.assertIn("which owns design, implementation, and verification", source)
         self.assertIn("rather than editing plugin source from whichever project session hit the friction", source)
         self.assertIn("bump plugin.json's version, push, run bash scripts/install.sh", source)
         self.assertIn("relevant baseline", source)
