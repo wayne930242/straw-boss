@@ -77,6 +77,44 @@ class AppsConfigTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn(str(self.legacy), result.stderr)
 
+    def test_credential_shaped_app_note_is_rejected_at_read_time(self) -> None:
+        secret = "AccountKey=do-not-leak-this-value"
+        self.canonical.write_text(json.dumps({
+            "apps": [{"name": "web", "note": f"Storage key is {secret}"}],
+        }))
+        result = self.read()
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn(secret, result.stdout + result.stderr)
+        self.assertIn(str(self.canonical), result.stderr)
+        self.assertIn("web", result.stderr)
+        self.assertIn("'note'", result.stderr)
+
+    def test_credential_shaped_local_file_note_is_rejected_at_read_time(self) -> None:
+        secret = "AccountKey=do-not-leak-this-value"
+        self.canonical.write_text(json.dumps({
+            "apps": [{
+                "name": "web",
+                "localFiles": [{"path": ".env", "note": f"holds {secret}"}],
+            }],
+        }))
+        result = self.read()
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn(secret, result.stdout + result.stderr)
+        self.assertIn("localFiles", result.stderr)
+
+    def test_colon_labeled_note_is_accepted_since_the_keyword_rule_was_dropped(self) -> None:
+        self.canonical.write_text(json.dumps({
+            "apps": [{
+                "name": "web",
+                "localFiles": [
+                    {"path": ".env", "note": "private key: managed by Ansible"},
+                    {"path": "vault.env", "note": "client secret: issued per customer"},
+                ],
+            }],
+        }))
+        result = self.read()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_directory_and_broken_symlink_are_errors_not_missing(self) -> None:
         self.legacy.write_text('{"apps": []}')
         self.canonical.mkdir()

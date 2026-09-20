@@ -220,6 +220,19 @@ class CopyLocalFilesTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(str(canonical), result.stderr)
 
+    def test_refuses_a_local_file_note_that_quotes_a_credential(self) -> None:
+        (self.repo / ".env").write_text("TOKEN=secret-value\n")
+        secret = "AccountKey=do-not-leak-this-value"
+        self.write_config([{"path": ".env", "sensitive": True, "note": f"holds {secret}"}])
+
+        result = self.run_script()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(secret, result.stdout + result.stderr)
+        self.assertIn("apps.json", result.stderr)
+        self.assertIn("localFiles", result.stderr)
+        self.assertFalse((self.worktree / ".env").exists())
+
     def test_missing_config_reports_both_locations(self) -> None:
         (self.repo / ".straw-boss" / "apps.json").unlink()
         result = self.run_script()

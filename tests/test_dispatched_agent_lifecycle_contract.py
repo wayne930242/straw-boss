@@ -200,6 +200,37 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertNotIn(token, result.stdout)
         self.assertNotIn(token, result.stderr)
 
+    def test_write_refuses_a_duplicated_app_name_instead_of_silently_dropping_hazards(
+        self,
+    ) -> None:
+        repo_root = self.home / "hazard-repo-duplicate-app"
+        app_dir = repo_root / "apps" / "infra-dashboard"
+        app_dir.mkdir(parents=True)
+        (repo_root / ".straw-boss").mkdir()
+        (repo_root / ".straw-boss" / "apps.json").write_text(json.dumps({
+            "apps": [
+                {
+                    "name": "infra-dashboard",
+                    "dir": "apps/infra-dashboard",
+                    "match": ["infra dashboard"],
+                    "note": "first entry",
+                },
+                {
+                    "name": "infra-dashboard",
+                    "dir": "apps/infra-dashboard",
+                    "match": ["infra dashboard"],
+                    "note": "second entry",
+                },
+            ]
+        }))
+
+        result = self._write_dispatch_expecting_failure(repo_root, "hazard-notes-duplicate-app")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("apps.json", result.stderr)
+        self.assertIn("infra-dashboard", result.stderr)
+        self.assertIn("2 times", result.stderr)
+
     def test_write_renders_no_app_hazards_section_without_a_configured_app(self) -> None:
         instruction_path, output = self.write_dispatch("claude")
         contract = Path(str(output["contract_path"])).read_text()

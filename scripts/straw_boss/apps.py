@@ -37,7 +37,15 @@ class AppHazards:
 
 
 def read_apps_config(repo_root: Path) -> AppsConfig:
-    """只在新路徑不存在時回退；保留未知欄位與實際來源。"""
+    """只在新路徑不存在時回退；保留未知欄位與實際來源。
+
+    Every free-text hazard field in the config -- each app's `note` and each
+    `localFiles[].note` -- is checked here, at the single point where
+    `apps.json` becomes data, for a value that looks like it quotes a
+    credential (see `_reject_if_it_quotes_a_credential`). Every reader of this
+    config (`resolve_app_hazards`, `copy-local-files.py`'s `configured_app`)
+    goes through this function first, so none of them need to repeat it.
+    """
     repo_root = repo_root.resolve()
     canonical = repo_root / ".straw-boss" / "apps.json"
     legacy = repo_root / ".claude" / "straw-boss" / "apps.json"
@@ -54,26 +62,24 @@ def read_apps_config(repo_root: Path) -> AppsConfig:
             raise ValueError(f"apps config cannot be read: {path}: {exc}") from exc
         if not isinstance(payload, dict) or not isinstance(payload.get("apps"), list):
             raise ValueError(f"apps config must contain an apps array: {path}")
+        _reject_credential_shaped_notes(path, payload["apps"])
         return AppsConfig(path=path, payload=payload, legacy=path == legacy)
     raise AppsConfigMissing(f"apps config is missing: {canonical} (legacy: {legacy})")
 
 
 # A guard against an author accidentally pasting a credential's actual value
-# into a hazard note, not a guarantee against every way one could be hidden in
-# text. Deliberately broad within each shape it checks -- an `=` assignment
-# with any identifier-shaped key, or a bare token/base64 blob -- because a
-# false positive there costs the author one visible edit, which is cheaper
-# than a worker never seeing a hazard note that was silently shortened to
-# hide a false negative. The `Key: value` colon form is checked too, but only
-# for a key that names something credential-shaped: an unrestricted colon
-# check flags ordinary prose (e.g. "claim it only after the worker reports
-# it: claim-resource.py wait ...") far too often to be a usable guard.
+# into a hazard note, not a general secret scanner and not a guarantee against
+# every way one could be hidden in text. Precision is the priority here, not
+# recall: this check's only failure mode is blocking a dispatch outright, and
+# a false positive there teaches authors to phrase hazard notes around the
+# scanner, which costs more safety than the shape it would have caught. Only
+# two high-precision shapes are checked: an `=` assignment with any
+# identifier-shaped key, and a bare token/base64 blob. A `Key: value` colon
+# label (e.g. "private key: managed by Ansible") is deliberately NOT checked
+# -- that phrasing is exactly how a `localFiles` note is meant to name which
+# secret a file holds, so a keyword-gated colon rule fires on the field's own
+# job. The tradeoff: a value written as `password: hunter2example` passes.
 _CREDENTIAL_ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\s*=\s*\S{6,}")
-_CREDENTIAL_KEYWORD_LABEL_RE = re.compile(
-    r"(?i)\b(?:password|passwd|pwd|secret|token|key|credentials?|"
-    r"api[_ -]?key|access[_ -]?key|account[_ -]?key|auth[_ -]?token|"
-    r"private[_ -]?key|client[_ -]?secret|connection[_ -]?string)\b\s*:\s*\S{6,}"
-)
 # A bare token, checked two ways: a short list of well-known credential
 # prefixes (a GitHub/GitLab/Anthropic/OpenAI/AWS/Google/Slack token, or a
 # JWT's `eyJ...`), and a long unbroken run of base64-alphabet characters with
@@ -95,7 +101,6 @@ _IDENTIFIER_SHAPED_RE = re.compile(r"^[A-Z0-9]+={0,2}$")
 def _quotes_a_credential(text: str) -> bool:
     if (
         _CREDENTIAL_ASSIGNMENT_RE.search(text)
-        or _CREDENTIAL_KEYWORD_LABEL_RE.search(text)
         or _CREDENTIAL_PREFIX_TOKEN_RE.search(text)
     ):
         return True
@@ -106,16 +111,16 @@ def _quotes_a_credential(text: str) -> bool:
 
 
 def _reject_if_it_quotes_a_credential(
-    *, config_path: Path, app_name: str, field: str, text: str
+    *, config_path: Path, app_name: object, field: str, text: str
 ) -> None:
     """Fails loudly when `text` looks like it quotes a credential's value.
 
-    Applied to every free-text field that reaches a dispatch contract -- the
-    app-level `note` and each `localFiles[].note` -- so the check is where the
-    fact is authored, not where it is rendered: a dispatch that refuses to be
-    written is visible, a hazard note silently shortened at render time is
-    not. The message never repeats the matched text, since that would defeat
-    the check it is enforcing.
+    Applied to every free-text field that reaches a reader -- every app's
+    `note` and every `localFiles[].note` -- at `read_apps_config`, the single
+    point where `apps.json` becomes data, so every reader inherits the same
+    guard. A dispatch or copy that refuses to run is visible; a hazard note
+    silently shortened at render time is not. The message never repeats the
+    matched text, since that would defeat the check it is enforcing.
     """
     if _quotes_a_credential(text):
         raise ValueError(
@@ -124,17 +129,44 @@ def _reject_if_it_quotes_a_credential(
         )
 
 
+def _reject_credential_shaped_notes(config_path: Path, apps: list[Any]) -> None:
+    for item in apps:
+        if not isinstance(item, dict):
+            continue
+        app_name = item.get("name")
+        note = item.get("note")
+        if isinstance(note, str) and note.strip():
+            _reject_if_it_quotes_a_credential(
+                config_path=config_path, app_name=app_name, field="note", text=note
+            )
+        raw_local_files = item.get("localFiles")
+        if not isinstance(raw_local_files, list):
+            continue
+        for entry in raw_local_files:
+            if not isinstance(entry, dict):
+                continue
+            risk = entry.get("note")
+            if not (isinstance(risk, str) and risk.strip()):
+                continue
+            path = entry.get("path")
+            field = f"localFiles[{path!r}].note" if isinstance(path, str) else "localFiles[].note"
+            _reject_if_it_quotes_a_credential(
+                config_path=config_path, app_name=app_name, field=field, text=risk
+            )
+
+
 def resolve_app_hazards(repo_root: Path, app_name: str) -> AppHazards | None:
     """This app's `note` and `localFiles` hazards, for a dispatch contract.
 
-    Returns `None` when apps.json doesn't exist, has no entry for this app, or
-    the entry carries no hazard facts -- a dispatch must not fail just because
-    hazard notes are absent. `localFiles[].note` is meant to be a risk
-    description, not the file's actual contents, but `apps.json` is
-    hand-maintained, so every free-text field is checked here, at read time,
-    for a note that looks like it quotes a credential's value -- see
-    `_reject_if_it_quotes_a_credential`. `dispatch.state.render_app_hazards_section`
-    renders whatever this function returns faithfully; it does not sanitize.
+    Returns `None` when apps.json doesn't exist, or has no entry for this
+    app -- a dispatch must not fail just because hazard notes are absent.
+    Raises when more than one entry shares this name: that is a config
+    defect, and folding it into the "no entry" case would silently drop the
+    app's hazards along with the error. `read_apps_config` already rejects
+    any free-text field that looks like it quotes a credential's value, so
+    this function does not repeat that check.
+    `dispatch.state.render_app_hazards_section` renders whatever this
+    function returns faithfully; it does not sanitize.
     """
     try:
         config = read_apps_config(repo_root)
@@ -145,16 +177,17 @@ def resolve_app_hazards(repo_root: Path, app_name: str) -> AppHazards | None:
         for item in config.payload.get("apps", [])
         if isinstance(item, dict) and item.get("name") == app_name
     ]
-    if len(matches) != 1:
+    if not matches:
         return None
+    if len(matches) > 1:
+        raise ValueError(
+            f"{config.path}: app {app_name!r} is configured {len(matches)} times; "
+            "apps.json must contain at most one entry per app name"
+        )
     app = matches[0]
 
     note = app.get("note")
     note = note if isinstance(note, str) and note.strip() else None
-    if note:
-        _reject_if_it_quotes_a_credential(
-            config_path=config.path, app_name=app_name, field="note", text=note
-        )
 
     local_files: list[LocalFileHazard] = []
     raw_local_files = app.get("localFiles")
@@ -167,13 +200,6 @@ def resolve_app_hazards(repo_root: Path, app_name: str) -> AppHazards | None:
                 continue
             risk = entry.get("note")
             risk = risk if isinstance(risk, str) and risk.strip() else None
-            if risk:
-                _reject_if_it_quotes_a_credential(
-                    config_path=config.path,
-                    app_name=app_name,
-                    field=f"localFiles[{path!r}].note",
-                    text=risk,
-                )
             local_files.append(
                 LocalFileHazard(
                     path=path,

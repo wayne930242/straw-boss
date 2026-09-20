@@ -180,7 +180,7 @@ def render_app_hazards_section(app_hazards: AppHazards | None) -> str:
     section -- so a worker sees them without knowing to open that file.
     Renders every note faithfully and never renders a `localFiles` entry's
     actual file contents, only its declared `path` and risk description.
-    `straw_boss.apps.resolve_app_hazards` is what refuses, at read time, to hand
+    `straw_boss.apps.read_apps_config` is what refuses, at read time, to hand
     back a note that looks like it quotes a credential's value -- by the time
     `app_hazards` reaches this function, that check has already passed."""
     if not app_hazards:
