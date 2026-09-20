@@ -107,6 +107,44 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("Azure Storage connection string", contract)
         self.assertNotIn(secret_value, contract)
 
+    def test_write_renders_an_environment_variable_instruction_note_intact(self) -> None:
+        repo_root = self.home / "hazard-repo-env-instruction"
+        self._write_hazard_repo(repo_root, {
+            "note": "run with NODE_ENV=production or it writes to the live bucket",
+            "localFiles": [
+                {"path": ".env", "note": "export TZ=Asia/Taipei before the import job"}
+            ],
+        })
+
+        result = self.run_script(
+            "dispatch-task.py",
+            "write",
+            "--app",
+            "infra-dashboard",
+            "--slug",
+            "hazard-notes-env-instruction",
+            "--task",
+            "Exercise the tool against the live, empty infra-center Loki.",
+            "--mode",
+            "herdr-pane",
+            "--repo-root",
+            str(repo_root),
+            "--agent-kind",
+            "claude",
+            "--main-agent-kind",
+            "claude",
+            "--main-agent-pane-id",
+            "main-pane",
+            "--main-agent-session-id",
+            "main-session",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        contract = Path(str(output["contract_path"])).read_text()
+        self.assertIn("NODE_ENV=production", contract)
+        self.assertIn("TZ=Asia/Taipei", contract)
+
     def _write_hazard_repo(self, repo_root: Path, app_payload: dict[str, Any]) -> None:
         app_dir = repo_root / "apps" / "infra-dashboard"
         app_dir.mkdir(parents=True)
@@ -150,7 +188,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
 
     def test_write_refuses_a_local_file_note_that_quotes_a_credential(self) -> None:
         repo_root = self.home / "hazard-repo-quoted-secret"
-        secret_value = "AccountKey=do-not-leak-this-value"
+        secret_value = "ghp_" + "a" * 36
         self._write_hazard_repo(repo_root, {
             "localFiles": [
                 {
@@ -176,7 +214,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
 
     def test_write_refuses_an_app_level_note_that_quotes_a_credential(self) -> None:
         repo_root = self.home / "hazard-repo-app-note-secret"
-        secret_value = "AccountKey=do-not-leak-this-value"
+        secret_value = "ghp_" + "a" * 36
         self._write_hazard_repo(repo_root, {"note": f"Storage key is {secret_value}"})
 
         result = self._write_dispatch_expecting_failure(repo_root, "hazard-notes-app-secret")

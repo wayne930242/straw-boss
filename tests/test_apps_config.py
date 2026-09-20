@@ -78,9 +78,9 @@ class AppsConfigTests(unittest.TestCase):
         self.assertIn(str(self.legacy), result.stderr)
 
     def test_credential_shaped_app_note_is_rejected_at_read_time(self) -> None:
-        secret = "AccountKey=do-not-leak-this-value"
+        secret = "ghp_abcdefgh12345678"
         self.canonical.write_text(json.dumps({
-            "apps": [{"name": "web", "note": f"Storage key is {secret}"}],
+            "apps": [{"name": "web", "note": f"token is {secret} do not commit"}],
         }))
         result = self.read()
         self.assertEqual(result.returncode, 1)
@@ -90,7 +90,7 @@ class AppsConfigTests(unittest.TestCase):
         self.assertIn("'note'", result.stderr)
 
     def test_credential_shaped_local_file_note_is_rejected_at_read_time(self) -> None:
-        secret = "AccountKey=do-not-leak-this-value"
+        secret = "ghp_abcdefgh12345678"
         self.canonical.write_text(json.dumps({
             "apps": [{
                 "name": "web",
@@ -101,6 +101,21 @@ class AppsConfigTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(secret, result.stdout + result.stderr)
         self.assertIn("localFiles", result.stderr)
+
+    def test_environment_variable_instruction_note_is_accepted_since_assignment_rule_was_dropped(
+        self,
+    ) -> None:
+        self.canonical.write_text(json.dumps({
+            "apps": [{
+                "name": "web",
+                "note": "run with NODE_ENV=production or it writes to the live bucket",
+                "localFiles": [
+                    {"path": ".env", "note": "export TZ=Asia/Taipei before the import job"},
+                ],
+            }],
+        }))
+        result = self.read()
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_colon_labeled_note_is_accepted_since_the_keyword_rule_was_dropped(self) -> None:
         self.canonical.write_text(json.dumps({

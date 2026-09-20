@@ -222,7 +222,7 @@ class CopyLocalFilesTests(unittest.TestCase):
 
     def test_refuses_a_local_file_note_that_quotes_a_credential(self) -> None:
         (self.repo / ".env").write_text("TOKEN=secret-value\n")
-        secret = "AccountKey=do-not-leak-this-value"
+        secret = "ghp_abcdefgh12345678"
         self.write_config([{"path": ".env", "sensitive": True, "note": f"holds {secret}"}])
 
         result = self.run_script()
@@ -232,6 +232,16 @@ class CopyLocalFilesTests(unittest.TestCase):
         self.assertIn("apps.json", result.stderr)
         self.assertIn("localFiles", result.stderr)
         self.assertFalse((self.worktree / ".env").exists())
+
+    def test_environment_variable_instruction_note_is_accepted(self) -> None:
+        (self.repo / ".env").write_text("placeholder\n")
+        self.write_config(
+            [{"path": ".env", "note": "requires DATABASE_URL=postgres://localhost/dev"}]
+        )
+
+        result = self.run_script()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_missing_config_reports_both_locations(self) -> None:
         (self.repo / ".straw-boss" / "apps.json").unlink()

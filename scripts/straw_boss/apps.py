@@ -69,17 +69,20 @@ def read_apps_config(repo_root: Path) -> AppsConfig:
 
 # A guard against an author accidentally pasting a credential's actual value
 # into a hazard note, not a general secret scanner and not a guarantee against
-# every way one could be hidden in text. Precision is the priority here, not
-# recall: this check's only failure mode is blocking a dispatch outright, and
-# a false positive there teaches authors to phrase hazard notes around the
-# scanner, which costs more safety than the shape it would have caught. Only
-# two high-precision shapes are checked: an `=` assignment with any
-# identifier-shaped key, and a bare token/base64 blob. A `Key: value` colon
-# label (e.g. "private key: managed by Ansible") is deliberately NOT checked
-# -- that phrasing is exactly how a `localFiles` note is meant to name which
-# secret a file holds, so a keyword-gated colon rule fires on the field's own
-# job. The tradeoff: a value written as `password: hunter2example` passes.
-_CREDENTIAL_ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\s*=\s*\S{6,}")
+# every way one could be hidden in text. It catches a recognizable credential
+# token (a known prefix like `ghp_`, `sk-ant-`, `AKIA`, `eyJ`) or a long
+# base64 blob pasted into a note -- shapes that do not occur in ordinary
+# prose. It does NOT catch a hand-written value with no recognizable shape,
+# such as `password=hunter2example`: hazard notes are themselves made of
+# environment-variable instructions ("set NODE_ENV=production", "requires
+# DATABASE_URL=postgres://..."), so a `KEY=value` shape cannot distinguish a
+# legitimate instruction from a leaked credential -- they are the same shape
+# because they are the same shape. A `Key: value` colon label (e.g. "private
+# key: managed by Ansible") is likewise deliberately NOT checked, since that
+# phrasing is how a `localFiles` note is meant to name which secret a file
+# holds. This is deliberate: a rule that blocks a legitimate dispatch teaches
+# authors to phrase hazard notes around the scanner, which costs more safety
+# than the shape it would have caught.
 # A bare token, checked two ways: a short list of well-known credential
 # prefixes (a GitHub/GitLab/Anthropic/OpenAI/AWS/Google/Slack token, or a
 # JWT's `eyJ...`), and a long unbroken run of base64-alphabet characters with
@@ -99,10 +102,7 @@ _IDENTIFIER_SHAPED_RE = re.compile(r"^[A-Z0-9]+={0,2}$")
 
 
 def _quotes_a_credential(text: str) -> bool:
-    if (
-        _CREDENTIAL_ASSIGNMENT_RE.search(text)
-        or _CREDENTIAL_PREFIX_TOKEN_RE.search(text)
-    ):
+    if _CREDENTIAL_PREFIX_TOKEN_RE.search(text):
         return True
     return any(
         not _IDENTIFIER_SHAPED_RE.match(match.group(0))
