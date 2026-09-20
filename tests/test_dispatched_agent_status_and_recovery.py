@@ -1290,6 +1290,59 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue(headless_path.is_file())
 
+    def test_wrap_up_relocates_a_stray_worker_artifact_sharing_the_instruction_stem(
+        self,
+    ) -> None:
+        # A worker can write an artifact of its own choosing beside its
+        # instruction (e.g. `<stem>.evidence.json`); wrap-up-task.py only
+        # relocated the six known sibling suffixes, so that artifact stayed
+        # in the live dispatch directory forever, where a later `*.json` scan
+        # read it back as a phantom dispatch of its own.
+        instruction_path, _ = self.write_dispatch("claude", slug="with-evidence")
+        stem = instruction_path.name.removesuffix(".json")
+        evidence_path = instruction_path.with_name(f"{stem}.evidence.json")
+        evidence_path.write_text(
+            json.dumps({"ticket": "MP-2387", "result": "pass"}) + "\n"
+        )
+        status_path = instruction_path.with_name(f"{stem}.status.json")
+        status_path.write_text(json.dumps({"status": "done", "note": "shipped"}) + "\n")
+
+        result = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "with-evidence")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(evidence_path.exists())
+        archive = self.home / ".straw-boss" / "dispatch" / "archive"
+        archived_evidence = archive / f"{stem}.evidence.json"
+        self.assertTrue(archived_evidence.is_file())
+        self.assertEqual(
+            json.loads(archived_evidence.read_text()), {"ticket": "MP-2387", "result": "pass"}
+        )
+        self.assertEqual(
+            json.loads(result.stdout)["relocated_stray_artifacts"], [str(archived_evidence)]
+        )
+
+    def test_wrap_up_leaves_a_genuine_neighbour_whose_stem_is_a_dotted_prefix_alone(
+        self,
+    ) -> None:
+        # --app/--slug are not character-constrained, and a slug can itself
+        # contain a dot (real archived dispatches already do). That makes one
+        # instruction's stem a literal filename prefix of another's --
+        # wrapping up "api--collide" must not sweep up
+        # "api--collide.extra-neighbour.json" as if it were a stray artifact
+        # of the shorter dispatch.
+        collide_path, _ = self.write_dispatch("claude", slug="collide")
+        neighbour_path, _ = self.write_dispatch("claude", slug="collide.extra-neighbour")
+        collide_stem = collide_path.name.removesuffix(".json")
+        status_path = collide_path.with_name(f"{collide_stem}.status.json")
+        status_path.write_text(json.dumps({"status": "done", "note": "shipped"}) + "\n")
+
+        result = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "collide")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["relocated_stray_artifacts"], [])
+        self.assertTrue(neighbour_path.is_file())
+        self.assertEqual(json.loads(neighbour_path.read_text())["status"], "pending")
+
     def test_recover_task_status_refuses_to_overwrite_an_existing_terminal_status(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         self.set_worker_endpoint(instruction_path)

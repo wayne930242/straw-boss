@@ -33,6 +33,7 @@ from straw_boss.dispatch.state import (
     remaining_teardown_steps,
     standalone_status_path,
     straw_boss_root,
+    stray_dispatch_artifacts,
 )
 
 
@@ -117,6 +118,12 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
                 f"{src} first"
             )
 
+    # Read before src is touched: a worker can leave an artifact of its own
+    # choosing beside its instruction (e.g. `<stem>.evidence.json`), and that
+    # stays in the live directory forever unless it is archived alongside the
+    # instruction here too, not just the known sibling suffixes.
+    strays = stray_dispatch_artifacts(src)
+
     payload["status"] = "wrapped-up"
     dest = archived_path(app, slug)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -126,6 +133,10 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
     for sibling in instruction_sibling_paths(src):
         if sibling.is_file():
             sibling.rename(dest.parent / sibling.name)
+
+    for stray in strays:
+        if stray.is_file():
+            stray.rename(dest.parent / stray.name)
 
     if plan_slug is not None:
         assert task_id is not None
@@ -140,6 +151,7 @@ def wrap_up(app: str, slug: str, plan_slug: str | None, task_id: str | None) -> 
         "archived_path": str(dest),
         "plan_status": plan_status,
         "remaining_steps": remaining_teardown_steps(payload, dest),
+        "relocated_stray_artifacts": [str(dest.parent / stray.name) for stray in strays],
     }
 
 

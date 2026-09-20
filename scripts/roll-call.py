@@ -44,6 +44,7 @@ from straw_boss.dispatch.state import (
     launch_failure_path,
     launch_receipt_path,
     load_json,
+    looks_like_instruction,
     remaining_teardown_steps,
     resolve_instruction_status_path,
     straw_boss_root,
@@ -62,13 +63,30 @@ NOTE_REASON_MAX_CHARS = 120
 
 
 def _instruction_paths_in(directory: Path) -> list[Path]:
+    """Every instruction file in `directory`, phantoms excluded.
+
+    The known sibling suffixes are excluded by name first, cheaply. What is
+    left is filtered by content: a worker-written artifact whose name happens
+    to end in `.json` (e.g. `<stem>.evidence.json`) is not read back as an
+    instruction of its own just because nothing else claimed it -- see
+    `looks_like_instruction` for why this can't be a filename rule. A file
+    that fails to parse is kept rather than dropped, so a corrupted real
+    instruction still surfaces as `unreadable` instead of silently vanishing.
+    """
     if not directory.is_dir():
         return []
-    return sorted(
-        path
-        for path in directory.glob("*.json")
-        if not path.name.endswith(INSTRUCTION_SIBLING_SUFFIXES)
-    )
+    paths: list[Path] = []
+    for path in directory.glob("*.json"):
+        if path.name.endswith(INSTRUCTION_SIBLING_SUFFIXES):
+            continue
+        try:
+            payload = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            paths.append(path)
+            continue
+        if looks_like_instruction(payload):
+            paths.append(path)
+    return sorted(paths)
 
 
 def instruction_paths() -> list[Path]:

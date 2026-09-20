@@ -77,6 +77,71 @@ def instruction_sibling_paths(instruction_path: Path) -> list[Path]:
     ]
 
 
+# Every status write_instruction()/confirm_dispatch()/wrap_up() has ever set on
+# an instruction file. A worker-written artifact never carries this field with
+# one of these values, so it is what tells the two apart once filenames can't:
+# dispatch-task.py write never constrained --app or --slug characters, and
+# real dispatches with a dotted slug already exist in
+# ~/.straw-boss/dispatch/archive/ (e.g. slug
+# "aps-anchor-scenarios.pending-stale-profile"), so a filename-shape rule like
+# "reject a second extension" would misread a genuine instruction as a
+# phantom.
+INSTRUCTION_STATUSES = frozenset({"pending", "in-progress", "wrapped-up"})
+
+
+def looks_like_instruction(payload: Any) -> bool:
+    """Whether a parsed *.json file has a dispatch instruction's shape.
+
+    Checked by content, not name, for the reason INSTRUCTION_STATUSES
+    documents. Every instruction write_instruction() has ever produced --
+    current herdr-pane dispatches and the legacy claude-p mode alike -- carries
+    a live `status`, `mode`, `task`, and `agent_kind`; nothing else straw-boss
+    writes into the dispatch directory does.
+    """
+    return (
+        isinstance(payload, dict)
+        and payload.get("status") in INSTRUCTION_STATUSES
+        and bool(payload.get("mode"))
+        and bool(payload.get("task"))
+        and bool(payload.get("agent_kind"))
+    )
+
+
+def stray_dispatch_artifacts(instruction_path: Path) -> list[Path]:
+    """Files sharing this instruction's exact `<app>--<slug>` stem that
+    INSTRUCTION_SIBLING_SUFFIXES does not already know about.
+
+    A worker can write an artifact of its own choosing beside its instruction
+    (e.g. `<stem>.evidence.json`); wrap-up relocates it into the archive
+    alongside the instruction so a later `*.json` scan of the still-live
+    directory never reads it back as a dispatch of its own. Matched by exact
+    stem-then-dot prefix, then confirmed by content: a dotted slug can make one
+    instruction's stem a literal prefix of another's filename, and
+    `looks_like_instruction` is what stops that neighbour being swept up as
+    this dispatch's stray. A file that fails to parse is left alone rather
+    than guessed at either way.
+    """
+    stem = instruction_path.name.removesuffix(".json")
+    prefix = f"{stem}."
+    known = {instruction_path.name} | {
+        sibling.name for sibling in instruction_sibling_paths(instruction_path)
+    }
+    directory = instruction_path.parent
+    if not directory.is_dir():
+        return []
+    strays: list[Path] = []
+    for path in sorted(directory.iterdir()):
+        if not path.is_file() or path.name in known or not path.name.startswith(prefix):
+            continue
+        try:
+            payload = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not looks_like_instruction(payload):
+            strays.append(path)
+    return strays
+
+
 def standalone_status_path(instruction_path: Path) -> Path:
     return instruction_path.with_name(
         f"{instruction_path.name.removesuffix('.json')}.status.json"

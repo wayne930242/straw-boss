@@ -391,6 +391,65 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
 
         self.assertEqual([r["dispatch"] for r in report["dispatches"]], ["api--with-siblings"])
 
+    def test_a_worker_written_artifact_with_an_unknown_suffix_is_not_a_phantom_dispatch(
+        self,
+    ) -> None:
+        # A worker can write an artifact of its own choosing beside its
+        # instruction, outside the six known sibling suffixes (e.g.
+        # `<stem>.evidence.json`). Such a file must not be read back as a
+        # dispatch of its own just because its name ends in `.json`.
+        instruction_path, _ = self.write_dispatch(slug="with-evidence")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+        stem = instruction_path.name.removesuffix(".json")
+        instruction_path.with_name(f"{stem}.evidence.json").write_text(
+            json.dumps({"ticket": "MP-2387", "observed_at": "2026-09-20", "result": "pass"})
+        )
+
+        report = self.roll_call([agent("wF:p9", "worker-session")])
+
+        self.assertEqual([r["dispatch"] for r in report["dispatches"]], ["api--with-evidence"])
+
+    def test_a_genuine_instruction_with_a_dotted_slug_is_still_a_dispatch(self) -> None:
+        # dispatch-task.py write never constrained --app/--slug characters,
+        # and real dispatches with a dotted slug already exist in
+        # ~/.straw-boss/dispatch/archive/ -- a phantom filter keyed on the
+        # filename shape alone would misread one of these as an artifact.
+        instruction_path, _ = self.write_dispatch(slug="release.pre-terminal-rebind")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+
+        report = self.roll_call([agent("wF:p9", "worker-session")])
+
+        self.assertEqual(
+            [r["dispatch"] for r in report["dispatches"]],
+            ["api--release.pre-terminal-rebind"],
+        )
+
+    def test_an_archived_stray_artifact_is_not_read_as_a_wrapped_up_dispatch(self) -> None:
+        instruction_path, _ = self.write_dispatch(slug="archived-clean")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+        stem = instruction_path.name.removesuffix(".json")
+        instruction_path.with_name(f"{stem}.status.json").write_text(
+            json.dumps({"status": "done", "note": "shipped"})
+        )
+        wrap = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "archived-clean")
+        self.assertEqual(wrap.returncode, 0, wrap.stderr)
+
+        # Simulates a stray artifact that reached the archive directory
+        # without going through wrap-up-task.py's own relocation (e.g. one
+        # copied in by hand, as the incident that motivated this fix was).
+        archive_dir = self.home / ".straw-boss" / "dispatch" / "archive"
+        (archive_dir / f"{stem}.evidence.json").write_text(
+            json.dumps({"ticket": "MP-2387", "result": "pass"})
+        )
+
+        report = self.roll_call([agent("wF:p9", "worker-session")])
+
+        self.assertEqual(report["dispatches"], [])
+        self.assertEqual(
+            [row["dispatch"] for row in report["wrapped_up_open_panes"]],
+            ["api--archived-clean"],
+        )
+
     def test_a_wrapped_up_dispatchs_open_pane_gets_its_own_category(self) -> None:
         # Once wrap-up-task.py archives the instruction, the plain instruction
         # scan cannot see it -- the incident this fix targets is exactly that
