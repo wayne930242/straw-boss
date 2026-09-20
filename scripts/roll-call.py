@@ -22,6 +22,11 @@ coordinator's own pane never has an instruction of its own, and a worker pane
 that has just been split is in the window before `dispatch-task.py write` runs.
 Both appear here as `unattributed`, which means "not attributable from this
 data", not "free to close".
+
+**A wrapped-up dispatch whose pane herdr still holds open is a distinct,
+attributed case.** The archived instruction still names its own pane, so it is
+never reported as `unattributed` -- it is neither in-flight nor unowned, and
+the report names the close command directly.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from straw_boss.dispatch.state import (
     launch_failure_path,
     launch_receipt_path,
     load_json,
+    remaining_teardown_steps,
     resolve_instruction_status_path,
     straw_boss_root,
 )
@@ -55,8 +61,7 @@ TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled"})
 NOTE_REASON_MAX_CHARS = 120
 
 
-def instruction_paths() -> list[Path]:
-    directory = straw_boss_root() / "dispatch"
+def _instruction_paths_in(directory: Path) -> list[Path]:
     if not directory.is_dir():
         return []
     return sorted(
@@ -64,6 +69,14 @@ def instruction_paths() -> list[Path]:
         for path in directory.glob("*.json")
         if not path.name.endswith(INSTRUCTION_SIBLING_SUFFIXES)
     )
+
+
+def instruction_paths() -> list[Path]:
+    return _instruction_paths_in(straw_boss_root() / "dispatch")
+
+
+def archived_instruction_paths() -> list[Path]:
+    return _instruction_paths_in(straw_boss_root() / "dispatch" / "archive")
 
 
 def open_pane_ids() -> set[str]:
@@ -473,6 +486,49 @@ def unattributed_agents(
     return unattributed
 
 
+def wrapped_up_open_panes(live: LiveAgents) -> list[dict[str, Any]]:
+    """Archived dispatches whose recorded pane herdr still has open.
+
+    Attributed by the archived instruction's own recorded `herdr_pane_id`,
+    never by `cwd` -- a coworker sharing its parent's worktree must not land
+    here. Such a pane is neither in-flight (its dispatch is archived) nor
+    ownerless (the archive names it), so it is reported with a command
+    instead of falling into `unattributed`.
+
+    Herdr can hand a closed pane's id to an unrelated later agent, the same
+    risk `worker_agent()` guards against for live dispatches -- so a pane
+    that now holds an agent is only reported here when that agent's own
+    fingerprint still matches this archived instruction. A pane with no
+    agent at all (the ordinary leftover-shell case) is unaffected.
+    """
+    open_panes: list[dict[str, Any]] = []
+    for path in archived_instruction_paths():
+        instruction = read_record(path)
+        if instruction is None or instruction.get("mode") != "herdr-pane":
+            continue
+        pane_id = instruction.get("herdr_pane_id")
+        if not pane_id or str(pane_id) not in live.panes:
+            continue
+        occupant = live.by_pane.get(str(pane_id))
+        if occupant is not None and not agent_matches_identity(
+            occupant,
+            str(instruction.get("agent_kind")),
+            instruction.get("session_id"),
+            instruction.get("herdr_terminal_id"),
+        ):
+            continue
+        open_panes.append(
+            {
+                "dispatch": path.stem,
+                "pane_id": str(pane_id),
+                "worktree_path": instruction.get("worktree_path"),
+                "archived_instruction_path": str(path),
+                "remaining_steps": remaining_teardown_steps(instruction, path),
+            }
+        )
+    return open_panes
+
+
 def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
     live = LiveAgents.read()
 
@@ -487,10 +543,14 @@ def build_report(mine: tuple[str, str] | None) -> dict[str, Any]:
         rows.append(row)
         claimed_panes |= claimed
 
+    stale = wrapped_up_open_panes(live)
+    claimed_panes |= {row["pane_id"] for row in stale}
+
     note_unmatched_neighbours(rows, live, claimed_panes)
 
     return {
         "dispatches": [row for row in rows if row["mine"]],
+        "wrapped_up_open_panes": stale,
         "agents_without_instruction": unattributed_agents(rows, live, claimed_panes),
     }
 
@@ -512,6 +572,19 @@ def render(report: dict[str, Any]) -> str:
             f" {str(row.get('coordinator_session') or '-')[:8]}\n"
             f"      {row['note']}"
         )
+
+    stale = report["wrapped_up_open_panes"]
+    lines.append("")
+    lines.append(f"wrapped-up dispatches with a pane still open ({len(stale)})")
+    lines.append(
+        "  archived, not in-flight -- run the listed command(s) to close it out:"
+    )
+    if not stale:
+        lines.append("  none")
+    for row in sorted(stale, key=lambda r: r["dispatch"]):
+        lines.append(f"  {row['dispatch']}  pane {row['pane_id']}")
+        for step in row["remaining_steps"]:
+            lines.append(f"      {step}")
 
     extras = report["agents_without_instruction"]
     lines.append("")

@@ -391,6 +391,64 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
 
         self.assertEqual([r["dispatch"] for r in report["dispatches"]], ["api--with-siblings"])
 
+    def test_a_wrapped_up_dispatchs_open_pane_gets_its_own_category(self) -> None:
+        # Once wrap-up-task.py archives the instruction, the plain instruction
+        # scan cannot see it -- the incident this fix targets is exactly that
+        # gap reading as `unattributed`, which the safety warning says never
+        # to close. Attribution here must come from the archived instruction
+        # itself, not the pane's cwd, which stays non-attributive.
+        instruction_path, _ = self.write_dispatch(slug="worktree-orphan")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+        instruction = json.loads(instruction_path.read_text())
+        instruction["worktree_path"] = "/tmp/does-not-matter"
+        instruction["worktree_branch"] = "demo"
+        instruction_path.write_text(json.dumps(instruction))
+        stem = instruction_path.name.removesuffix(".json")
+        instruction_path.with_name(f"{stem}.status.json").write_text(
+            json.dumps({"status": "done", "note": "shipped"})
+        )
+
+        wrap = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "worktree-orphan")
+        self.assertEqual(wrap.returncode, 0, wrap.stderr)
+        archived_path = json.loads(wrap.stdout)["archived_path"]
+
+        report = self.roll_call([agent("wF:p9", "worker-session")])
+
+        self.assertEqual(report["dispatches"], [])
+        stale = report["wrapped_up_open_panes"]
+        self.assertEqual(len(stale), 1)
+        self.assertEqual(stale[0]["dispatch"], "api--worktree-orphan")
+        self.assertEqual(stale[0]["pane_id"], "wF:p9")
+        self.assertEqual(stale[0]["archived_instruction_path"], archived_path)
+        steps = stale[0]["remaining_steps"]
+        self.assertTrue(any("close-worker-pane.py" in s and archived_path in s for s in steps))
+        self.assertIn("git worktree remove /tmp/does-not-matter", steps)
+        roles = {a["pane_id"]: a["role"] for a in report["agents_without_instruction"]}
+        self.assertNotIn("wF:p9", roles)
+
+    def test_a_pane_id_reused_by_an_unrelated_agent_is_not_reported_as_wrapped_up(
+        self,
+    ) -> None:
+        # Herdr can hand a closed pane's id to a later, unrelated agent -- the
+        # same risk worker_agent() guards live dispatches against. Reporting
+        # this pane as the archived dispatch's own would recommend closing a
+        # stranger's live pane.
+        instruction_path, _ = self.write_dispatch(slug="worktree-reused")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+        stem = instruction_path.name.removesuffix(".json")
+        instruction_path.with_name(f"{stem}.status.json").write_text(
+            json.dumps({"status": "done", "note": "shipped"})
+        )
+
+        wrap = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "worktree-reused")
+        self.assertEqual(wrap.returncode, 0, wrap.stderr)
+
+        report = self.roll_call([agent("wF:p9", "a-later-unrelated-session")])
+
+        self.assertEqual(report["wrapped_up_open_panes"], [])
+        roles = {a["pane_id"]: a["role"] for a in report["agents_without_instruction"]}
+        self.assertEqual(roles.get("wF:p9"), "unattributed")
+
     def test_a_coordinator_and_an_unwritten_worker_pane_are_named_not_orphaned(
         self,
     ) -> None:

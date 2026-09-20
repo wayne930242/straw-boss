@@ -69,6 +69,7 @@ Run [roll-call.py](references/dispatch-mechanics.md#roll-call).
 It reconciles instructions, receipts, launch failures, and live provider identity.
 Use `--mine` for this session's dispatch list.
 An `unattributed` pane has unknown ownership; resolve that ownership before taking action on it.
+A pane listed under wrapped-up dispatches is the opposite case: its archived instruction still names it, so close it with the listed command.
 
 ## Wrap up
 
@@ -76,7 +77,7 @@ An `unattributed` pane has unknown ownership; resolve that ownership before taki
 2. Require terminal status (`done`, `failed`, or `cancelled`). For a reachable worker at a checkpoint, use the event route above. If its pane is confirmed closed and status is missing or non-terminal, use [recover-task-status.py](references/dispatch-mechanics.md#recover-a-closed-worker) with evidence supporting `done` or `failed`. A pending instruction that never launched can be archived without a status record.
 3. For a landed programming change, resolve [choosing-graph's review checkpoint](../choosing-graph/SKILL.md#review-checkpoint): confirm the completion reference and existing review disposition, or complete the missing review before cleanup. A task with a shared checkpoint records its completion reference here and takes its disposition from that checkpoint task, so it wraps up on its own terminal status.
 4. Close only the terminal worker's pane, through [close-worker-pane.py](references/dispatch-mechanics.md#close-a-worker-pane), which rebalances the columns it leaves behind. Release every remaining lock through [Releasing every lock on a wrapped-up instruction](references/shared-resource-coordination.md#releasing-every-lock-on-a-wrapped-up-instruction).
-5. Run the archive command below. For a plan task, supply its plan and task id. Return to the lifecycle owner for git worktree and ticket cleanup.
+5. Run the archive command below. For a plan task, supply its plan and task id. If the instruction recorded a linked worktree (`worktree_path`/`worktree_branch`), remove it with `git worktree remove <worktree_path>` and return the branch to whatever owns it. Otherwise return to the lifecycle owner for ticket cleanup.
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/wrap-up-task.py" \
@@ -85,5 +86,6 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/wrap-up-task.py" \
 
 The command archives lifecycle artifacts and synchronizes the plan task's terminal status.
 The coordinator pane and shared tab remain open.
+Its result's `remaining_steps` names any pane-close and `git worktree remove` command step 4 or this step did not already run -- a safety net for a skipped step, not a substitute for running them here.
 
 **Complete when:** a dispatch is launched and covered by its next status event, or its terminal status, review, pane closure, lock release, and archive are confirmed.
