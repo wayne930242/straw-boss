@@ -31,7 +31,7 @@ not pruning. Four initial cache-hit attempts are archived and excluded from gate
 measurements. Applying final policy v3 produced identical candidate arrays to
 those resumed before the policy amendment.
 
-## Review disposition
+## Initial self-review (superseded by independent review)
 
 Standards self-review: pass. English source/documentation, scoped modules,
 private new output directories, exclusive file creation, silent opt-out, no
@@ -84,3 +84,61 @@ and remote state are separate claims. No live deployment or browser UAT is claim
 - `git diff --cached --check`: pass. Version manifests agree at 0.30.18.
 - Commit/push reference and remote verification are recorded in the dispatch
   completion and private evidence `delivery.json` after publication.
+
+## Independent-review correction
+
+Independent review of bc4b604 returned REQUEST CHANGES for F1 (output directory
+pathname replacement) and F2 (malformed score objects escaping fallback). The
+review separately confirmed the preserved four-point backend measurements and
+policy-transfer evidence. Its initial report is preserved under the evidence
+root's `review-fixes/initial-independent-review.md`.
+
+Both corrections are implemented for 0.30.19. The new public CLI regression file
+first observed 10 failures / 1 pass; after the fix the combined copy, pruning and
+shared-store tests report 43 passed / 8 subtests. Checks cover malformed score
+containers and objects, replacement before opening the output, replacement between
+child writes, and rejection of group-writable parents. The copy path now uses
+shared jev_private ownership and descriptor-relative open primitives.
+
+All four candidates remain equal to the measured candidates, and original source
+hashes remain unchanged. The real table-late copy smoke and isolated 0.30.19
+installation pass; implementation files match the installed copy. Full-suite
+results and the independent re-review disposition follow after their checkpoints.
+
+The initial self-review's confinement and malformed-score claims were too broad.
+The two implementation gaps are now covered by the tests above; review-fix
+friction is resolved at those implementation boundaries, without new global rules.
+
+### Second-review checkpoint
+
+The re-review returned REQUEST CHANGES for intermediate-ancestor replacement
+(R1) and JSON integer overflow during finite-number validation (R2). The prior
+504-test result does not close these findings. The report is preserved as
+`review-fixes/second-independent-review.md`.
+
+The next correction replaces resolved-string parent opening with a root-relative,
+component-by-component descriptor walk. The user guide defines the physical-path
+and POSIX owner/mode/sticky boundary, including excluded ACL grants and privileged
+or current-user adversaries. Numeric validation compares bounds without converting
+JSON integers to floats.
+
+The six new regression cases failed first, then passed; focused copy/pruning/store
+coverage is now 51 passed / 8 subtests. The suite includes real CLI subprocesses
+for positive and negative 10**400 in both score fields, plus intermediate-component
+replacement before and after opening, writable-ancestor rejection and sticky
+compatibility. The second-correction CLI smoke, isolated installation, unchanged
+candidate arrays and source hashes are recorded separately under
+`review-fixes/second-correction/checks.json`. The final full suite passed with 512 tests and 209 subtests in 247.90 seconds.
+Independent round 3 returned APPROVE on Standards and Spec within the documented
+copy-only POSIX boundary. The coordinator required one documentation correction:
+the example now places the new output beneath a user-owned 0700 directory under
+`/private/tmp`, satisfying the immediate-parent check. The coordinator authorized
+commit, push and installation after that correction, with no additional review
+round. Reports are preserved as `review-fixes/round3-review.md` and
+`review-fixes/round3-disposition.md`. The unchanged recovery-store APIs retain
+their separate trust assumptions; this approval covers the copy adapter.
+
+The corrected example passed a real CLI probe beneath a user-owned 0700
+`/private/tmp/jev-replay-<unique>` parent, producing all three files at 0600.
+Post-correction documentation checks passed: 36 tests / 148 subtests;
+`git diff --check` passed. Criteria v4 and policy v3 hashes remain unchanged.

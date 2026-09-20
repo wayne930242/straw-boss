@@ -59,3 +59,84 @@ a bare filename without source identity as identification limits.
 The comparison preserves round 2's judging envelope and conservative recency
 boundary. The production copy command consumes validated versioned scores; it
 does not claim to run the Claude 25k/30k batching fitter or a live Codex hook.
+
+## Independent review correction (F1/F2)
+
+The review of bc4b604 requested changes. Its reproduced findings reopen the
+storage and invalid-score checkpoints; the preserved scoring/gate evidence remains
+valid. The confirmed contract already requires both behaviours.
+
+Check three explanations independently: malformed score objects reach member
+access before validation (predict AttributeError); replacing the output directory
+redirects later pathname writes (predict archives in another directory); a leaf
+symlink bypasses exclusive creation (predict overwrite). The review's executable
+reproduction confirms the first two and rejects the third.
+
+Use the shared jev_private ownership/open primitives for a dedicated new-copy
+context. The caller supplies an existing current-user-owned parent with no group
+or other write bits; open and validate it once, create/open the new output relative
+to that descriptor, and keep the output descriptor for all three exclusive child
+writes. A symlink swap before the output open fails closed; replacement after it
+opens leaves every write attached to the pinned directory. This defines a trusted
+parent boundary rather than treating new-directory mode alone as confinement.
+Validate the scores mapping and each unlocked score mapping before member access;
+malformed shapes enter the existing ValueError fallback.
+
+Review-fix reality anchor: `tests/test_jev_codex_copy_review.py` failed with
+10 failed / 1 passed before changes. Malformed pair/container shapes now produce
+unchanged fallback artifacts; an output-path swap before directory open is
+rejected, and a swap after the first child opens keeps all three artifacts in
+the original pinned directory. Group-writable parents are rejected before output
+creation. Existing store behaviour remains unchanged; the copy path reuses
+jev_private's ownership and descriptor-relative child-open primitives.
+
+## Review friction
+
+- Tried: Treat exclusive new files beneath a 0700 pathname as confined output.
+  Found: Directory-entry replacement redirects later pathname opens; a pinned
+    directory descriptor is the required boundary.
+  Led by: Initial design's copy-output rationale.
+- Tried: Validate numeric score members without validating their container.
+  Found: Lists, numbers and strings raise AttributeError before the fallback;
+    both container levels must be dictionaries before member access.
+  Led by: Initial score-validation implementation.
+
+Both gaps are resolved by shared descriptor helpers, input validation and public
+CLI regression tests. The independent review supersedes the initial self-review's
+storage and malformed-score verdicts; the four-point measurement evidence remains
+valid. Live Jev scores are observed samples: hashes and fixed-score application
+are reproducible, while live judging scores, branches and continuation text may
+vary on rerun.
+
+## Second-review correction (R1/R2)
+
+The first correction's resolved-parent string still allowed an intermediate
+ancestor swap before the parent opened. Replace that approach with a component
+walk from an open filesystem-root descriptor, using O_NOFOLLOW and dir_fd at
+every step. Each ancestor is root/current-user owned; writable intermediate
+ancestors require sticky-bit protection, and the immediate parent is user-owned
+and has no group/other write bits. Physical paths contain no symlink components
+or `..`. This POSIX owner/mode boundary assumes no extra ACL write grants and
+excludes privileged/current-user adversaries. Previously opened directories stay
+pinned even when their original names are moved.
+
+Validate score numeric bounds using integer-safe comparisons before any float
+conversion. The [0, 1] comparison rejects huge positive/negative JSON integers,
+infinities and NaN without math.isfinite converting integers.
+
+The new six red cases cover both score fields with positive/negative 10**400,
+intermediate symlink substitution before opening, and a nonsticky writable
+ancestor. Additional compatibility/confinement tests exercise sticky ancestors
+and replacement after an intermediate component is pinned.
+
+- Tried: Resolve a parent string, then protect only the terminal directory open.
+  Found: Intermediate ancestors can change between resolution and opening;
+    root-relative descriptor traversal is needed for the stated path boundary.
+  Led by: First-review correction design.
+- Tried: Call math.isfinite on every numeric score before checking its range.
+  Found: JSON integers can exceed float range; direct integer-safe bounds reject
+    them without conversion or a blanket exception handler.
+  Led by: Numeric validation implementation.
+
+Both gaps are resolved in the same private-copy and score-validation seams.
+The earlier 504-test result applies to the first correction, not this final tree.

@@ -61,6 +61,63 @@ def _open(directory: int, name: str, flags: int) -> int:
 
 
 @contextmanager
+def _copy_parent(path: Path):
+    """Walk a physical path from root using POSIX ownership/mode boundaries."""
+    if ".." in path.parts:
+        raise ValueError("unsafe-jev-storage-path")
+    path = path.absolute()
+    parent = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in path.parts[1:]:
+            info = os.fstat(parent)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid not in (0, os.getuid()):
+                raise ValueError("unsafe-jev-copy-ancestor")
+            # Sticky directories protect root/user-owned child entries from
+            # replacement by other users, as in a conventional /private/tmp.
+            if info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX:
+                raise ValueError("writable-by-others-jev-copy-ancestor")
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            os.close(parent)
+            parent = child
+        info = os.fstat(parent)
+        _owned(info, True)
+        if info.st_mode & 0o022:
+            raise ValueError("writable-by-others-jev-copy-parent")
+        yield parent
+    finally:
+        os.close(parent)
+
+
+@contextmanager
+def private_copy_directory(path: Path):
+    """Pin a new copy directory beneath a descriptor-validated ancestry."""
+    if path.name in ("", ".", ".."):
+        raise ValueError("unsafe-jev-storage-path")
+    with _copy_parent(path.parent) as parent:
+        os.mkdir(path.name, 0o700, dir_fd=parent)
+        directory = os.open(path.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        try:
+            _owned(os.fstat(directory), True)
+            os.fchmod(directory, 0o700)
+            yield directory
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+
+@contextmanager
+def private_new_file(directory: int, name: str):
+    """Create one private child exclusively through its pinned directory."""
+    if name in ("", ".", "..") or Path(name).name != name:
+        raise ValueError("unsafe-jev-storage-path")
+    fd = _open(directory, name, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+    with os.fdopen(fd, "w") as file:
+        yield file
+        file.flush()
+        os.fsync(file.fileno())
+
+
+@contextmanager
 def private_file(path: Path, flags: int, mode: str):
     with private_directory(path.parent) as directory:
         fd = _open(directory, path.name, flags)

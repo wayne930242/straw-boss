@@ -19,7 +19,8 @@ Use a response-item array exported from an isolated rollout and a score file:
 }
 ```
 
-Scores must cover every unlocked complete pair. Rule-locked pairs need no score.
+Scores must be an object whose unlocked pair values are objects containing
+valid numeric keepCall/keepResult fields. Scores must cover every unlocked complete pair. Rule-locked pairs need no score.
 A stale criteria version or invalid pair score records a fallback and keeps the
 original candidate unchanged; it does not invoke live built-in compaction.
 The command reads the current canonical criteria and policy from `config/`.
@@ -32,7 +33,23 @@ STRAW_BOSS_JEV=1 python3 scripts/jev-codex-copy.py \
   --output-dir /private/replay/new-candidate
 ```
 
-The output directory must be new. It contains `candidate.json`, lossless
+The output directory must be new, and its parent must already exist, be owned
+by the current user, and have no group/other write permission bits. Supply a
+physical path with no symlink components or `..`. For example, create a user-owned
+0700 directory `/private/tmp/jev-replay-<unique>` first, then use
+`--output-dir /private/tmp/jev-replay-<unique>/new-candidate`; `/private/tmp` is
+only an ancestor, and the macOS `/tmp` symlink is not a valid path component. The command starts from a root descriptor
+and opens each ancestor relative to the previously pinned directory, using
+O_NOFOLLOW throughout. Ancestors must be owned by root or the current user;
+group/other-writable ancestors require the POSIX sticky bit, which protects
+root/user-owned child entries. The immediate parent still requires no group/other
+write bits. All three writes use one pinned output descriptor.
+
+This boundary assumes POSIX ownership, mode and sticky-bit enforcement. It does
+not defend against the current user, privileged processes, or additional ACL
+write grants beyond those mode bits. A symlink replacement before a component
+opens fails closed; replacement after it opens does not redirect subsequent
+writes. It contains `candidate.json`, lossless
 `recovery.json`, and `benchmark.jsonl`, with modes 0700/0600. These artifacts
 contain original history, not just metrics. The command consumes existing replay
 scores and makes no Jev or Codex backend call. Its benchmark identifies that
@@ -88,3 +105,7 @@ Raw host originals remain available in recovery.
 Live compaction-event replacement, automatic built-in fallback after a gate miss,
 and subsequent compaction-window renewal ordering remain provider gaps. An offline
 gate decision or a copied `codex resume` is not evidence that those live paths ran.
+
+Canonical criteria/policy hashes identify reproducible inputs. Applying saved
+scores and deterministic locks is reproducible; new live Jev requests can return
+different scores, candidates and branch counts. Report each run as an observation.

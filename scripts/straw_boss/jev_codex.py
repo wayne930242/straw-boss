@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import copy
 import json
-import math
 import re
 from pathlib import Path
 
@@ -99,6 +98,8 @@ def lock_reason(call: dict, a: int, b: int, locked: set[int], policy: dict) -> s
 
 def prune(history: list[dict], scores: dict[str, dict], policy: dict) -> tuple[list[dict], list[dict]]:
     """Apply validated pair scores; rule-locked pairs require no score."""
+    if not isinstance(scores, dict):
+        raise ValueError("missing-or-invalid-jev-score")
     candidate = copy.deepcopy(history)
     locked = locked_indices(history, policy["preserve_recent_messages"])
     removed, decisions = set(), []
@@ -106,9 +107,9 @@ def prune(history: list[dict], scores: dict[str, dict], policy: dict) -> tuple[l
         call, result = history[a], history[b]
         reason = lock_reason(call, a, b, locked, policy)
         score = None if reason else scores.get(call["call_id"])
-        if not reason and (score is None or any(
+        if not reason and (not isinstance(score, dict) or any(
             isinstance(score.get(key), bool) or not isinstance(score.get(key), (int, float))
-            or not math.isfinite(score[key]) or not 0 <= score[key] <= 1
+            or not 0 <= score[key] <= 1
             for key in ("keepCall", "keepResult")
         )):
             raise ValueError("missing-or-invalid-jev-score")

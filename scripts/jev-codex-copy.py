@@ -10,17 +10,8 @@ from pathlib import Path
 
 from straw_boss.jev_codex import configuration, prune
 from straw_boss.jev_codex_benchmark import benchmark_record
+from straw_boss.jev_private import private_copy_directory, private_new_file
 from straw_boss.jev_storage import criteria_version
-
-
-def write_copy(path: Path, value: object) -> None:
-    # The command owns a newly created private output directory. Exclusive
-    # creation keeps repeated invocations from overwriting any prior evidence.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w") as file:
-        json.dump(value, file, ensure_ascii=False)
-        file.flush()
-        os.fsync(file.fileno())
 
 
 def main() -> int:
@@ -43,25 +34,27 @@ def main() -> int:
     except (ValueError, KeyError, TypeError) as error:
         candidate, decisions = original, []
         failure = str(error) if isinstance(error, ValueError) else "invalid-replay-scores"
-    args.output_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
-    write_copy(args.output_dir / "candidate.json", candidate)
     record = benchmark_record(args.output_dir.name, criteria, policy, decisions,
         source={"history_path": str(args.history.resolve()),
                 "history_sha256": hashlib.sha256(source_bytes).hexdigest()}, request_metrics=[])
     record["jev"]["score_source"] = "supplied-replay-scores; no Jev requests made by this command"
     if failure:
         record["fallback_reason"] = failure
-    record["recovery_path"] = str((args.output_dir / "recovery.json").resolve())
-    write_copy(args.output_dir / "recovery.json", {
+    record["recovery_path"] = str(args.output_dir.absolute() / "recovery.json")
+    recovery = {
         "original_history": original, "decisions": decisions,
         "criteria_version": criteria_version(criteria), "policy_version": criteria_version(policy),
         "application": {"status": "candidate-only", "live_application_supported": False},
         "qualitative_outcome": {"status": "not-assessed"},
         "record": record,
-    })
-    fd = os.open(args.output_dir / "benchmark.jsonl", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as file:
-        file.write(json.dumps(record, ensure_ascii=False) + "\n")
+    }
+    with private_copy_directory(args.output_dir) as directory:
+        for name, value in (("candidate.json", candidate), ("recovery.json", recovery),
+                            ("benchmark.jsonl", record)):
+            with private_new_file(directory, name) as file:
+                json.dump(value, file, ensure_ascii=False)
+                if name.endswith(".jsonl"):
+                    file.write("\n")
     return 0
 
 
