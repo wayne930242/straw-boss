@@ -93,6 +93,26 @@ class DispatchWorktreeLifecycleTests(DispatchedAgentLifecycleFixture, unittest.T
         )
         self.assertIn(f"git worktree remove {self.worktree.resolve()}", steps)
 
+    def test_coworker_sharing_parents_worktree_records_no_worktree_fields(self) -> None:
+        parent_path = self.write_worktree_dispatch(self.worktree, "worktree-parent")
+        self.set_worker_endpoint(parent_path, pane="worker-pane", session="worker-session")
+
+        result = self.write_coworker(parent_path, repo_root=self.worktree)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        child = json.loads(Path(json.loads(result.stdout)["instruction_path"]).read_text())
+        self.assertIsNone(child["worktree_path"])
+        self.assertIsNone(child["worktree_branch"])
+
+    def test_detached_head_worktree_records_path_without_a_branch(self) -> None:
+        self.run_git(self.repo, "worktree", "add", "--quiet", "--detach", str(self.worktree) + "-detached")
+        instruction_path = self.write_worktree_dispatch(
+            Path(str(self.worktree) + "-detached"), "worktree-detached"
+        )
+        instruction = json.loads(instruction_path.read_text())
+        self.assertIsNotNone(instruction["worktree_path"])
+        self.assertIsNone(instruction["worktree_branch"])
+
     def test_wrap_up_omits_worktree_remove_for_the_main_checkout(self) -> None:
         instruction_path = self.write_worktree_dispatch(self.repo, "main-checkout-wrap")
         self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")

@@ -41,7 +41,8 @@ The command creates a pending `<app>--<slug>.json`, immutable `.contract.md`, an
 It generates identity and reporting mechanics.
 The brief follows [Write the brief](../SKILL.md#write-the-brief).
 
-When `--repo-root` is a linked git worktree, the command detects it and records `worktree_path`/`worktree_branch` on the instruction; a plain checkout records both as `null`.
+When `--repo-root` is a linked git worktree, the command detects it and records `worktree_path`/`worktree_branch` on the instruction; a plain checkout records both as `null`, and a detached-HEAD worktree records `worktree_path` with `worktree_branch` as `null`.
+A coworker never records these fields even when its shared `repo_root` is a linked worktree -- the worktree's teardown belongs to the parent it shares that worktree with, never to the coworker.
 Wrap-up and roll-call read these fields to name the worktree's own teardown command -- this script never runs `git worktree add` or `remove` itself.
 
 ## Permission mapping
@@ -129,6 +130,7 @@ Live agents in the same cwd are reported as context, without attributing them to
 Unmatched agents are `coordinator` when dispatch identity establishes that role, otherwise `unattributed` (ownership unresolved).
 
 A separate `wrapped_up_open_panes` list names an archived dispatch whose recorded pane herdr still has open -- attributed by that archived instruction, not by cwd, so it is never counted as `unattributed`.
+If a live agent now occupies that pane id, it is only listed here when that agent's fingerprint still matches the archived instruction; herdr can hand a closed pane's id to an unrelated later agent, and this list must not send that agent's live pane to the close command below.
 Each entry carries the same `remaining_steps` `wrap-up-task.py` returns: the `close-worker-pane.py` call against the archived instruction path, plus `git worktree remove` when a worktree was recorded.
 
 `--mine` requires this session's verified identity and narrows the dispatch list while retaining machine-wide attribution.

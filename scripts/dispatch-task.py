@@ -82,6 +82,8 @@ def mark_plan_task(plan_slug: str, task_id: str, status: str) -> None:
 
 
 def _git(repo_root: str, *args: str) -> str | None:
+    if not repo_root:
+        return None
     try:
         result = subprocess.run(
             ["git", "-C", repo_root, *args],
@@ -95,7 +97,7 @@ def _git(repo_root: str, *args: str) -> str | None:
     return result.stdout.strip()
 
 
-def detect_worktree(repo_root: str) -> dict[str, str] | None:
+def detect_worktree(repo_root: str) -> dict[str, str | None] | None:
     """The worktree path and branch, when `repo_root` is a linked git worktree.
 
     A linked worktree's `--git-dir` sits under the main checkout's `--git-dir`
@@ -120,6 +122,10 @@ def detect_worktree(repo_root: str) -> dict[str, str] | None:
     branch = _git(repo_root, "rev-parse", "--abbrev-ref", "HEAD")
     if toplevel is None or branch is None:
         return None
+    if branch == "HEAD":
+        # A detached-HEAD worktree has no branch to hand back to an owner --
+        # "HEAD" is git's literal answer, not a real branch name.
+        branch = None
     return {"path": toplevel, "branch": branch}
 
 
@@ -306,7 +312,11 @@ def write_instruction(
         "worktree_path": None,
         "worktree_branch": None,
     }
-    worktree = detect_worktree(repo_root)
+    # A coworker shares its parent's exact repo_root (resolve_coworker_context
+    # enforces this), so detecting the worktree here too would have both
+    # instructions record the same worktree_path -- and the parent already owns
+    # its teardown (see coworker_rules in render_dispatch_contract).
+    worktree = detect_worktree(repo_root) if coworker_context is None else None
     if worktree is not None:
         payload["worktree_path"] = worktree["path"]
         payload["worktree_branch"] = worktree["branch"]

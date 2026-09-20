@@ -426,6 +426,29 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         roles = {a["pane_id"]: a["role"] for a in report["agents_without_instruction"]}
         self.assertNotIn("wF:p9", roles)
 
+    def test_a_pane_id_reused_by_an_unrelated_agent_is_not_reported_as_wrapped_up(
+        self,
+    ) -> None:
+        # Herdr can hand a closed pane's id to a later, unrelated agent -- the
+        # same risk worker_agent() guards live dispatches against. Reporting
+        # this pane as the archived dispatch's own would recommend closing a
+        # stranger's live pane.
+        instruction_path, _ = self.write_dispatch(slug="worktree-reused")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+        stem = instruction_path.name.removesuffix(".json")
+        instruction_path.with_name(f"{stem}.status.json").write_text(
+            json.dumps({"status": "done", "note": "shipped"})
+        )
+
+        wrap = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "worktree-reused")
+        self.assertEqual(wrap.returncode, 0, wrap.stderr)
+
+        report = self.roll_call([agent("wF:p9", "a-later-unrelated-session")])
+
+        self.assertEqual(report["wrapped_up_open_panes"], [])
+        roles = {a["pane_id"]: a["role"] for a in report["agents_without_instruction"]}
+        self.assertEqual(roles.get("wF:p9"), "unattributed")
+
     def test_a_coordinator_and_an_unwritten_worker_pane_are_named_not_orphaned(
         self,
     ) -> None:

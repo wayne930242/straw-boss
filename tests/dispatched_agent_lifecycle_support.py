@@ -291,6 +291,7 @@ class DispatchedAgentLifecycleFixture:
         *,
         slug: str = "coworker-review",
         writable_paths: tuple[str, ...] = (),
+        repo_root: Path = ROOT,
     ) -> subprocess.CompletedProcess[str]:
         fake_bin, capture = self.install_fake_herdr()
         args = [
@@ -304,7 +305,7 @@ class DispatchedAgentLifecycleFixture:
             "--mode",
             "herdr-pane",
             "--repo-root",
-            str(ROOT),
+            str(repo_root),
             "--agent-kind",
             "codex",
             "--parent-instruction-path",

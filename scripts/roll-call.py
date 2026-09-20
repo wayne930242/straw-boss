@@ -61,8 +61,7 @@ TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled"})
 NOTE_REASON_MAX_CHARS = 120
 
 
-def instruction_paths() -> list[Path]:
-    directory = straw_boss_root() / "dispatch"
+def _instruction_paths_in(directory: Path) -> list[Path]:
     if not directory.is_dir():
         return []
     return sorted(
@@ -70,17 +69,14 @@ def instruction_paths() -> list[Path]:
         for path in directory.glob("*.json")
         if not path.name.endswith(INSTRUCTION_SIBLING_SUFFIXES)
     )
+
+
+def instruction_paths() -> list[Path]:
+    return _instruction_paths_in(straw_boss_root() / "dispatch")
 
 
 def archived_instruction_paths() -> list[Path]:
-    directory = straw_boss_root() / "dispatch" / "archive"
-    if not directory.is_dir():
-        return []
-    return sorted(
-        path
-        for path in directory.glob("*.json")
-        if not path.name.endswith(INSTRUCTION_SIBLING_SUFFIXES)
-    )
+    return _instruction_paths_in(straw_boss_root() / "dispatch" / "archive")
 
 
 def open_pane_ids() -> set[str]:
@@ -498,6 +494,12 @@ def wrapped_up_open_panes(live: LiveAgents) -> list[dict[str, Any]]:
     here. Such a pane is neither in-flight (its dispatch is archived) nor
     ownerless (the archive names it), so it is reported with a command
     instead of falling into `unattributed`.
+
+    Herdr can hand a closed pane's id to an unrelated later agent, the same
+    risk `worker_agent()` guards against for live dispatches -- so a pane
+    that now holds an agent is only reported here when that agent's own
+    fingerprint still matches this archived instruction. A pane with no
+    agent at all (the ordinary leftover-shell case) is unaffected.
     """
     open_panes: list[dict[str, Any]] = []
     for path in archived_instruction_paths():
@@ -506,6 +508,14 @@ def wrapped_up_open_panes(live: LiveAgents) -> list[dict[str, Any]]:
             continue
         pane_id = instruction.get("herdr_pane_id")
         if not pane_id or str(pane_id) not in live.panes:
+            continue
+        occupant = live.by_pane.get(str(pane_id))
+        if occupant is not None and not agent_matches_identity(
+            occupant,
+            str(instruction.get("agent_kind")),
+            instruction.get("session_id"),
+            instruction.get("herdr_terminal_id"),
+        ):
             continue
         open_panes.append(
             {
