@@ -450,6 +450,23 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
             ["api--archived-clean"],
         )
 
+    def test_a_legacy_instruction_without_agent_kind_is_still_a_dispatch(self) -> None:
+        # Instructions written before agent_kind was populated store it as
+        # null (e.g. moldplan-frontend-2--mp-2198.json, 2026-08-20). Requiring
+        # that field would drop a real instruction from roll-call silently --
+        # the same class of error as the phantom the content filter removes,
+        # only harder to notice, because nothing reports the absence.
+        instruction_path, _ = self.write_dispatch(slug="legacy-null-kind")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+        payload = json.loads(instruction_path.read_text())
+        payload["agent_kind"] = None
+        payload["main_agent_kind"] = None
+        instruction_path.write_text(json.dumps(payload, indent=2) + "\n")
+
+        report = self.roll_call([agent("wF:p9", "worker-session")])
+
+        self.assertEqual([r["dispatch"] for r in report["dispatches"]], ["api--legacy-null-kind"])
+
     def test_a_wrapped_up_dispatchs_open_pane_gets_its_own_category(self) -> None:
         # Once wrap-up-task.py archives the instruction, the plain instruction
         # scan cannot see it -- the incident this fix targets is exactly that

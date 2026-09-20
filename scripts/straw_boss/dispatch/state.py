@@ -95,15 +95,20 @@ def looks_like_instruction(payload: Any) -> bool:
     Checked by content, not name, for the reason INSTRUCTION_STATUSES
     documents. Every instruction write_instruction() has ever produced --
     current herdr-pane dispatches and the legacy claude-p mode alike -- carries
-    a live `status`, `mode`, `task`, and `agent_kind`; nothing else straw-boss
-    writes into the dispatch directory does.
+    a live `status`, `mode` and `task`; nothing else straw-boss writes into the
+    dispatch directory does.
+
+    `agent_kind` is deliberately not required. Instructions written before that
+    field was populated store it as null (e.g.
+    moldplan-frontend-2--mp-2198.json, 2026-08-20), so requiring it would drop a
+    real instruction from roll-call silently -- the same class of error as the
+    phantom this filter exists to remove, only harder to notice.
     """
     return (
         isinstance(payload, dict)
         and payload.get("status") in INSTRUCTION_STATUSES
         and bool(payload.get("mode"))
         and bool(payload.get("task"))
-        and bool(payload.get("agent_kind"))
     )
 
 
