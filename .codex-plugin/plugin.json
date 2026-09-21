@@ -1,6 +1,6 @@
 {
   "name": "straw-boss",
-  "version": "0.30.23",
+  "version": "0.30.24",
   "description": "Route work through the smallest sufficient loop, from direct bounded tasks to durable app-rooted coordination.",
   "author": {
     "name": "Wei Hung",
@@ -35,5 +35,6 @@
       "Use straw-boss to audit this app against its own rules.",
       "Use straw-boss to work through this backlog."
     ]
-  }
+  },
+  "hooks": "./hooks/codex-hooks.json"
 }
