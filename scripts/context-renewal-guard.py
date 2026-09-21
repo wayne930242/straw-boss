@@ -91,9 +91,26 @@ def main() -> int:
             observe(record, session, tokens)
         except (OSError, ValueError, KeyError):
             print("Jev usage observation could not be persisted.", file=sys.stderr)
+    if (agent_kind == "codex" and record and record.get("consumed_by") == session
+            and not record.get("usage_recorded")):
+        from straw_boss import renewal_usage
+        try:
+            renewal_usage.record_renewal(record, session, Path(payload["transcript_path"]))
+            record = {**record, "usage_recorded": True}
+            dump_json(path, record)
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            print("Codex renewal usage could not be recorded.", file=sys.stderr)
     # Only a renewed session that never dropped below the threshold is exempt.
     exempt = bool(record and record.get("consumed_by") == session and not record.get("settled"))
     if tokens <= threshold:
+        if (agent_kind == "codex"
+                and not (record and record.get("jev_candidate_session") == session)):
+            from straw_boss import renewal_usage
+            try:
+                renewal_usage.record_native_compaction(
+                    session, os.environ.get("HERDR_PANE_ID"), Path(payload["transcript_path"]))
+            except (OSError, ValueError, KeyError, json.JSONDecodeError):
+                print("Native compaction usage could not be recorded.", file=sys.stderr)
         if exempt:
             dump_json(path, {**record, "settled": True})
         return 0

@@ -111,15 +111,24 @@ def claude_context_tokens(transcript: Path) -> int | None:
     return None
 
 
-def codex_context_tokens(transcript: Path) -> int | None:
+def codex_last_token_usage(transcript: Path) -> dict[str, Any] | None:
     for entry in _jsonl_reversed(transcript):
         body = entry.get("payload")
         if not isinstance(body, dict) or body.get("type") != "token_count":
             continue
         last = (body.get("info") or {}).get("last_token_usage")
         if isinstance(last, dict) and "input_tokens" in last:
-            return int(last["input_tokens"])
+            return last
     return None
+
+
+def codex_context_tokens(transcript: Path) -> int | None:
+    last = codex_last_token_usage(transcript)
+    return int(last["input_tokens"]) if last else None
+
+
+def codex_has_compacted_row(transcript: Path) -> bool:
+    return any(entry.get("type") == "compacted" for entry in _jsonl_reversed(transcript))
 
 
 def _varint(data: bytes, index: int) -> tuple[int, int]:
