@@ -11,7 +11,7 @@ Baseline a41bf1d (0.30.23). Private evidence root:
 | Establish parse-failure impact and window | baseline.json proves all Straw Boss hooks omitted while other plugins remain. Source introduction 2d8998e, 2026-09-20 11:52:13 UTC, version 0.30.16; all releases through 0.30.23 retain modules without override. | pass |
 | Full suite | 557 passed, 210 subtests passed in 194.33s; pytest.log. Focused new/quality suite: 39 passed, 149 subtests. | pass |
 | Independent review | Fresh-context Sol low coworker codex-hooks-parse-review: Approve; Standards and Spec pass with no blocking findings. | pass |
-| Ship and verify the normal installed plugin | Staging proof is separate from the user's normal install; normal installation follows review. | unknown |
+| Ship and verify the normal installed plugin | Release 06572ec pushed to origin/main; standard installer completed on retry. Both provider caches report 0.30.24 and match source manifests/hooks/scripts. installed-final.json shows three trusted/enabled hooks, no warnings/errors; installed-turn.json records all three hook/completed events from the normal 0.30.24 cache. claude-installed.debug records module loading and session.start completion from its 0.30.24 cache. | pass |
 
 ## Impact boundaries
 
@@ -32,9 +32,8 @@ being recoverable at plugin load. It is not claimed as a timeout fix.
 
 The new Codex hook path has new trust keys. Codex lists untrusted hooks but skips
 execution until their exact hashes are trusted. The staged session uses three
-scoped persisted trust entries, not a global hook-trust bypass. The normal
-installation must receive the same exact reviewed-definition trust before its
-execution proof. The installer itself retains the provider's trust workflow.
+scoped persisted trust entries, not a global hook-trust bypass. The normal installation received only the three reviewed-definition trust
+hashes through config/batchWrite; installed-final.json confirms persisted trust. The installer itself retains the provider's trust workflow.
 
 SessionStart and both Stop executions are directly observed in native provider
 events. Guard decisions are covered by existing lifecycle and renewal tests. This task does not repeat full live 200k renewal or Jev compaction.
@@ -49,3 +48,14 @@ tool-use correction, requiring no agent-system placement. The peer inform reject
 was resolved by retaining the result in the shared artifact; peer intent rules
 already live in asking-peer-agents, so no new rule is needed. Trust is an existing
 README installation requirement and is exercised explicitly here.
+
+## Final installation evidence
+
+Release 0.30.24 installed and verified on 2026-09-21 at 04:10 UTC.
+The first marketplace refresh failed on a temporary Git pack; a normal retry
+completed without source or installer changes. release-proof.json records final
+cache paths, trust, and native execution timestamps. Existing active sessions
+need restart to load the fixed registration. Antigravity was absent and skipped.
+The installer retry is an environment gap resolved by normal retry; no new rule
+is needed. The review coworker approved the completed suite and all three native
+hook events, then its pane was closed and lifecycle artifacts archived.

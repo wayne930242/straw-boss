@@ -34,3 +34,6 @@ then the full Python suite. Preserve raw private runtime evidence outside Git.
 - Tried: send the review coworker a test-result inform delta.
   Found: peer transport accepts question or answer intents; the shared verification artifact already carries the result.
   Led by: none.
+- Tried: run the standard remote installer after pushing 0.30.24.
+  Found: Claude marketplace refresh failed while reading a temporary pack file in its clone directory, before installation completed.
+  Led by: dispatch shipping contract.
