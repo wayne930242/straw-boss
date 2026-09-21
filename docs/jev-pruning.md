@@ -47,8 +47,8 @@ prefix, or remove both. User and assistant text remains verbatim.
 The exact criteria and lock patterns live in
 [`config/jev-criteria.json`](../config/jev-criteria.json) and
 [`config/jev-policy.json`](../config/jev-policy.json). Both have hashes in each record.
-Codex integration must use these shared inputs; this release does not implement
-the Codex runtime adapter.
+The [Codex renewal adapter](jev-codex-renewal.md) uses these same inputs at its
+200k renewal point and resumes a pruned session in the same Herdr pane.
 
 ## Read benchmark and recovery records
 

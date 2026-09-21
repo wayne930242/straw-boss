@@ -7,9 +7,9 @@ from pathlib import Path
 
 
 def enabled(agent_kind: str, session: str) -> bool:
-    return (agent_kind == "claude" and os.environ.get("STRAW_BOSS_JEV") == "1"
+    return (agent_kind in {"claude", "codex"} and os.environ.get("STRAW_BOSS_JEV") == "1"
             and bool(os.environ.get("TYPESAFE_API_KEY", "").strip())
-            and os.environ.get("STRAW_BOSS_JEV_READY_SESSION") == session)
+            and (agent_kind == "codex" or os.environ.get("STRAW_BOSS_JEV_READY_SESSION") == session))
 
 
 def threshold() -> int:

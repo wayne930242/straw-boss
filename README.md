@@ -137,7 +137,7 @@ Configuration is read from `.straw-boss/apps.json` first, falling back to `.clau
 
 [MIT](./LICENSE)
 
-## Experimental Claude Jev pruning
+## Experimental Jev pruning
 
 Jev pruning is opt-in and leaves ordinary context renewal unchanged. Enable it
 for one newly launched Claude session (with `TYPESAFE_API_KEY` in the environment):
@@ -155,3 +155,8 @@ STRAW_BOSS_JEV=0 claude
 Restart or resume with the desired switch; keep pruning off globally during the
 renewal acceptance window through 2026-09-25. See
 [benchmark, recovery, and implementation limits](docs/jev-pruning.md).
+
+For Codex in Herdr, use `STRAW_BOSS_JEV=1 codex` with the same nonblank key.
+At the 200k renewal point, Jev attempts a pruned `codex resume` in the same pane;
+gate misses and failures use ordinary continuity renewal. See the
+[Codex renewal behavior and accounting costs](docs/jev-codex-renewal.md).

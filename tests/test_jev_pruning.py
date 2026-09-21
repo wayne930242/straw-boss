@@ -150,7 +150,7 @@ class JevPruningTests(unittest.TestCase):
         env = {"STRAW_BOSS_JEV": "1", "TYPESAFE_API_KEY": "key", "STRAW_BOSS_JEV_READY_SESSION": "s"}
         with patch.dict(os.environ, env, clear=True):
             self.assertTrue(jev_renewal.enabled("claude", "s"))
-            self.assertFalse(jev_renewal.enabled("codex", "s"))
+            self.assertTrue(jev_renewal.enabled("codex", "s"))
             self.assertFalse(jev_renewal.enabled("claude", "other"))
             self.assertEqual(jev_renewal.threshold(), 300000)
             os.environ["TYPESAFE_API_KEY"] = ""

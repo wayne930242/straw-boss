@@ -4,7 +4,9 @@ Codex 0.155.1 supports the shared criteria, policy, gate calculation and
 benchmark through a copied-history adapter. Runtime parity with the Claude
 function hook is currently unachievable: Codex's public PreCompact output does
 not replace in-memory history. The user's parity requirement preceded discovery
-of that limitation. Existing Codex compaction and renewal remain unchanged.
+of that limitation. The separate [Codex renewal adapter](jev-codex-renewal.md)
+now offers an opt-in session swap at the 200k renewal point. This document
+describes the diagnostic copied-history interface and its historical evidence.
 
 ## Explicit copy operation
 
@@ -102,9 +104,10 @@ verbatim. Retained image blocks remain in order; normalized byte accounting coun
 visible text once and excludes image payloads, matching the shared text projection.
 Raw host originals remain available in recovery.
 
-Live compaction-event replacement, automatic built-in fallback after a gate miss,
-and subsequent compaction-window renewal ordering remain provider gaps. An offline
-gate decision or a copied `codex resume` is not evidence that those live paths ran.
+Live in-process compaction-event replacement remains a provider gap. The
+[renewal adapter](jev-codex-renewal.md) has its own same-pane resume and ordinary
+continuity fallback evidence; the historical copied replay alone does not prove
+those runtime paths.
 
 Canonical criteria/policy hashes identify reproducible inputs. Applying saved
 scores and deterministic locks is reproducible; new live Jev requests can return

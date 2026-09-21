@@ -106,7 +106,10 @@ def renewal_priming(payload: dict[str, object], session_id: str) -> str | None:
                 continue
             if contract.is_file():
                 sections.append(contract.read_text().strip())
-    sections.append("## Continuity record\n\n" + str(record["payload"]))
+    if record.get("jev_candidate_session") == session_id:
+        sections.append("The loaded Jev-pruned rollout is the continuation history. Continue its unfinished task.")
+    else:
+        sections.append("## Continuity record\n\n" + str(record["payload"]))
     return "\n\n".join(sections)
 
 

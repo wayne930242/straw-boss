@@ -18,8 +18,9 @@ from __future__ import annotations
 import argparse
 import fcntl
 import subprocess
+import sys
 
-from straw_boss.renewal import CLEAR_COMMAND, CONTINUE_PROMPT, record_key, renewal_root
+from straw_boss.renewal import CLEAR_COMMAND, CONTINUE_PROMPT, record_key, record_path, load_record, renewal_root
 
 
 TURN_END_TIMEOUT_MS = 30 * 60 * 1000
@@ -44,6 +45,30 @@ def main() -> int:
     if herdr("agent", "wait", pane, "--until", "idle", "--until", "done",
              "--timeout", str(TURN_END_TIMEOUT_MS)) != 0:
         return 1
+    path = record_path(record_key(pane, None, ""))
+    record = load_record(path)
+    if record and record.get("jev_request"):
+        from straw_boss.jev_codex_renewal import deliver, RenewalInterrupted
+        try:
+            if deliver(path):
+                return 0
+        except RenewalInterrupted:
+            return 1
+        except Exception as error:
+            # A changed session/record owns new work; leave its pane intact.
+            print(f"Jev renewal interrupted: {type(error).__name__}.", file=sys.stderr)
+            from straw_boss.jev_codex_transport import live_agent, session_value
+            current = load_record(path)
+            try:
+                agent = live_agent(pane)
+            except (ValueError, OSError):
+                return 1
+            if not (current and current.get("status") == "pending"
+                    and current.get("session_id") == record.get("session_id")
+                    and current.get("jev_request") == record.get("jev_request")
+                    and session_value(agent) == current.get("session_id")
+                    and agent.get("agent_status") in {"idle", "done"}):
+                return 1
     if herdr("agent", "prompt", pane, CLEAR_COMMAND) != 0:
         return 1
     herdr("agent", "wait", pane, "--until", "idle", "--until", "done",

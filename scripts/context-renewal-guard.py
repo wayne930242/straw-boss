@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -79,10 +80,17 @@ def main() -> int:
         record = {**record, "confirmed": True}
         dump_json(path, record)
     jev_active = jev_renewal.enabled(agent_kind, session)
-    threshold = jev_renewal.threshold() if jev_active else RENEWAL_THRESHOLD_TOKENS
-    tokens = jev_renewal.current_tokens(payload) if jev_active else context_tokens(payload, agent_kind)
+    threshold = jev_renewal.threshold() if jev_active and agent_kind == "claude" else RENEWAL_THRESHOLD_TOKENS
+    tokens = jev_renewal.current_tokens(payload) if jev_active and agent_kind == "claude" else context_tokens(payload, agent_kind)
     if tokens is None:
         return 0
+    if (jev_active and agent_kind == "codex" and record
+            and record.get("consumed_by") == session and record.get("jev_request")):
+        from straw_boss.jev_codex_renewal import observe
+        try:
+            observe(record, session, tokens)
+        except (OSError, ValueError, KeyError):
+            print("Jev usage observation could not be persisted.", file=sys.stderr)
     # Only a renewed session that never dropped below the threshold is exempt.
     exempt = bool(record and record.get("consumed_by") == session and not record.get("settled"))
     if tokens <= threshold:
@@ -102,6 +110,9 @@ def main() -> int:
         return 0
     else:
         reason = renewal_reason(agent_kind, session, tokens, threshold)
+        if jev_active and agent_kind == "codex":
+            transcript = shlex.quote(str(payload["transcript_path"]))
+            reason += f" Add --transcript-path {transcript}; Jev is attempted before ordinary continuity renewal."
     print(json.dumps({"decision": "block", "reason": reason}))
     return 0
 
