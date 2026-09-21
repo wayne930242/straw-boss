@@ -369,11 +369,11 @@ This contract is mandatory for this dispatched session.
 {coworker_rules}- Do not use SendMessage, direct `herdr agent prompt`, pane ids, session ids, or agent names for cross-session communication.
 - Messages and status notes are delta-only and at most two sentences; identity, history, and evidence go in repeatable `--ref '<artifact/source>'` arguments.
 - Report progress with:
-  `{progress} {path_argument} --note '<summary>' [--ref '<evidence>']`
+  `{progress} {path_argument} --note '<summary>' [--ref '<evidence>'] [--waiting-on '<what resumes you>']`
 - Reach the main agent with these two commands -- a question for integrated context, and a checkpoint naming who can unblock you, after whose reply you continue instead of replacing it with a terminal status:
   `{message} {path_argument} --to main --intent question --message '<delta>' [--ref '<source>']`
   `{status} {path_argument} --status <awaiting-user-input|awaiting-main-agent|awaiting-authorization> --note '<what you need>' [--ref '<proof>']`
-- `awaiting-main-agent` means a coordinator action or fact is required; waiting on your own subagent, review, or CI is progress. A reply resolves that checkpoint without changing its status, so report a fresh status here before stopping again.
+- `awaiting-main-agent` means a coordinator action or fact is required; waiting on your own subagent, review, or CI is progress. To end a turn while one of those, or a scheduled wake, will resume you, record the wait with `--waiting-on`; each wait note covers one stop. A reply resolves a checkpoint without changing its status, so report a fresh status or wait note before stopping again.
 - Before stopping after completed work, report terminal `done` or `failed` with the same status script, {terminal_report}; it persists and notifies the main agent through Herdr.
 """
 

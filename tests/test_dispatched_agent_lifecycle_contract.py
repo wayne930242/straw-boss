@@ -864,6 +864,103 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
 
         self.assertEqual(stop_decision(), {})
 
+    def stop_decision_for(self, session_id: str) -> dict[str, Any]:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
+            input=json.dumps({"session_id": session_id}),
+            cwd=ROOT,
+            env={**os.environ, "HOME": str(self.home)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout) if result.stdout else {}
+
+    def record_wait(self, instruction_path: Path, waiting_on: str) -> None:
+        result = self.run_script(
+            "report-progress.py",
+            "--instruction-path",
+            str(instruction_path),
+            "--note",
+            "MR open; CI running.",
+            "--waiting-on",
+            waiting_on,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_stop_hook_allows_one_turn_end_per_recorded_wait(self) -> None:
+        # Waiting on the worker's own CI is progress, not a checkpoint: a wait
+        # note lets that turn end without a status, and it covers only that
+        # turn, so a worker that wakes and finishes still owes its report.
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = self.set_worker_endpoint(instruction_path)
+        session_id = str(instruction["session_id"])
+        self.assertEqual(self.stop_decision_for(session_id).get("decision"), "block")
+
+        self.record_wait(instruction_path, "Monitor on pipeline #33243")
+        self.assertEqual(self.stop_decision_for(session_id), {})
+
+        progress_path = instruction_path.with_name("api--contract-claude.progress.jsonl")
+        last_entry = json.loads(progress_path.read_text().splitlines()[-1])
+        self.assertNotIn("waiting_on", last_entry)
+        self.assertIn("Monitor on pipeline #33243", last_entry["note"])
+        self.assertEqual(self.stop_decision_for(session_id).get("decision"), "block")
+
+    def test_stop_hook_blocks_when_it_cannot_consume_the_wait(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = self.set_worker_endpoint(instruction_path)
+        self.record_wait(instruction_path, "Monitor on pipeline #33243")
+        progress_path = instruction_path.with_name("api--contract-claude.progress.jsonl")
+        progress_path.chmod(0o444)
+
+        decision = self.stop_decision_for(str(instruction["session_id"]))
+        self.assertEqual(decision.get("decision"), "block")
+
+    def test_stop_hook_accepts_a_wait_recorded_after_a_resolved_checkpoint(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = self.set_worker_endpoint(instruction_path)
+        session_id = str(instruction["session_id"])
+        status_path = instruction_path.with_name("api--contract-claude.status.json")
+        status_path.write_text(
+            json.dumps(
+                {
+                    "status": "awaiting-main-agent",
+                    "note": "which branch?",
+                    "timestamp": "1",
+                    "resolved_by_main_agent_at": "2026-09-21T06:16:45+00:00",
+                }
+            )
+        )
+        os.utime(status_path, (1, 1))
+
+        self.record_wait(instruction_path, "Monitor on pipeline #33243")
+        self.assertEqual(self.stop_decision_for(session_id), {})
+
+    def test_stop_hook_ignores_a_wait_recorded_before_the_latest_status(self) -> None:
+        instruction_path, _ = self.write_dispatch("claude")
+        instruction = self.set_worker_endpoint(instruction_path)
+        session_id = str(instruction["session_id"])
+        self.record_wait(instruction_path, "Monitor on pipeline #33243")
+        progress_path = instruction_path.with_name("api--contract-claude.progress.jsonl")
+        os.utime(progress_path, (1, 1))
+        status_path = instruction_path.with_name("api--contract-claude.status.json")
+        status_path.write_text(
+            json.dumps(
+                {
+                    "status": "awaiting-main-agent",
+                    "note": "which branch?",
+                    "timestamp": "1",
+                    "resolved_by_main_agent_at": "2026-09-21T06:16:45+00:00",
+                }
+            )
+        )
+
+        decision = self.stop_decision_for(session_id)
+        self.assertEqual(decision.get("decision"), "block")
+        self.assertIn("report-progress.py", decision["reason"])
+        self.assertIn("--waiting-on", decision["reason"])
+
     def test_hook_registration_includes_the_stop_guard(self) -> None:
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())
         commands = [

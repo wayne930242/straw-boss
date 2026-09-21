@@ -18,6 +18,10 @@ log remains a distinct human-readable progress stream.
 
 This is a log, not a notification. Terminal states and checkpoints use
 report-task-status.py; provider-specific fast reporting is separate.
+
+`--waiting-on` names what will resume the session -- its own CI watch,
+subagent, review, or scheduled wake. The dispatched-agent stop guard accepts
+such a note, written after the latest status, as the report for one stop.
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ def append_progress(
     instruction_path: Path,
     note: str,
     references: list[str] | tuple[str, ...] = (),
+    waiting_on: str | None = None,
 ) -> Path:
     if not instruction_path.is_file():
         raise ValueError(f"no instruction file at {instruction_path}")
@@ -48,6 +53,10 @@ def append_progress(
     entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "note": note}
     if normalized_references:
         entry["refs"] = list(normalized_references)
+    if waiting_on is not None:
+        if not waiting_on.strip():
+            raise ValueError("--waiting-on must be non-empty")
+        entry["waiting_on"] = waiting_on
     with log_path.open("a") as f:
         f.write(json.dumps(entry) + "\n")
     return log_path
@@ -58,10 +67,14 @@ def main() -> int:
     parser.add_argument("--instruction-path", required=True, help="path to this dispatch's own instruction file")
     parser.add_argument("--note", required=True, help="free-text progress note")
     parser.add_argument("--ref", action="append", default=[], help="artifact/evidence reference")
+    parser.add_argument(
+        "--waiting-on",
+        help="what will resume this session when it ends a turn to wait on its own work",
+    )
     args = parser.parse_args()
 
     try:
-        path = append_progress(Path(args.instruction_path), args.note, args.ref)
+        path = append_progress(Path(args.instruction_path), args.note, args.ref, args.waiting_on)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
