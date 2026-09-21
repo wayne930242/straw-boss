@@ -124,7 +124,7 @@ If a repository using `extensions.worktreeConfig` resolves to the primary checko
 
 Verify the top-level path again.
 A failed repair remains a dispatch blocker.
-The verified path becomes instruction `repo_root`; the launcher creates its worker pane in the coordinator's shared tab.
+The verified path becomes instruction `repo_root`, dispatched with `--owns-worktree` so wrap-up names its removal; the launcher creates its worker pane in the coordinator's shared tab.
 
 ### Local files
 

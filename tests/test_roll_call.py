@@ -478,6 +478,7 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         instruction = json.loads(instruction_path.read_text())
         instruction["worktree_path"] = "/tmp/does-not-matter"
         instruction["worktree_branch"] = "demo"
+        instruction["worktree_owned"] = True
         instruction_path.write_text(json.dumps(instruction))
         stem = instruction_path.name.removesuffix(".json")
         instruction_path.with_name(f"{stem}.status.json").write_text(
@@ -524,6 +525,26 @@ class RollCallTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
         self.assertEqual(report["wrapped_up_open_panes"], [])
         roles = {a["pane_id"]: a["role"] for a in report["agents_without_instruction"]}
         self.assertEqual(roles.get("wF:p9"), "unattributed")
+
+    def test_a_pane_recorded_closed_is_not_reported_as_wrapped_up(self) -> None:
+        # close-worker-pane.py already closed this dispatch's pane, so an open
+        # pane under the same id is a later reuse, not this dispatch's leftover.
+        instruction_path, _ = self.write_dispatch(slug="pane-closed")
+        self.set_worker_endpoint(instruction_path, pane="wF:p9", session="worker-session")
+        instruction = json.loads(instruction_path.read_text())
+        instruction["herdr_pane_closed_at"] = "2026-09-21T13:00:00+00:00"
+        instruction_path.write_text(json.dumps(instruction))
+        stem = instruction_path.name.removesuffix(".json")
+        instruction_path.with_name(f"{stem}.status.json").write_text(
+            json.dumps({"status": "done", "note": "shipped"})
+        )
+
+        wrap = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "pane-closed")
+        self.assertEqual(wrap.returncode, 0, wrap.stderr)
+
+        report = self.roll_call([], panes=[{"pane_id": "wF:p9"}])
+
+        self.assertEqual(report["wrapped_up_open_panes"], [])
 
     def test_a_coordinator_and_an_unwritten_worker_pane_are_named_not_orphaned(
         self,

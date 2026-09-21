@@ -225,9 +225,15 @@ def write_instruction(
     main_agent_terminal_id: str | None,
     shared_checkpoint: bool = False,
     coworker_context: dict[str, Any] | None = None,
+    owns_worktree: bool = False,
 ) -> dict[str, Any]:
     if mode != "herdr-pane":
         raise ValueError("dispatch requires herdr-pane mode")
+    if owns_worktree and coworker_context is not None:
+        raise ValueError(
+            "--owns-worktree is the parent's claim -- a coworker shares its parent's "
+            "worktree and never owns its teardown"
+        )
     path = instruction_path(app, slug)
     if path.exists():
         raise ValueError(
@@ -266,6 +272,15 @@ def write_instruction(
     if plan_slug is not None:
         assert task_id is not None
         check_dispatchable(plan_slug, task_id)
+    # A coworker shares its parent's exact repo_root (resolve_coworker_context
+    # enforces this), so detecting the worktree here too would have both
+    # instructions record the same worktree_path -- and the parent already owns
+    # its teardown (see coworker_rules in render_dispatch_contract).
+    worktree = detect_worktree(repo_root) if coworker_context is None else None
+    if owns_worktree and worktree is None:
+        raise ValueError(
+            f"--owns-worktree needs --repo-root to be a linked git worktree; {repo_root} is not one"
+        )
 
     # Mirror the main agent's restriction tier. Detected here rather than left to
     # each caller: the requirement is mandatory, and a caller that forgets it
@@ -314,15 +329,15 @@ def write_instruction(
         "repo_root": repo_root,
         "worktree_path": None,
         "worktree_branch": None,
+        "worktree_owned": False,
     }
-    # A coworker shares its parent's exact repo_root (resolve_coworker_context
-    # enforces this), so detecting the worktree here too would have both
-    # instructions record the same worktree_path -- and the parent already owns
-    # its teardown (see coworker_rules in render_dispatch_contract).
-    worktree = detect_worktree(repo_root) if coworker_context is None else None
     if worktree is not None:
         payload["worktree_path"] = worktree["path"]
         payload["worktree_branch"] = worktree["branch"]
+        # Only the main agent knows it created this worktree for the task; a
+        # permanent linked worktree the dispatch merely runs in looks the same
+        # to git, and wrap-up must never advise removing that one.
+        payload["worktree_owned"] = owns_worktree
     if plan_slug is not None:
         payload["plan_id"] = f"p-{plan_slug}"
         payload["task_id"] = task_id
@@ -460,6 +475,12 @@ def main() -> int:
         help="the dispatching Codex main agent's live herdr terminal_id",
     )
     write_p.add_argument(
+        "--owns-worktree",
+        action="store_true",
+        help="--repo-root is the linked worktree the main agent created for this task; "
+        "wrap-up then names its `git worktree remove`",
+    )
+    write_p.add_argument(
         "--parent-instruction-path",
         default=None,
         help="current dispatched worker instruction; derives same-worktree coworker identity",
@@ -535,6 +556,7 @@ def main() -> int:
                 main_agent_terminal_id=args.main_agent_terminal_id,
                 shared_checkpoint=args.shared_checkpoint,
                 coworker_context=coworker_context,
+                owns_worktree=args.owns_worktree,
             )
         else:
             result = confirm_instruction(

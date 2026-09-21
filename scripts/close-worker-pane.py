@@ -20,9 +20,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 
 from straw_boss.dispatch.launch.pane import close_worker_pane
 from straw_boss.dispatch.state import (
+    dump_json,
     load_herdr_pane_instruction,
     load_json,
     resolve_instruction_status_path,
@@ -43,6 +45,13 @@ def close_dispatch_pane(instruction_path: str) -> dict[str, str | None]:
 
     validate_current_sender(resolve_endpoint(instruction, "main"))
 
+    closed_at = instruction.get("herdr_pane_closed_at")
+    if closed_at:
+        raise ValueError(
+            f"worker pane {instruction['herdr_pane_id']!r} was already closed at {closed_at} -- "
+            f"herdr may have handed that id to another agent since, so refusing to close it again"
+        )
+
     status_path = resolve_instruction_status_path(inst_path, instruction)
     if not status_path.is_file():
         raise ValueError(
@@ -61,6 +70,11 @@ def close_dispatch_pane(instruction_path: str) -> dict[str, str | None]:
     balance_warning = close_worker_pane(
         pane_id, instruction.get("main_agent_herdr_pane_id")
     )
+    # Wrap-up and roll-call read this to stop naming the close as a step still
+    # to run; herdr may later hand the same pane id to an unrelated agent.
+    closed = load_json(inst_path)
+    closed["herdr_pane_closed_at"] = datetime.now(timezone.utc).isoformat()
+    dump_json(inst_path, closed)
     return {
         "closed_pane_id": pane_id,
         "status": status,

@@ -163,9 +163,18 @@ def remaining_teardown_steps(
     dispatch whose pane herdr still holds open) build this from the archived
     instruction, so the close command always names the archived path -- whose
     siblings, including the terminal status file, wrap-up already moved there.
+
+    A pane close-worker-pane.py already closed is not named again, and a
+    worktree is named only when the dispatch owns it: a recorded
+    `worktree_path` alone may be a permanent linked worktree the dispatch
+    merely ran in.
     """
     steps: list[str] = []
-    if instruction.get("mode") == "herdr-pane" and instruction.get("herdr_pane_id"):
+    if (
+        instruction.get("mode") == "herdr-pane"
+        and instruction.get("herdr_pane_id")
+        and not instruction.get("herdr_pane_closed_at")
+    ):
         steps.append(
             shlex.join(
                 [
@@ -179,7 +188,7 @@ def remaining_teardown_steps(
             )
         )
     worktree_path = instruction.get("worktree_path")
-    if worktree_path:
+    if worktree_path and instruction.get("worktree_owned") is True:
         steps.append(shlex.join(["git", "worktree", "remove", str(worktree_path)]))
     return steps
 

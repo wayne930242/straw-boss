@@ -1692,6 +1692,50 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
             [["pane", "resize", "--pane", "main-pane", "--direction", "right", "--amount", "0.2500"]],
         )
 
+    def test_closing_a_worker_pane_records_the_closure_on_its_instruction(self) -> None:
+        # Wrap-up names the pane-close step from this record, so a pane already
+        # closed here is not handed back as a step still to run.
+        result, _ = self.close_worker_pane_calls(
+            "done",
+            [{"pane_id": "main-pane", "rect": {"x": 0, "y": 0, "width": 200, "height": 60}}],
+            [],
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        instruction = json.loads(
+            (self.home / ".straw-boss" / "dispatch" / "api--contract-claude.json").read_text()
+        )
+        self.assertIsInstance(instruction.get("herdr_pane_closed_at"), str)
+
+    def test_closing_an_already_closed_pane_again_is_refused(self) -> None:
+        # A stale copy of the close command must not reach whichever agent
+        # herdr handed the same pane id to after the first close.
+        first, _ = self.close_worker_pane_calls(
+            "done",
+            [{"pane_id": "main-pane", "rect": {"x": 0, "y": 0, "width": 200, "height": 60}}],
+            [],
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+
+        fake_bin, capture = self.install_fake_herdr()
+        calls_before = len(capture.read_text().splitlines()) if capture.exists() else 0
+        second = self.run_script(
+            "close-worker-pane.py",
+            "--instruction-path",
+            str(self.home / ".straw-boss" / "dispatch" / "api--contract-claude.json"),
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "HERDR_CAPTURE": str(capture),
+                "HERDR_PANE_ID": "main-pane",
+                "HERDR_SESSIONS": json.dumps({"main-pane": "main-session"}),
+            },
+        )
+
+        self.assertNotEqual(second.returncode, 0)
+        self.assertIn("already closed", second.stderr)
+        calls = [json.loads(line) for line in capture.read_text().splitlines()[calls_before:]]
+        self.assertFalse(any(call[:2] == ["pane", "close"] for call in calls))
+
     def test_closing_refuses_a_worker_that_has_not_reported_a_terminal_status(self) -> None:
         result, calls = self.close_worker_pane_calls(
             "awaiting-user-input",

@@ -292,6 +292,7 @@ class DispatchedAgentLifecycleFixture:
         slug: str = "coworker-review",
         writable_paths: tuple[str, ...] = (),
         repo_root: Path = ROOT,
+        extra_args: tuple[str, ...] = (),
     ) -> subprocess.CompletedProcess[str]:
         fake_bin, capture = self.install_fake_herdr()
         args = [
@@ -313,6 +314,7 @@ class DispatchedAgentLifecycleFixture:
         ]
         for writable_path in writable_paths:
             args.extend(["--writable-path", writable_path])
+        args.extend(extra_args)
         return self.run_script(
             "dispatch-task.py",
             *args,

@@ -25,7 +25,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-task.py" write \
   --app <app> --slug <slug> --task "<brief>" \
   --mode herdr-pane --repo-root <verified-cwd> \
   [--batch <batch>] [--plan <plan> --task-id <task>] [--role <workroom>] \
-  [--shared-checkpoint] \
+  [--shared-checkpoint] [--owns-worktree] \
   --agent-kind claude|codex|agy --main-agent-kind claude|codex|agy \
   [--agent-profile <profile>] [--agent-model <model>] \
   [--agent-effort <effort>] [--advisor-model <claude-model>] \
@@ -42,8 +42,10 @@ It generates identity and reporting mechanics.
 The brief follows [Write the brief](../SKILL.md#write-the-brief).
 
 When `--repo-root` is a linked git worktree, the command detects it and records `worktree_path`/`worktree_branch` on the instruction; a plain checkout records both as `null`, and a detached-HEAD worktree records `worktree_path` with `worktree_branch` as `null`.
-A coworker never records these fields even when its shared `repo_root` is a linked worktree -- the worktree's teardown belongs to the parent it shares that worktree with, never to the coworker.
-Wrap-up and roll-call read these fields to name the worktree's own teardown command -- this script never runs `git worktree add` or `remove` itself.
+`--owns-worktree` declares that `--repo-root` is the worktree the main agent created for this task through [Worktree ownership](plan-mechanics.md#worktree-ownership), and records `worktree_owned: true`; it requires a linked worktree.
+Without it `worktree_owned` is `false`: a permanent linked worktree the app lives in looks the same to git, and its teardown is never the dispatch's.
+A coworker never records these fields and cannot pass `--owns-worktree` -- the worktree's teardown belongs to the parent it shares that worktree with.
+Wrap-up and roll-call name `git worktree remove` only for an owned worktree -- this script never runs `git worktree add` or `remove` itself.
 
 ## Permission mapping
 
@@ -131,7 +133,7 @@ Unmatched agents are `coordinator` when dispatch identity establishes that role,
 
 A separate `wrapped_up_open_panes` list names an archived dispatch whose recorded pane herdr still has open -- attributed by that archived instruction, not by cwd, so it is never counted as `unattributed`.
 If a live agent now occupies that pane id, it is only listed here when that agent's fingerprint still matches the archived instruction; herdr can hand a closed pane's id to an unrelated later agent, and this list must not send that agent's live pane to the close command below.
-Each entry carries the same `remaining_steps` `wrap-up-task.py` returns: the `close-worker-pane.py` call against the archived instruction path, plus `git worktree remove` when a worktree was recorded.
+Each entry carries the same `remaining_steps` `wrap-up-task.py` returns: the `close-worker-pane.py` call against the archived instruction path, plus `git worktree remove` when the instruction owns its worktree (`worktree_owned: true`).
 
 `--mine` requires this session's verified identity and narrows the dispatch list while retaining machine-wide attribution.
 
@@ -161,7 +163,8 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/close-worker-pane.py" \
   --instruction-path <path>
 ```
 
-The command validates the live main agent, requires the dispatch's own terminal status, closes the pane, and rebalances the surviving columns to equal widths.
+The command validates the live main agent, requires the dispatch's own terminal status, closes the pane, records `herdr_pane_closed_at` on the instruction, and rebalances the surviving columns to equal widths.
+Wrap-up and roll-call stop naming the close once it is recorded.
 Closing a column otherwise leaves its width to whichever neighbour absorbs it, so a tab balanced at every split widens at every close.
 A failed rebalance returns `balance_warning` on an otherwise successful close.
 
