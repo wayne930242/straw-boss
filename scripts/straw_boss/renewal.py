@@ -111,15 +111,26 @@ def claude_context_tokens(transcript: Path) -> int | None:
     return None
 
 
-def codex_last_token_usage(transcript: Path) -> dict[str, Any] | None:
+def codex_transcript_summary(transcript: Path) -> tuple[dict[str, Any] | None, bool]:
+    """One parse of the transcript: the last `token_count` usage, and whether
+    any row is a `compacted` entry (native auto-compact, or our own Jev
+    registration on a candidate session)."""
+    last_usage = None
+    has_compacted = False
     for entry in _jsonl_reversed(transcript):
-        body = entry.get("payload")
-        if not isinstance(body, dict) or body.get("type") != "token_count":
-            continue
-        last = (body.get("info") or {}).get("last_token_usage")
-        if isinstance(last, dict) and "input_tokens" in last:
-            return last
-    return None
+        if last_usage is None:
+            body = entry.get("payload")
+            if isinstance(body, dict) and body.get("type") == "token_count":
+                last = (body.get("info") or {}).get("last_token_usage")
+                if isinstance(last, dict) and "input_tokens" in last:
+                    last_usage = last
+        if entry.get("type") == "compacted":
+            has_compacted = True
+    return last_usage, has_compacted
+
+
+def codex_last_token_usage(transcript: Path) -> dict[str, Any] | None:
+    return codex_transcript_summary(transcript)[0]
 
 
 def codex_context_tokens(transcript: Path) -> int | None:
@@ -128,7 +139,7 @@ def codex_context_tokens(transcript: Path) -> int | None:
 
 
 def codex_has_compacted_row(transcript: Path) -> bool:
-    return any(entry.get("type") == "compacted" for entry in _jsonl_reversed(transcript))
+    return codex_transcript_summary(transcript)[1]
 
 
 def _varint(data: bytes, index: int) -> tuple[int, int]:

@@ -25,6 +25,7 @@ from straw_boss.renewal import (
     AGY_BLOCK_WINDOW_SECONDS,
     RENEWAL_THRESHOLD_TOKENS,
     ROLES,
+    codex_transcript_summary,
     context_tokens,
     current_record_path,
     dump_json,
@@ -91,11 +92,25 @@ def main() -> int:
             observe(record, session, tokens)
         except (OSError, ValueError, KeyError):
             print("Jev usage observation could not be persisted.", file=sys.stderr)
-    if (agent_kind == "codex" and record and record.get("consumed_by") == session
-            and not record.get("usage_recorded")):
+    need_usage_record = bool(
+        agent_kind == "codex" and record and record.get("consumed_by") == session
+        and not record.get("usage_recorded"))
+    need_native_check = bool(
+        agent_kind == "codex" and tokens <= threshold
+        and not (record and record.get("jev_candidate_session") == session))
+    codex_usage: dict | None = None
+    codex_has_compacted = False
+    if need_usage_record or need_native_check:
+        transcript = payload.get("transcript_path")
+        if isinstance(transcript, str) and Path(transcript).is_file():
+            try:
+                codex_usage, codex_has_compacted = codex_transcript_summary(Path(transcript))
+            except (OSError, ValueError, KeyError, json.JSONDecodeError):
+                print("Codex transcript could not be parsed for usage recording.", file=sys.stderr)
+    if need_usage_record:
         from straw_boss import renewal_usage
         try:
-            renewal_usage.record_renewal(record, session, Path(payload["transcript_path"]))
+            renewal_usage.record_renewal(record, session, codex_usage)
             record = {**record, "usage_recorded": True}
             dump_json(path, record)
         except (OSError, ValueError, KeyError, json.JSONDecodeError):
@@ -103,12 +118,11 @@ def main() -> int:
     # Only a renewed session that never dropped below the threshold is exempt.
     exempt = bool(record and record.get("consumed_by") == session and not record.get("settled"))
     if tokens <= threshold:
-        if (agent_kind == "codex"
-                and not (record and record.get("jev_candidate_session") == session)):
+        if need_native_check:
             from straw_boss import renewal_usage
             try:
                 renewal_usage.record_native_compaction(
-                    session, os.environ.get("HERDR_PANE_ID"), Path(payload["transcript_path"]))
+                    session, os.environ.get("HERDR_PANE_ID"), codex_has_compacted, codex_usage)
             except (OSError, ValueError, KeyError, json.JSONDecodeError):
                 print("Native compaction usage could not be recorded.", file=sys.stderr)
         if exempt:

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -109,6 +110,66 @@ class CodexRenewalUsageTests(DispatchedAgentLifecycleFixture, unittest.TestCase)
         self.assertEqual(entry["path"], "ordinary-jev-off")
         self.assertEqual(entry["path_reason"], "blank-api-key")
 
+    # --- guard integration: Jev-attempted paths ---
+
+    def _jev_fixture(self, run_id: str, **archive_kwargs: object) -> str:
+        with mock.patch.dict(os.environ, {"STRAW_BOSS_HOME": str(self.home / ".straw-boss")}):
+            archive(run_id, **archive_kwargs)
+            return request(run_id)
+
+    def test_jev_applied_renewal_recorded_through_the_real_guard(self) -> None:
+        jev_request = self._jev_fixture(
+            "run-apply", decision="apply", fallback_reason=None,
+            measurement={
+                "baseline_resume_usage": {"input_tokens": 200_001, "cached_input_tokens": 0, "output_tokens": 4},
+                "candidate_resume_usage": {"input_tokens": 118_000, "cached_input_tokens": 0, "output_tokens": 4},
+            },
+        )
+        transcript = self.transcript([token_count_row(30_000, cached=500, output=200)])
+        self.write_continuity("p4", jev_request=jev_request, jev_candidate_session="new-session")
+        payload = {"session_id": "new-session", "transcript_path": str(transcript)}
+        self.hook(payload, HERDR_PANE_ID="p4", STRAW_BOSS_JEV="1", TYPESAFE_API_KEY="test-key")
+
+        lines = [e for e in self.usage_lines() if e["kind"] == "renewal"]
+        self.assertEqual(len(lines), 1)
+        entry = lines[0]
+        self.assertEqual(entry["path"], "jev-applied")
+        self.assertIsNone(entry["path_reason"])
+        self.assertEqual(entry["jev"]["input_tokens"], 210)
+        self.assertEqual(entry["jev"]["probe"]["baseline_resume_usage"], {
+            "input_tokens": 200_001, "cached_input_tokens": 0, "output_tokens": 4})
+        self.assertEqual(entry["post_renewal"], {
+            "window": "first-stop-of-renewed-session",
+            "input_tokens": 30_000, "cached_input_tokens": 500, "output_tokens": 200,
+        })
+        record = json.loads((self.home / ".straw-boss" / "renewal" / "pane-p4.json").read_text())
+        self.assertTrue(record["usage_recorded"])
+
+    def test_jev_gate_miss_recorded_through_the_real_guard(self) -> None:
+        jev_request = self._jev_fixture(
+            "run-gate", decision="fallback", fallback_reason="under-reduction-gate")
+        transcript = self.transcript([token_count_row(48_000)])
+        self.write_continuity("p5", jev_request=jev_request)
+        payload = {"session_id": "new-session", "transcript_path": str(transcript)}
+        self.hook(payload, HERDR_PANE_ID="p5", STRAW_BOSS_JEV="1", TYPESAFE_API_KEY="test-key")
+
+        entry = [e for e in self.usage_lines() if e["kind"] == "renewal"][0]
+        self.assertEqual((entry["path"], entry["path_reason"]), ("jev-gate-miss", "under-reduction-gate"))
+        self.assertIsNotNone(entry["jev"])
+
+    def test_jev_failure_recorded_through_the_real_guard(self) -> None:
+        jev_request = self._jev_fixture(
+            "run-fail", decision="fallback", fallback_reason="preparation-TimeoutError",
+            measurement={"baseline_resume_usage": None, "candidate_resume_usage": None})
+        transcript = self.transcript([token_count_row(48_000)])
+        self.write_continuity("p6", jev_request=jev_request)
+        payload = {"session_id": "new-session", "transcript_path": str(transcript)}
+        self.hook(payload, HERDR_PANE_ID="p6", STRAW_BOSS_JEV="1", TYPESAFE_API_KEY="test-key")
+
+        entry = [e for e in self.usage_lines() if e["kind"] == "renewal"][0]
+        self.assertEqual((entry["path"], entry["path_reason"]), ("jev-failure", "preparation-TimeoutError"))
+        self.assertIsNone(entry["jev"]["probe"]["baseline_resume_usage"])
+
     # --- guard integration: native 300k compaction preempting our Stop ---
 
     def test_native_compaction_recorded_once_below_threshold(self) -> None:
@@ -158,6 +219,8 @@ def archive(run_id: str, *, decision: str, fallback_reason: str | None,
         "run_id": run_id, "decision": decision, "fallback_reason": fallback_reason,
         "jev": jev or {"model": ["gpt-6-astra"], "requests": 3, "input_tokens": 210, "latency_ms": 640},
         "gate_reduction_pct": 41.2,
+        "application": {"status": "prepared", "live_application_supported": True},
+        "outcome": None,
         "measurement": measurement or {
             "baseline_resume_usage": {"input_tokens": 200_001, "cached_input_tokens": 0, "output_tokens": 4},
             "candidate_resume_usage": {"input_tokens": 118_000, "cached_input_tokens": 0, "output_tokens": 4},

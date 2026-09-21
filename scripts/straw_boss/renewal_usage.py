@@ -87,13 +87,15 @@ def _jev_block(archived: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def record_renewal(continuity: dict[str, Any], session: str, transcript: Path) -> None:
+def record_renewal(continuity: dict[str, Any], session: str, usage: dict[str, Any] | None) -> None:
     """Append one comparable usage line for the renewal that produced `session`.
 
-    Called once, at the renewed session's own first Stop; the caller gates
-    on `usage_recorded` so a later Stop in the same session is a no-op here.
+    Called once, at the renewed session's own first Stop, with the usage
+    already parsed from that session's transcript by the caller (so a Stop
+    that also checks for native compaction parses the transcript only once);
+    the caller gates on `usage_recorded` so a later Stop in the same session
+    is a no-op here.
     """
-    usage = renewal.codex_last_token_usage(transcript)
     if usage is None:
         return
     path, reason, archived = classify(continuity, session)
@@ -116,16 +118,17 @@ def _native_compaction_marker(session: str) -> Path:
     return renewal.renewal_root() / "native-compaction-seen" / renewal.UNSAFE_KEY_CHARS.sub("_", session)
 
 
-def record_native_compaction(session: str, pane_id: str | None, transcript: Path) -> None:
+def record_native_compaction(session: str, pane_id: str | None, has_compacted_row: bool,
+                             usage: dict[str, Any] | None) -> None:
     """Best-effort: a `compacted` row in a non-candidate session's own
     rollout is native auto-compact, since our system never writes that row
     type anywhere but a Jev candidate session's own file. Records the
     post-compaction snapshot once per session; the pre-compaction peak that
-    crossed 300k is not captured."""
+    crossed 300k is not captured. `has_compacted_row`/`usage` come from the
+    caller's own single parse of the session's transcript."""
     marker = _native_compaction_marker(session)
-    if marker.is_file() or not renewal.codex_has_compacted_row(transcript):
+    if marker.is_file() or not has_compacted_row:
         return
-    usage = renewal.codex_last_token_usage(transcript)
     append({
         "schema_version": 1,
         "kind": "native-300k-compaction",
