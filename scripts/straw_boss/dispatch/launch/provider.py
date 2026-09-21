@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from straw_boss.dispatch.permission import permission_flags, tier_flags
+from straw_boss.dispatch.coworker_permission import validate_coworker_args
 
 
 def _option_present(args: list[str], flags: tuple[str, ...]) -> bool:
@@ -23,6 +24,10 @@ def provider_profile_args(
     instruction: dict[str, object], extra_args: list[str]
 ) -> list[str]:
     agent_kind = str(instruction.get("agent_kind"))
+    if instruction.get("parent_instruction_path"):
+        validate_coworker_args(agent_kind, extra_args)
+        if instruction.get("agent_profile") is not None:
+            raise ValueError("coworker provider profiles cannot override inherited permissions")
     profile = instruction.get("agent_profile")
     model = instruction.get("agent_model")
     effort = instruction.get("agent_effort")

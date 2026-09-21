@@ -35,6 +35,7 @@ from straw_boss.dispatch.launch.prompt import (
     prompt_task_with_confirmation,
 )
 from straw_boss.dispatch.launch.provider import provider_profile_args
+from straw_boss.dispatch.coworker_permission import effective_tier
 from straw_boss.dispatch.launch.retry import (
     LaunchAttemptError,
     is_retryable,
@@ -495,6 +496,10 @@ def launch(
         None if attempt.is_coworker else name_task_tab(instruction, inst_path)
     )
 
+    instruction["agent_permission_tier"] = effective_tier(
+        attempt.agent_kind, attempt.base_provider_args
+    )
+    dump_json(inst_path, instruction)
     landed = run_attempts(attempt, inst_path, instruction)
     receipt_path = write_launch_receipt(
         inst_path, instruction, landed, attempt.agent_kind, tab_label_warning

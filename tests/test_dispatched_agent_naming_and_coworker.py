@@ -745,7 +745,10 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
 
     def test_coworker_facade_runs_write_launch_and_confirm(self) -> None:
         parent_path, _ = self.write_dispatch("claude")
-        self.set_worker_endpoint(parent_path)
+        parent = self.set_worker_endpoint(parent_path)
+        parent["main_agent_permission_tier"] = "unrestricted"
+        parent["agent_permission_tier"] = "unrestricted"
+        parent_path.write_text(json.dumps(parent))
         fake_bin, capture = self.install_fake_herdr()
         result = self.run_script(
             "dispatch-coworker.py",
@@ -781,6 +784,12 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
         self.assertNotIn("session_id", output)
         instruction = json.loads(Path(output["instruction_path"]).read_text())
         self.assertEqual(instruction["status"], "in-progress")
+
+        self.assertEqual(instruction["main_agent_permission_tier"], "unrestricted")
+        calls = [json.loads(line) for line in capture.read_text().splitlines()]
+        start = next(call for call in calls if call[:2] == ["agent", "start"])
+        self.assertIn("--dangerously-bypass-approvals-and-sandbox", start)
+        self.assertNotIn("read-only", start)
 
     def test_coworker_facade_does_not_cut_off_the_bounded_launcher(self) -> None:
         scripts_dir = str(ROOT / "scripts")

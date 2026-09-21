@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from straw_boss.dispatch.state import load_json
+from straw_boss.dispatch.coworker_permission import validate_coworker_args
 
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -58,6 +59,7 @@ def dispatch_coworker(
     writable_paths: list[str],
     agent_args: list[str],
 ) -> dict[str, Any]:
+    validate_coworker_args(agent_kind, agent_args)
     parent_path = Path(parent_instruction_path).resolve()
     if not parent_path.is_file():
         raise ValueError(f"no parent worker instruction at {parent_path}")
@@ -92,10 +94,7 @@ def dispatch_coworker(
     launch_args = ["--instruction-path", instruction_path]
     if name is not None:
         launch_args.extend(["--name", name])
-    effective_agent_args = list(agent_args)
-    if agent_kind == "codex" and not writable_paths and not effective_agent_args:
-        effective_agent_args = ["--sandbox", "read-only"]
-    for agent_arg in effective_agent_args:
+    for agent_arg in agent_args:
         launch_args.append(f"--agent-arg={agent_arg}")
     launched = run_public_script("launch-dispatched-agent.py", launch_args)
     run_public_script("dispatch-task.py", ["confirm", "--app", app, "--slug", slug])

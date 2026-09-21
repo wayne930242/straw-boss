@@ -33,6 +33,7 @@ from typing import Any
 
 from straw_boss.apps import resolve_app_hazards
 from straw_boss.dispatch.permission import detect_claude_tier
+from straw_boss.dispatch.coworker_permission import parent_permission_tier
 from straw_boss.dispatch.state import (
     confirm_dispatch,
     contract_path,
@@ -185,6 +186,7 @@ def resolve_coworker_context(
     resolve_endpoint(parent, "main")
     return {
         "parent_instruction_path": str(parent_path),
+        "main_agent_permission_tier": parent_permission_tier(parent),
         "main_agent_herdr_pane_id": str(parent["herdr_pane_id"]),
         "main_agent_session_id": parent.get("session_id"),
         "main_agent_herdr_terminal_id": parent.get("herdr_terminal_id"),
@@ -268,7 +270,8 @@ def write_instruction(
     # Mirror the main agent's restriction tier. Detected here rather than left to
     # each caller: the requirement is mandatory, and a caller that forgets it
     # launches a worker that stops to ask about everything.
-    permission_tier = main_agent_permission_tier
+    permission_tier = (coworker_context["main_agent_permission_tier"]
+                       if coworker_context is not None else main_agent_permission_tier)
     if permission_tier is None and main_agent_kind == "claude":
         permission_tier = detect_claude_tier()
 
