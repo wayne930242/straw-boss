@@ -1,6 +1,7 @@
 """Live Codex scoring with the shared production state/request budgets."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -88,13 +89,14 @@ def fit_state(history: list[dict], policy: dict) -> dict:
     return state
 
 
-def questions(call: dict, result: dict, criteria: dict) -> dict:
+def questions(call: dict, result: dict, criteria: dict, names: list[str] | None = None) -> dict:
     _, output = normalized_pair(call, result)
+    included = criteria if names is None else {name: criteria[name] for name in names}
     return {f'{name}_{call["call_id"]}': {
         'type': 'noul',
         'instructions': f'Target: tool call {call["call_id"]} ({call["name"]}, {len(output["text"])} result chars). {wording}',
         'criteria': {'true': wording, 'false': 'The proposition is false; this material can be pruned according to the stated retention contract.'},
-    } for name, wording in criteria.items()}
+    } for name, wording in included.items()}
 
 
 def request(body: dict) -> dict:
@@ -128,11 +130,15 @@ def scoring_batches(history: list[dict], criteria: dict, policy: dict) -> list[d
         invocation, output = normalized_pair(call, result)
         text = output['text']
         offset = 0
+        first_chunk = True
         while offset < len(text) or (offset == 0 and not text):
             target = {'call_id': call['call_id'], 'call': invocation,
                       'result_offset': offset, 'result_total_chars': len(text),
                       'result_is_error': output['isError'], 'result': ''}
-            qs = questions(call, result, criteria)
+            # The invocation is identical across a pair's chunks, so keepCall
+            # is only asked once; keepResult must still see every chunk.
+            names = list(criteria) if first_chunk else [name for name in criteria if name != 'keepCall']
+            qs = questions(call, result, criteria, names)
             if not fits(body([target], qs)):
                 raise ValueError('jev-target-invocation-budget-exceeded')
             low, high = 0, len(text) - offset
@@ -156,6 +162,7 @@ def scoring_batches(history: list[dict], criteria: dict, policy: dict) -> list[d
             current_targets.append(target)
             current_questions.update(qs)
             offset += low
+            first_chunk = False
             if not text:
                 break
     if current_targets:
@@ -163,8 +170,35 @@ def scoring_batches(history: list[dict], criteria: dict, policy: dict) -> list[d
     return batches
 
 
+def round_batches(batches: list[dict], criteria: dict) -> list[list[tuple[str, dict, list[tuple[dict, dict]]]]]:
+    """Regroup planned batches by each call's chunk occurrence (0, 1, ...).
+
+    A single planned batch can combine chunks from different calls at
+    different occurrences (e.g. one pair's last chunk packed with another
+    pair's first). Splitting by occurrence lets `score` stop requesting a
+    call's later occurrences once an earlier one already crosses the keep
+    threshold, without touching still-needed chunks packed alongside it.
+    """
+    seen: dict[str, int] = {}
+    rounds: list[list[tuple[str, dict, list[tuple[dict, dict]]]]] = []
+    for batch in batches:
+        buckets: dict[int, list[tuple[dict, dict]]] = {}
+        for target in batch['state']['targets']:
+            call_id = target['call_id']
+            occurrence = seen.get(call_id, 0)
+            seen[call_id] = occurrence + 1
+            qs = {f'{name}_{call_id}': batch['questions'][f'{name}_{call_id}']
+                  for name in criteria if f'{name}_{call_id}' in batch['questions']}
+            buckets.setdefault(occurrence, []).append((target, qs))
+        for occurrence, items in buckets.items():
+            while len(rounds) <= occurrence:
+                rounds.append([])
+            rounds[occurrence].append((batch['model'], batch['state'], items))
+    return rounds
+
+
 def score(history: list[dict], criteria: dict, policy: dict) -> tuple[dict, list[dict]]:
-    batches = scoring_batches(history, criteria, policy)
+    rounds = round_batches(scoring_batches(history, criteria, policy), criteria)
     def judge(body):
         start = time.monotonic()
         response = request(body)
@@ -183,17 +217,37 @@ def score(history: list[dict], criteria: dict, policy: dict) -> tuple[dict, list
             'latency_ms': round(1000 * (time.monotonic() - start)),
             'state_tokens_estimate': estimate_tokens(encoded(body['state'])),
             'request_tokens_estimate': estimate_tokens(encoded(body)),
+            'request_sha256': hashlib.sha256(encoded(body).encode()).hexdigest(),
             'targets': [{'call_id': t['call_id'], 'offset': t['result_offset'],
                          'chars': len(t['result'])} for t in body['state']['targets']],
             'scores': answers}
         return answers, metric
-    scores, metrics = {}, []
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        for answers, metric in pool.map(judge, batches):
-            metrics.append(metric)
-            for target in metric['targets']:
-                call_id = target['call_id']
-                aggregate = scores.setdefault(call_id, {name: 0 for name in criteria})
-                for name in criteria:
-                    aggregate[name] = max(aggregate[name], answers[f'{name}_{call_id}'])
+    scores, metrics, resolved = {}, [], set()
+    for round_group in rounds:
+        bodies = []
+        for model, state, items in round_group:
+            items = [(target, qs) for target, qs in items if target['call_id'] not in resolved]
+            if not items:
+                continue
+            merged_questions = {}
+            for _, qs in items:
+                merged_questions.update(qs)
+            bodies.append({'model': model, 'state': {**state, 'targets': [target for target, _ in items]},
+                           'questions': merged_questions})
+        if not bodies:
+            continue
+        # A call's next occurrence depends on this round's answers, so rounds
+        # run in sequence; different calls within a round still run concurrently.
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for answers, metric in pool.map(judge, bodies):
+                metrics.append(metric)
+                for target in metric['targets']:
+                    call_id = target['call_id']
+                    aggregate = scores.setdefault(call_id, {name: 0 for name in criteria})
+                    for name in criteria:
+                        key = f'{name}_{call_id}'
+                        if key in answers:
+                            aggregate[name] = max(aggregate[name], answers[key])
+                    if aggregate['keepResult'] >= policy['keep_threshold']:
+                        resolved.add(call_id)
     return scores, metrics

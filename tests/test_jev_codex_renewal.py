@@ -311,6 +311,47 @@ def test_full_long_result_coverage_and_max_chunk_score(home):
         assert scoring.estimate_tokens(scoring.encoded(body)) <= 10000
 
 
+def test_keep_call_asked_once_per_pair_across_result_chunks():
+    criteria, policy = configuration()
+    policy = {**policy, 'max_state_tokens': 5000, 'max_request_tokens': 10000}
+    original = history(); original[2]['output'] = 'Z' * 60000
+    batches = scoring.scoring_batches(original, criteria, policy)
+    chunk_bodies = [b for b in batches if any(t['call_id'] == 'c0' for t in b['state']['targets'])]
+    assert len(chunk_bodies) > 1
+    assert sum('keepCall_c0' in b['questions'] for b in chunk_bodies) == 1
+    assert all('keepResult_c0' in b['questions'] for b in chunk_bodies)
+
+
+def test_early_stop_skips_remaining_chunks_once_keep_threshold_reached(home):
+    criteria, policy = configuration()
+    policy = {**policy, 'max_state_tokens': 5000, 'max_request_tokens': 10000}
+    original = history(); original[2]['output'] = 'Z' * 60000
+    def ask(body):
+        return {'model': 'jev-test', 'usage': {'input_tokens': 10},
+                'answers': {key: {'noul': .9} for key in body['questions']}}
+    with patch.object(scoring, 'request', side_effect=ask):
+        scores, metrics = scoring.score(original, criteria, policy)
+    c0_targets = sum(len(m['targets']) for m in metrics if any(t['call_id'] == 'c0' for t in m['targets']))
+    assert c0_targets == 1
+    assert scores['c0']['keepResult'] == .9
+
+
+def test_request_sha256_matches_exact_wire_bytes(home):
+    import hashlib
+    criteria, policy = configuration()
+    captured = []
+    def ask(body):
+        captured.append(body)
+        return {'model': 'jev-test', 'usage': {'input_tokens': 5},
+                'answers': {key: {'noul': .1} for key in body['questions']}}
+    with patch.object(scoring, 'request', side_effect=ask):
+        _, metrics = scoring.score(history(), criteria, policy)
+    assert len(metrics) == len(captured) > 0
+    expected = {hashlib.sha256(scoring.encoded(body).encode()).hexdigest() for body in captured}
+    actual = {m['request_sha256'] for m in metrics}
+    assert expected == actual and len(expected) == len(captured)
+
+
 def test_credential_absent_after_prelaunch_clone_failure(home):
     directory = root() / 'probe-failure'
     codex = home / 'codex'; codex.mkdir(); (codex / 'auth.json').write_text('fake credential')

@@ -26,9 +26,14 @@ The adapter uses shared [criteria](../config/jev-criteria.json) and
 [policy](../config/jev-policy.json), including deterministic governing-input locks,
 Codex recency pinning, 0.5 retention scores, and 300-character truncation. Live
 Jev requests fit the production 25k-state / 30k-request estimated budgets.
-Requests include exact target invocation/result content; long results are fully
-covered in chunks, and the highest retention score across chunks preserves any
-needed result. The
+Requests include exact target invocation/result content; the call-retention
+question is asked once per pair since the invocation does not change across
+chunks. Long results are fully covered in chunks unless an earlier chunk's
+result-retention score already reaches the keep threshold, in which case later
+chunks for that pair are skipped and the full result is still retained; the
+highest retention score across scored chunks preserves any needed result.
+Early stopping can turn what would otherwise be concurrent chunk requests for
+one pair into sequential ones, while other pairs keep scoring concurrently. The
 historical 32k regression judge and explicit copy command remain separate.
 
 Two isolated, read-only Codex resumes measure baseline and candidate input. These
@@ -57,7 +62,10 @@ existing location.
 - `benchmark.jsonl`: backend probe counts, conservative gate percentage, Jev
   usage, fallback reason, and application status.
 - `runs/<run_id>.json`: exact original rollout text and candidate rows, sufficient
-  to reconstruct the original history without replaying tool actions.
+  to reconstruct the original history without replaying tool actions. Each Jev
+  request's metrics include a SHA-256 of the exact bytes sent, so a later replay
+  can prove wire-body identity rather than only matching estimate and target
+  metadata.
 - `requests/<run_id>.json`: original pane/session/process identity and supported
   launch options.
 - `probes/<run_id>/`: isolated accounting rollouts and output. The temporary
