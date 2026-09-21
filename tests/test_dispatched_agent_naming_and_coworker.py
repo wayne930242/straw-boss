@@ -743,6 +743,156 @@ class DispatchedAgentNamingAndCoworkerTests(DispatchedAgentLifecycleFixture, uni
         status = json.loads(child_path.with_suffix(".status.json").read_text())
         self.assertEqual(status["status"], "failed")
 
+    def herdr_env(self, pane: str, **extra: str) -> dict[str, str]:
+        fake_bin, capture = self.install_fake_herdr()
+        return {
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HERDR_CAPTURE": str(capture),
+            "HERDR_PANE_ID": pane,
+            **extra,
+        }
+
+    def herdr_calls(self) -> list[list[str]]:
+        capture = self.home / "herdr-calls.jsonl"
+        return [json.loads(line) for line in capture.read_text().splitlines()]
+
+    def launched_coworker(self, parent_path: Path) -> Path:
+        written = self.write_coworker(parent_path)
+        self.assertEqual(written.returncode, 0, written.stderr)
+        child_path = Path(json.loads(written.stdout)["instruction_path"])
+        self.set_worker_endpoint(child_path, pane="coworker-pane")
+        return child_path
+
+    def test_worker_reports_terminal_status_only_after_wrapping_up_its_coworker(self) -> None:
+        parent_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent_path)
+        child_path = self.launched_coworker(parent_path)
+        worker_env = self.herdr_env(
+            "worker-pane",
+            HERDR_SESSIONS=json.dumps({"worker-pane": "worker-session", "main-pane": "main-session"}),
+        )
+        report = (
+            "report-task-status.py", "--instruction-path", str(parent_path),
+            "--status", "done", "--note", "Slice verified",
+        )
+
+        refused = self.run_script(*report, extra_env=worker_env)
+
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn(str(child_path), refused.stderr)
+        self.assertIn("close-worker-pane.py", refused.stderr)
+        self.assertFalse(parent_path.with_suffix(".status.json").exists())
+
+        child_path.with_suffix(".status.json").write_text(
+            json.dumps({"status": "done", "note": "Review complete"}) + "\n"
+        )
+        wrapped = self.run_script("wrap-up-task.py", "--app", "api", "--slug", "coworker-review")
+        self.assertEqual(wrapped.returncode, 0, wrapped.stderr)
+
+        accepted = self.run_script(*report, extra_env=worker_env)
+
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        status = json.loads(parent_path.with_suffix(".status.json").read_text())
+        self.assertEqual(status["status"], "done")
+
+    def test_root_coordinator_cancels_and_closes_a_coworker_whose_parent_pane_is_gone(
+        self,
+    ) -> None:
+        parent_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent_path)
+        child_path = self.launched_coworker(parent_path)
+        root_env = self.herdr_env(
+            "main-pane",
+            HERDR_SESSIONS=json.dumps({"main-pane": "main-session"}),
+            HERDR_MISSING_PANES=json.dumps(["worker-pane"]),
+        )
+
+        cancelled = self.run_script(
+            "report-task-status.py", "--instruction-path", str(child_path),
+            "--status", "cancelled", "--note", "Parent worker closed before integrating the review",
+            extra_env=root_env,
+        )
+        self.assertEqual(cancelled.returncode, 0, cancelled.stderr)
+
+        closed = self.run_script(
+            "close-worker-pane.py", "--instruction-path", str(child_path), extra_env=root_env
+        )
+
+        self.assertEqual(closed.returncode, 0, closed.stderr)
+        self.assertIn(["pane", "close", "coworker-pane"], self.herdr_calls())
+        self.assertTrue(json.loads(child_path.read_text())["herdr_pane_closed_at"])
+
+    def test_plan_route_also_waits_for_the_coworker_wrap_up(self) -> None:
+        parent_path, _ = self.write_dispatch("claude")
+        parent = self.set_worker_endpoint(parent_path)
+        parent_path.write_text(json.dumps({**parent, "plan_id": "p-slice", "task_id": "t1"}) + "\n")
+        status_dir = self.home / ".straw-boss" / "plans" / "slice" / "status"
+        status_dir.mkdir(parents=True)
+        child_path = self.launched_coworker(parent_path)
+
+        refused = self.run_script(
+            "report-task-status.py", "--plan", "slice", "--task", "t1",
+            "--status", "failed", "--note", "Slice blocked",
+            extra_env=self.herdr_env(
+                "worker-pane",
+                HERDR_SESSIONS=json.dumps({"worker-pane": "worker-session", "main-pane": "main-session"}),
+            ),
+        )
+
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn(str(child_path), refused.stderr)
+        self.assertFalse((status_dir / "t1.json").exists())
+
+    def test_root_coordinator_recovers_a_coworker_whose_parent_and_own_panes_are_gone(
+        self,
+    ) -> None:
+        parent_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent_path)
+        child_path = self.launched_coworker(parent_path)
+
+        recovered = self.run_script(
+            "recover-task-status.py", "--instruction-path", str(child_path),
+            "--status", "done", "--note", "Review findings reached the parent before both panes closed",
+            extra_env=self.herdr_env(
+                "main-pane",
+                HERDR_SESSIONS=json.dumps({"main-pane": "main-session"}),
+                HERDR_MISSING_PANES=json.dumps(["worker-pane", "coworker-pane"]),
+            ),
+        )
+
+        self.assertEqual(recovered.returncode, 0, recovered.stderr)
+        status = json.loads(child_path.with_suffix(".status.json").read_text())
+        self.assertEqual(status["status"], "done")
+        self.assertTrue(status["recovered_by_main_agent"])
+
+    def test_root_coordinator_leaves_a_coworker_to_its_live_parent(self) -> None:
+        parent_path, _ = self.write_dispatch("claude")
+        self.set_worker_endpoint(parent_path)
+        child_path = self.launched_coworker(parent_path)
+        child_path.with_suffix(".status.json").write_text(
+            json.dumps({"status": "done", "note": "Review complete"}) + "\n"
+        )
+        sessions = json.dumps({"main-pane": "main-session", "worker-pane": "worker-session"})
+        close = ("close-worker-pane.py", "--instruction-path", str(child_path))
+
+        from_root = self.run_script(
+            *close, extra_env=self.herdr_env("main-pane", HERDR_SESSIONS=sessions)
+        )
+        from_bystander = self.run_script(
+            *close,
+            extra_env=self.herdr_env(
+                "other-pane",
+                HERDR_SESSIONS=sessions,
+                HERDR_MISSING_PANES=json.dumps(["worker-pane"]),
+            ),
+        )
+
+        self.assertNotEqual(from_root.returncode, 0)
+        self.assertIn("'worker-pane' is still live", from_root.stderr)
+        self.assertNotEqual(from_bystander.returncode, 0)
+        self.assertIn("sender pane mismatch", from_bystander.stderr)
+        self.assertFalse(any(call[:2] == ["pane", "close"] for call in self.herdr_calls()))
+
     def test_coworker_facade_runs_write_launch_and_confirm(self) -> None:
         parent_path, _ = self.write_dispatch("claude")
         parent = self.set_worker_endpoint(parent_path)

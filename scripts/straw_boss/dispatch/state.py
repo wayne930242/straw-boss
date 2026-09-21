@@ -112,6 +112,20 @@ def looks_like_instruction(payload: Any) -> bool:
     )
 
 
+def open_coworker_instructions(parent_path: Path) -> list[Path]:
+    """Unarchived coworker instructions whose parent is this instruction."""
+    parent = str(parent_path.resolve())
+    found = []
+    for path in sorted((straw_boss_root() / "dispatch").glob("*.json")):
+        try:
+            payload = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if looks_like_instruction(payload) and payload.get("parent_instruction_path") == parent:
+            found.append(path)
+    return found
+
+
 def stray_dispatch_artifacts(instruction_path: Path) -> list[Path]:
     """Files sharing this instruction's exact `<app>--<slug>` stem that
     INSTRUCTION_SIBLING_SUFFIXES does not already know about.

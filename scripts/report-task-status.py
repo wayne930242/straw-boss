@@ -57,6 +57,7 @@ from time import monotonic, sleep
 from straw_boss.dispatch.messages import validate_note
 from straw_boss.dispatch.state import (
     load_json,
+    open_coworker_instructions,
     plan_status_path,
     resolve_instruction_status_path,
     straw_boss_root,
@@ -175,6 +176,7 @@ def report_status(
     note, normalized_references = validate_note(note, references)
 
     if instruction_path is not None:
+        owner: Path | None = Path(instruction_path)
         validate_status_sender_when_ready(instruction_path, status)
     else:
         # The --plan/--task route addresses a task by name, so anything that
@@ -186,6 +188,14 @@ def report_status(
         owner = live_instruction_for_plan_task(plan_slug, task_id)
         if owner is not None:
             validate_status_sender_when_ready(str(owner), status)
+    if owner is not None and status in ("done", "failed"):
+        open_coworkers = open_coworker_instructions(owner)
+        if open_coworkers:
+            raise ValueError(
+                f"coworker instruction {open_coworkers[0]} is still open -- integrate its "
+                f"result, close its pane with close-worker-pane.py, and archive it with "
+                f"wrap-up-task.py before reporting {status!r}"
+            )
 
     path = resolve_status_path(plan_slug, task_id, instruction_path)
 

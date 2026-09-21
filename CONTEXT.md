@@ -20,7 +20,9 @@ main-agent Herdr endpoint.
 
 An interactive dispatched agent may bring one coworker into the same tab and
 worktree. Coworkers default to review-only, talk with the user directly, and
-notify both parent and root coordinator on `done` or `failed`.
+notify both parent and root coordinator on `done` or `failed`. The parent wraps
+up its coworker before its own `done` or `failed`; once the parent's pane is
+confirmed closed, the root coordinator inherits that cleanup.
 
 In identifiers, "boss" means the user. Prose uses **main agent**, **dispatched
 agent**, **subagent**, and **boss assistant** for agent roles.

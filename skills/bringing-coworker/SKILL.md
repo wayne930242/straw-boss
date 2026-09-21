@@ -46,4 +46,4 @@ Complete when the coworker reports `done` or `failed`; parent and root coordinat
 Integrate the reported result, then use [dispatching-work wrap-up](../dispatching-work/SKILL.md#wrap-up) for the coworker instruction.
 The shared tab and your own instruction remain active.
 
-Complete when the pane is closed and the coworker instruction is archived.
+Complete when the pane is closed and the coworker instruction is archived, before your own `done` or `failed` report.

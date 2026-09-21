@@ -29,7 +29,10 @@ from straw_boss.dispatch.state import (
     load_json,
     resolve_instruction_status_path,
 )
-from straw_boss.herdr.transport import resolve_endpoint, validate_current_sender
+from straw_boss.herdr.transport import (
+    resolve_coordinator_endpoint,
+    validate_current_sender,
+)
 
 
 TERMINAL_STATUSES = ("done", "failed", "cancelled")
@@ -43,7 +46,8 @@ def close_dispatch_pane(instruction_path: str) -> dict[str, str | None]:
         undispatched_hint="nothing was launched for it, so there is no pane to close",
     )
 
-    validate_current_sender(resolve_endpoint(instruction, "main"))
+    coordinator = resolve_coordinator_endpoint(instruction)
+    validate_current_sender(coordinator)
 
     closed_at = instruction.get("herdr_pane_closed_at")
     if closed_at:
@@ -67,9 +71,7 @@ def close_dispatch_pane(instruction_path: str) -> dict[str, str | None]:
         )
 
     pane_id = str(instruction["herdr_pane_id"])
-    balance_warning = close_worker_pane(
-        pane_id, instruction.get("main_agent_herdr_pane_id")
-    )
+    balance_warning = close_worker_pane(pane_id, coordinator.pane_id)
     # Wrap-up and roll-call read this to stop naming the close as a step still
     # to run; herdr may later hand the same pane id to an unrelated agent.
     closed = load_json(inst_path)

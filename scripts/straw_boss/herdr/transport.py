@@ -13,6 +13,7 @@ from straw_boss.herdr.session import (
     Endpoint,
     HerdrCommandError,
     Target,
+    resolve_coordinator_endpoint,
     resolve_endpoint,
     run_herdr,
     run_herdr_raw,

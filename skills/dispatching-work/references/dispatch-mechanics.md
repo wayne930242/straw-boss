@@ -172,3 +172,4 @@ A failed rebalance returns `balance_warning` on an otherwise successful close.
 
 Use [bringing-coworker](../../bringing-coworker/SKILL.md) for an interactive worker's second opinion or disjoint support.
 Its facade owns parent identity, placement, and delivery.
+Once the parent's pane is confirmed closed, the coworker's recorded root main agent takes over its `cancelled` report, closed-pane recovery, and pane close.

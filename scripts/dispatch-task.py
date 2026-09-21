@@ -41,6 +41,7 @@ from straw_boss.dispatch.state import (
     install_runtime_launcher,
     launch_receipt_path,
     load_json,
+    open_coworker_instructions,
     render_dispatch_contract,
     sha256_text,
     straw_boss_root,
@@ -171,17 +172,11 @@ def resolve_coworker_context(
         raise ValueError("a coworker must use the parent worker's exact repo_root")
 
     validate_current_sender(resolve_endpoint(parent, "worker"))
-    for path in (straw_boss_root() / "dispatch").glob("*.json"):
-        if path.resolve() == parent_path:
-            continue
-        try:
-            candidate = load_json(path)
-        except (OSError, json.JSONDecodeError):
-            continue
-        if candidate.get("parent_instruction_path") == str(parent_path):
-            raise ValueError(
-                f"parent worker already has coworker instruction {path}; wrap it up first"
-            )
+    open_coworkers = open_coworker_instructions(parent_path)
+    if open_coworkers:
+        raise ValueError(
+            f"parent worker already has coworker instruction {open_coworkers[0]}; wrap it up first"
+        )
 
     resolve_endpoint(parent, "main")
     return {

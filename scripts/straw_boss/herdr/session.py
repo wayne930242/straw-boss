@@ -313,6 +313,29 @@ def worker_endpoint_confirmed_closed(endpoint: Endpoint) -> bool:
     return not _claude_registry_corroborates(endpoint)
 
 
+def resolve_coordinator_endpoint(instruction: dict[str, Any]) -> Endpoint:
+    """The main-agent endpoint entitled to cancel, recover, or close this dispatch.
+
+    A coworker's coordinator is its parent worker. Once that parent's pane is
+    confirmed closed, the coworker's recorded root main agent inherits the
+    role, so an orphaned coworker still has a sender-checked cleanup path.
+    """
+    main = resolve_endpoint(instruction, "main")
+    current_pane = os.environ.get("HERDR_PANE_ID")
+    if (
+        not instruction.get("parent_instruction_path")
+        or current_pane == main.pane_id
+        or current_pane != instruction.get("root_main_agent_herdr_pane_id")
+    ):
+        return main
+    if not worker_endpoint_confirmed_closed(main):
+        raise ValueError(
+            f"coworker's parent worker {main.pane_id!r} is still live and owns its "
+            "cleanup; ask the parent to wrap up its coworker"
+        )
+    return resolve_endpoint(instruction, "root-main")
+
+
 def validate_current_sender(endpoint: Endpoint) -> None:
     current_pane = os.environ.get("HERDR_PANE_ID")
     if current_pane != endpoint.pane_id:
@@ -383,5 +406,9 @@ def validate_status_sender(instruction_path: str | Path, status: str) -> None:
     instruction = load_json(path)
     if instruction.get("mode") != "herdr-pane":
         return
-    source = resolve_endpoint(instruction, "main" if status == "cancelled" else "worker")
+    source = (
+        resolve_coordinator_endpoint(instruction)
+        if status == "cancelled"
+        else resolve_endpoint(instruction, "worker")
+    )
     validate_current_sender(source)

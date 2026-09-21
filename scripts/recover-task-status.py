@@ -44,6 +44,7 @@ from straw_boss.dispatch.state import (
     resolve_instruction_status_path,
 )
 from straw_boss.herdr.transport import (
+    resolve_coordinator_endpoint,
     resolve_endpoint,
     validate_current_sender,
     worker_endpoint_confirmed_closed,
@@ -74,7 +75,7 @@ def recover_task_status(
         undispatched_hint="it was never dispatched, so there is nothing to recover",
     )
 
-    validate_current_sender(resolve_endpoint(instruction, "main"))
+    validate_current_sender(resolve_coordinator_endpoint(instruction))
 
     worker_endpoint = resolve_endpoint(instruction, "worker")
     if not worker_endpoint_confirmed_closed(worker_endpoint):
