@@ -86,6 +86,8 @@ A different task receives a fresh dispatch.
 
 For Claude, compact first:
 
+This same-task continuation command runs only from a terminal status. While a dispatch is `awaiting-user-input` or `awaiting-authorization`, every worker-targeted intent, including `control` and `redirect`, is deliberately refused; the user acts in the worker's pane, or the coordinator ends the task with `close-worker-pane.py`.
+
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
   --instruction-path <path> --to worker --intent control \
