@@ -13,10 +13,6 @@ For `boss say <skill> <work>`, invoke the matching skill with the work.
 Ask only when the name is ambiguous.
 A status query or single-dispatch close-out goes directly to [dispatching-work](../dispatching-work/SKILL.md#list-outstanding-dispatches).
 
-Keep diagnosis and repair in the same worker.
-Split an integration preflight only when the failure crosses an integration boundary and its explanation is needed to shape or schedule later dispatches.
-Carry eliminated hypotheses and their evidence; use `choosing-graph` for the explanation's review or the fix's testing checkpoint.
-
 ## Receive an orchestrator handoff
 
 Read the offered `Orchestrator handoff file` and route its transferred scope above.
@@ -36,7 +32,7 @@ Acceptance moves the handoff's listed dispatches to this pane; coordinate its `t
 
 This skill owns task decomposition, dependency edges, and scheduling.
 Reuse the user's specified tasks and decisions; ask only about an unresolved scope or dependency choice.
-Each task has one outcome and resolved app.
+A task is the largest item one worker can own end to end in one resolved app.
 A dependency carries the prerequisite's exact artifact path in both briefs when output is required.
 
 For multiple app-rooted workers, write `~/.straw-boss/plans/<slug>/plan.json` using [Plan file](../dispatching-work/references/plan-mechanics.md#plan-file), and create its `status/` and `artifacts/` directories.

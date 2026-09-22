@@ -413,7 +413,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         section = graph.partition("## Coordination graphs")[2].partition("## Reality anchors")[0]
         self.assertIn("first matching case", section)
         self.assertEqual(re.findall(r"^- \*\*([^*]+)\*\*", section, re.M),
-                         ["orchestrator-worker", "sub-agent fan-out/fan-in", "single-loop"])
+                         ["single-loop", "sub-agent fan-out/fan-in", "orchestrator-worker"])
         self.assertIn("independent review is a checkpoint", section)
         self.assertIn("Only `orchestrator-worker` writes", section)
         anchors = graph.partition("## Reality anchors")[2].partition("## Review checkpoint")[0]
@@ -528,12 +528,6 @@ class SkillInstructionQualityTests(unittest.TestCase):
         handoff = normalized(ROOT / "skills/handoff-orchestrator/SKILL.md")
         self.assertIn("A new tab is created only after the user approves", handoff)
         self.assertIn("ownership remains here", handoff)
-
-    def test_preflight_requires_both_integration_and_scheduling_need(self) -> None:
-        source = normalized(ROOT / "skills/boss-say/SKILL.md")
-        self.assertIn("Keep diagnosis and repair in the same worker", source)
-        self.assertIn("only when the failure crosses an integration boundary and its explanation is needed to shape or schedule later dispatches", source)
-        self.assertIn("choosing-graph for the explanation's review or the fix's testing checkpoint", source)
 
     def test_boss_assistant_hands_source_repair_to_development_owner(self) -> None:
         source = normalized(ROOT / "skills/boss-assistant/SKILL.md")

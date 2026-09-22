@@ -7,9 +7,9 @@ description: Use at the start of Straw Boss work, and when its coordination shap
 
 State the graph before work starts, using the first matching case:
 
-- **orchestrator-worker** — multiple app-rooted workers coordinated through status events, including capped batches and dependency plans.
-- **sub-agent fan-out/fan-in** — independent work branches run in subagents and their caller integrates the results. Work needing the target app's own harness uses an app-rooted dispatch.
 - **single-loop** — one bounded task carried by one agent, including coordination of one dispatch.
+- **sub-agent fan-out/fan-in** — independent work branches run in subagents and their caller integrates the results. Work needing the target app's own harness uses an app-rooted dispatch.
+- **orchestrator-worker** — multiple app-rooted workers coordinated through status events, including capped batches and dependency plans.
 
 An independent review is a checkpoint, so it does not change the graph.
 

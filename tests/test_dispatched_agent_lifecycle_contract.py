@@ -567,7 +567,6 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("when app ownership, interaction, or continuity warrants one", boss)
         self.assertIn("this skill only resolves targets", work_on)
         self.assertIn("../choosing-graph/SKILL.md", boss)
-        self.assertIn("Keep diagnosis and repair in the same worker", boss)
 
     def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:
         for path in ("CONTEXT.md", "skills/i-am-orchestrator/SKILL.md", "scripts/straw_boss/dispatch/state.py"):
