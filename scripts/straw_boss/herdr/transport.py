@@ -23,6 +23,7 @@ from straw_boss.herdr.session import (
     worker_endpoint_confirmed_closed,
 )
 from straw_boss.dispatch.messages import (
+    DIRECTIVE_WORKER_INTENTS,
     MAIN_TO_WORKER_INTENTS,
     PEER_INTENTS,
     WORKER_TO_MAIN_INTENTS,
@@ -193,7 +194,14 @@ class EndpointUnavailableError(ValueError):
 def validate_checkpoint_channel(
     path: Path, instruction: dict[str, Any], target: Target, intent: str,
 ) -> None:
-    """Keep user-owned checkpoints on the user-facing conversation channel."""
+    """Keep user-owned checkpoints on the user-facing conversation channel.
+
+    The user owns the checkpoint's authority, not its information. An `inform`
+    deposits context without competing for the decision the worker is waiting
+    on, so it stays open; only the intents that direct the worker are refused.
+    The status is still read for every worker-targeted send, so a malformed
+    status file surfaces on the quiet intents too.
+    """
     if target != "worker" and (target != "main" or intent != "question"):
         return
     status_path = resolve_instruction_status_path(path, instruction)
@@ -213,10 +221,14 @@ def validate_checkpoint_channel(
                 "actionable note, then send the question so its reply can resolve "
                 "the correct checkpoint"
             )
+        if intent not in DIRECTIVE_WORKER_INTENTS:
+            return
         raise ValueError(
-            f"worker delivery refused: dispatch status is {status['status']!r}; "
-            "present the information and references directly to the user in your "
-            "user-facing conversation, and retain the dispatch until its next status event"
+            f"worker delivery refused: dispatch status is {status['status']!r} and "
+            f"{intent!r} directs the worker while the user owns the checkpoint; "
+            "send the same content with --intent inform, or present it to the user "
+            "in your user-facing conversation, and retain the dispatch until its "
+            "next status event"
         )
 
 

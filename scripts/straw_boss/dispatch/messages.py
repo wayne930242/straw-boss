@@ -17,6 +17,8 @@ MAIN_TO_WORKER_INTENTS = frozenset(
     {"inform", "redirect", "reply", "reply-retry", "control"}
 )
 PEER_INTENTS = frozenset({"question", "answer"})
+# Intents that direct the worker, as opposed to depositing information for it.
+DIRECTIVE_WORKER_INTENTS = frozenset({"redirect", "control"})
 SENTENCE_END_RE = re.compile(r"[.!?。！？]+(?=\s|$)")
 
 

@@ -58,7 +58,7 @@ Between events, continue other coordination or the user's conversation.
 | Event | Main-agent action |
 |---|---|
 | `awaiting-main-agent` | Supply verified cross-task context or a coordinator-owned action result through `reply-to-worker.py --worker-instruction-path <path> --reply <answer>`. Route a work decision to the user. |
-| `awaiting-user-input` / `awaiting-authorization` | Point the user to the worker pane; present useful coordination facts and references directly to the user in your own conversation. Every worker-targeted intent, including `control` and `redirect`, is deliberately refused in these states; the user acts in the worker's pane, or the coordinator ends the task with `close-worker-pane.py`; retain the task and its slot until its next status event. |
+| `awaiting-user-input` / `awaiting-authorization` | Point the user to the worker pane; present useful coordination facts and references directly to the user in your own conversation. `control` and `redirect` are deliberately refused in these states, because they direct the worker while the user owns the decision; `--intent inform` stays open for verified findings the worker will need. The user acts in the worker's pane, or the coordinator ends the task with `close-worker-pane.py`; retain the task and its slot until its next status event. |
 | `done` / `failed` / `cancelled` | Check [same-task continuation](references/plan-mechanics.md#same-task-continuation), then wrap up when the logical task has ended. Return the result to the scheduler. |
 | Feature-branch push FYI | Relay the update; slot accounting and task status stay as recorded. |
 

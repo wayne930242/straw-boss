@@ -12,28 +12,20 @@ from tests.dispatched_agent_lifecycle_support import DispatchedAgentLifecycleFix
 
 
 class UserOwnedDispatchChannelTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
-    def test_user_checkpoint_refuses_every_worker_intent_before_transport(self):
+    def test_user_checkpoint_refuses_directing_intents_before_transport(self):
         for kind in ('claude', 'codex'):
             for status in ('awaiting-user-input', 'awaiting-authorization'):
-                for intent in ('inform', 'redirect', 'reply', 'control', 'question', 'answer'):
+                for intent in ('redirect', 'control'):
                     with self.subTest(kind=kind, status=status, intent=intent):
                         path, _ = self.write_dispatch(kind, slug=f"{kind}-{status}-{intent}")
                         self.set_worker_endpoint(path)
                         path.with_suffix('.status.json').write_text(json.dumps({'status': status}))
                         fake_bin, capture = self.install_fake_herdr()
                         capture.unlink(missing_ok=True)
-                        extra_args = []
-                        if intent in ('question', 'answer'):
-                            sender, _ = self.write_dispatch(kind, slug=f'peer-{kind}-{status}-{intent}')
-                            self.set_worker_endpoint(sender)
-                            extra_args = ['--sender-instruction-path', str(sender)]
-                            if intent == 'answer':
-                                extra_args += ['--in-reply-to', 'question-id']
                         result = self.run_script(
                             'send-dispatch-message.py', '--instruction-path', str(path),
                             '--to', 'worker', '--intent', intent,
                             '--message', '/compact' if intent == 'control' else 'A verified fact.',
-                            *extra_args,
                             extra_env={
                                 'PATH': f'{fake_bin}{os.pathsep}{os.environ.get("PATH", "")}',
                                 'HERDR_CAPTURE': str(capture), 'HERDR_PANE_ID': 'main-pane',
@@ -41,9 +33,66 @@ class UserOwnedDispatchChannelTests(DispatchedAgentLifecycleFixture, unittest.Te
                         )
                         self.assertNotEqual(result.returncode, 0)
                         self.assertIn(status, result.stderr)
-                        self.assertIn('directly to the user', result.stderr)
+                        self.assertIn('directs the worker', result.stderr)
+                        self.assertIn('--intent inform', result.stderr)
                         self.assertFalse(capture.exists())
                         self.assertFalse(path.with_suffix('.messages.jsonl').exists())
+
+    def test_user_checkpoint_keeps_inform_open_for_the_coordinator(self):
+        """The user owns the checkpoint's decision, not its information."""
+        for kind in ('claude', 'codex'):
+            for status in ('awaiting-user-input', 'awaiting-authorization'):
+                with self.subTest(kind=kind, status=status):
+                    path, _ = self.write_dispatch(kind, slug=f"open-{kind}-{status}")
+                    self.set_worker_endpoint(path)
+                    path.with_suffix('.status.json').write_text(json.dumps({'status': status}))
+                    fake_bin, capture = self.install_fake_herdr()
+                    capture.unlink(missing_ok=True)
+                    result = self.run_script(
+                        'send-dispatch-message.py', '--instruction-path', str(path),
+                        '--to', 'worker', '--intent', 'inform',
+                        '--message', 'A verified finding the worker needs.',
+                        extra_env={
+                            'PATH': f'{fake_bin}{os.pathsep}{os.environ.get("PATH", "")}',
+                            'HERDR_CAPTURE': str(capture), 'HERDR_PANE_ID': 'main-pane',
+                            'HERDR_SESSIONS': json.dumps(
+                                {'worker-pane': 'worker-session', 'main-pane': 'main-session'}),
+                            'HERDR_AGENT_KIND': kind, 'HERDR_PROMPT_ACCEPTED': '1',
+                        },
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertTrue(capture.exists())
+                    self.assertTrue(path.with_suffix('.messages.jsonl').exists())
+                    # Informing leaves the user's checkpoint exactly where it was.
+                    saved = json.loads(path.with_suffix('.status.json').read_text())
+                    self.assertEqual(saved, {'status': status})
+
+    def test_user_checkpoint_does_not_strand_replies_or_peer_traffic(self):
+        for intent in ('reply', 'question', 'answer'):
+            with self.subTest(intent=intent):
+                path, _ = self.write_dispatch('claude', slug=f'quiet-{intent}')
+                self.set_worker_endpoint(path)
+                path.with_suffix('.status.json').write_text(
+                    json.dumps({'status': 'awaiting-user-input'}))
+                fake_bin, capture = self.install_fake_herdr()
+                capture.unlink(missing_ok=True)
+                extra_args = []
+                if intent in ('question', 'answer'):
+                    sender, _ = self.write_dispatch('claude', slug=f'peer-quiet-{intent}')
+                    self.set_worker_endpoint(sender)
+                    extra_args = ['--sender-instruction-path', str(sender)]
+                    if intent == 'answer':
+                        extra_args += ['--in-reply-to', 'question-id']
+                result = self.run_script(
+                    'send-dispatch-message.py', '--instruction-path', str(path),
+                    '--to', 'worker', '--intent', intent, '--message', 'A verified fact.',
+                    *extra_args,
+                    extra_env={
+                        'PATH': f'{fake_bin}{os.pathsep}{os.environ.get("PATH", "")}',
+                        'HERDR_CAPTURE': str(capture), 'HERDR_PANE_ID': 'main-pane',
+                    },
+                )
+                self.assertNotIn('directs the worker', result.stderr)
 
     def test_plan_status_wins_over_standalone_status_and_newer_progress(self):
         path, _ = self.write_dispatch('claude')
@@ -57,11 +106,11 @@ class UserOwnedDispatchChannelTests(DispatchedAgentLifecycleFixture, unittest.Te
         path.with_suffix('.progress.jsonl').write_text('{"note":"newer progress"}\n')
         result = self.run_script(
             'send-dispatch-message.py', '--instruction-path', str(path),
-            '--to', 'worker', '--intent', 'inform', '--message', 'A fact.',
+            '--to', 'worker', '--intent', 'redirect', '--message', 'A fact.',
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('awaiting-user-input', result.stderr)
-        self.assertIn('directly to the user', result.stderr)
+        self.assertIn('directs the worker', result.stderr)
 
     def test_malformed_status_reports_failure_before_transport(self):
         for index, raw in enumerate(('broken json', '[]', 'null')):
