@@ -511,9 +511,15 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
 
     def test_task_authoring_leaves_work_definition_to_worker_and_user(self) -> None:
         source = (ROOT / "skills/dispatching-work/SKILL.md").read_text()
-        for requirement in ("user requirement", "requested outcome", "verified coordination facts",
-                            "Target-app context discovery", "verification method inside that anchor"):
-            self.assertIn(requirement, source)
+        brief = source.partition("## Write the brief")[2].partition("\n## ")[0]
+        for requirement in ("user requirement", "requested outcome", "who exercises it",
+                            "place and motive", "Target-app context discovery",
+                            "verification method inside that anchor"):
+            self.assertIn(requirement, brief)
+        # A brief the worker cannot read in one pass is what an open-ended
+        # "carry the available facts" line produced; the count is the rule.
+        carried = [line for line in brief.splitlines() if line.startswith("- **")]
+        self.assertEqual(len(carried), 3, carried)
         self.assertIn("generated contract supplies lifecycle", source)
         shipping = (ROOT / "skills/shipping-task/SKILL.md").read_text()
         self.assertIn("../dispatching-work/SKILL.md", shipping)

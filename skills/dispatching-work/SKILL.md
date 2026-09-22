@@ -18,17 +18,19 @@ Team-mode cwd preparation belongs to [shipping-task](../shipping-task/SKILL.md#p
 
 ## Write the brief
 
-Carry the user requirement, requested outcome, dependencies, and verified coordination facts already available.
-Target-app context discovery and work decisions stay with the worker in its own harness, so the brief carries only what the worker cannot reach from there.
+A brief carries three things:
+
+- **The work** -- the user requirement and requested outcome, plus any input, artifact path, or assigned port the worker cannot reach from its own harness.
+- **The anchor and who exercises it** -- this task's anchor, and whether the worker runs its own checkpoint or hands its completion reference and evidence to the group's shared one. The worker and user choose the verification method inside that anchor.
+- **Its place and motive** -- where this task sits in the coordination and the user's original reason for it.
+
+Target-app context discovery and work decisions stay with the worker in its own harness, so repo conventions, implementation direction, and anything else readable from that checkout stay out.
+Name a method skill only when the user explicitly requested it; the app chooses its own methods otherwise.
 Investigation and audit briefs request an explanatory result with evidence references.
 
 Apply [choosing-graph](../choosing-graph/SKILL.md) if the graph and anchor are unset.
-Add the chosen anchor, checkpoint, and any assigned frontend port.
-The worker and user choose the verification method inside that anchor.
-Name a method skill only when the user explicitly requested it; the app chooses its own methods otherwise.
-
 A task whose checkpoint is shared passes `--shared-checkpoint` to the write command below, so its brief and contract ask for implementation, its own working verification, and the reference and evidence that checkpoint reads.
-A [checkpoint task](../choosing-graph/SKILL.md#review-checkpoint) gets a review-only brief carrying every covered task's requirement, completion reference, and evidence references.
+A [checkpoint task](../choosing-graph/SKILL.md#review-checkpoint) gets a review-only brief whose work is every covered task's requirement, completion reference, and evidence references.
 
 The generated contract supplies lifecycle, progress, message, checkpoint, and review-disposition mechanics.
 
