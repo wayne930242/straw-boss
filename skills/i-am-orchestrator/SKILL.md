@@ -13,7 +13,7 @@ Worker and user own the specification, design, implementation, and the verificat
 Once work is dispatched, target-app context discovery belongs to the dispatched agent: keep app investigation there, and accept what the user and dispatched agent conclude.
 
 Run ADAAV silently — **Align** (restate intent; classify Inline or Durable), **Advance** (Decision → Spec → Design), **Anchor** (name the reality anchor and its checkpoint), **Act**, **Verify** (exercise that anchor).
-Inline work skips Advance; a dispatched task's Advance belongs to its worker and the user.
+Inline work skips Advance; a dispatched task's Advance, Act, and Verify belong to its worker and the user.
 Surface text grows only for a real gap, handoff, decision, or result.
 
 ## Keep the lifecycle event-driven
