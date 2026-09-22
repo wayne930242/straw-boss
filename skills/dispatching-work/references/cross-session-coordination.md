@@ -89,6 +89,26 @@ A registry that still reports the recorded session in the recorded pane means no
 A move needs Herdr's answer about the recorded pane; a timeout or unreadable reply refuses the move instead of counting as the pane being gone.
 `roll-call.py` names the dispatches in either state; the worker then reports to the adopting pane through the normal instruction-keyed channel.
 
+## Adopt a dispatch whose worker restarted in its own pane
+
+The mirror image of the case above, and the one `adopt-dispatch.py` deliberately leaves alone.
+A worker that restarts keeps its pane and tab and takes a new terminal and a new conversation, so every worker-targeted send refuses on a terminal or session mismatch.
+For a Codex or Antigravity worker dispatched before its conversation id was recorded the terminal is the whole identity, so the refusal is total and the coordinator has no channel left for findings the worker needs.
+`rebind-dispatch.py` does not cover it: that command needs a Codex main agent and re-points at launch-era sessions rather than at whatever now runs.
+From its own pane, the coordinator records what herdr reports:
+
+```bash
+uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/adopt-worker-endpoint.py" \
+  --instruction-path <instruction> --worker-session-id <the pane's live conversation id>
+```
+
+It keeps the contract, task, main endpoint, and status, and appends the exchange to `worker_endpoint_adoptions`.
+The caller must be the live coordinator in the recorded main pane, and the recorded pane, tab, agent kind and working directory must still match what herdr reports; a tab or directory herdr does not report is not counted as a mismatch.
+The supplied conversation id must be the one herdr places in that pane, so an id the pane cannot corroborate is refused.
+A conversation id already on record is identity rather than routing: equal means nothing was replaced and the refusal being chased has another cause, and different means a different agent took the pane, which is refused rather than re-pointed.
+Recording the live conversation id also ends the dispatch's dependence on a terminal that any restart replaces.
+`roll-call.py` reports such a dispatch as orphaned while the pane still shows a live agent.
+
 ## Take over another coordinator's dispatch at the user's request
 
 The user decides a takeover; a main agent runs one only when the user asks it to take over dispatches another main agent coordinates.

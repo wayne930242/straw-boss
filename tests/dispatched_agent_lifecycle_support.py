@@ -192,6 +192,11 @@ class DispatchedAgentLifecycleFixture:
             "    statuses = json.loads(os.environ.get('HERDR_AGENT_STATUSES', '{}'))\n"
             "    agent_status = statuses.get(target, 'blocked' if blocked else 'idle')\n"
             "    agent = {'name': 'worker', 'agent': agent_kinds.get(target, os.environ.get('HERDR_AGENT_KIND', started_kind)), 'agent_status': agent_status, 'pane_id': target, 'terminal_id': terminal_ids.get(target, os.environ.get('HERDR_TERMINAL_ID', f'terminal-{target}'))}\n"
+            # Real herdr reports these; default them empty so only tests that
+            # set them exercise the checks that read them.
+            "    for extra, variable in (('tab_id', 'HERDR_AGENT_TAB_ID'), ('cwd', 'HERDR_AGENT_CWD')):\n"
+            "        if os.environ.get(variable):\n"
+            "            agent[extra] = os.environ[variable]\n"
             "    if target in json.loads(os.environ.get('HERDR_UNNAMED_PANES', '[]')):\n"
             "        del agent['name']\n"
             "    if os.environ.get('HERDR_OMIT_AGENT_SESSION') != '1' and not blocked and (not prompt_positions or get_after_prompt > delay):\n"
