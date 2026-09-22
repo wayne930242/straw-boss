@@ -8,7 +8,7 @@ from pathlib import Path
 from time import sleep
 from typing import Any
 
-from straw_boss.dispatch.state import load_json
+from straw_boss.dispatch.state import load_json, resolve_instruction_status_path
 from straw_boss.herdr.session import (
     Endpoint,
     HerdrCommandError,
@@ -190,6 +190,36 @@ class EndpointUnavailableError(ValueError):
     """
 
 
+def validate_checkpoint_channel(
+    path: Path, instruction: dict[str, Any], target: Target, intent: str,
+) -> None:
+    """Keep user-owned checkpoints on the user-facing conversation channel."""
+    if target != "worker" and (target != "main" or intent != "question"):
+        return
+    status_path = resolve_instruction_status_path(path, instruction)
+    try:
+        status = load_json(status_path)
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"cannot read dispatch status at {status_path}: {exc}") from exc
+    if not isinstance(status, dict):
+        raise ValueError(f"cannot read dispatch status at {status_path}: expected an object")
+    if status.get("status") in {"awaiting-user-input", "awaiting-authorization"}:
+        if target == "main":
+            raise ValueError(
+                f"dispatch status is {status['status']!r}; before asking the main agent, "
+                "run report-task-status.py with --status awaiting-main-agent and an "
+                "actionable note, then send the question so its reply can resolve "
+                "the correct checkpoint"
+            )
+        raise ValueError(
+            f"worker delivery refused: dispatch status is {status['status']!r}; "
+            "present the information and references directly to the user in your "
+            "user-facing conversation, and retain the dispatch until its next status event"
+        )
+
+
 def send_instruction_message(
     instruction_path: str | Path,
     target: Target,
@@ -206,6 +236,7 @@ def send_instruction_message(
     if not path.is_file():
         raise ValueError(f"no instruction file at {path}")
     instruction = load_json(path)
+    validate_checkpoint_channel(path, instruction, target, intent)
     normalized_references = normalize_references(references)
     if intent == "control":
         if normalized_references:

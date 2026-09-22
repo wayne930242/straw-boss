@@ -102,9 +102,10 @@ def stale_status_hint(instruction_path: Path, status_path: Path) -> str:
     gap = int(progress_mtime - status_mtime)
     return (
         f". Note: {progress_path.name} is {gap}s newer than the status file, so the "
-        f"worker most likely resumed without writing a transition -- a user answering "
-        f"in its pane does that. Read the progress trail for its real state, and use "
-        f"send-dispatch-message.py --to worker --intent inform to reach it."
+        f"worker may have resumed without writing a transition. Read the progress "
+        f"trail for context; while status is awaiting-user-input or "
+        f"awaiting-authorization, present information and references directly to "
+        f"the user in your user-facing conversation and await the next status event."
     )
 
 def main() -> int:
