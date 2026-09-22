@@ -15,8 +15,7 @@ Put detailed context or evidence in repeatable `--ref`; transport adds identity,
 ## Ask the main agent
 
 From `awaiting-user-input` or `awaiting-authorization`, report `awaiting-main-agent`
-with the coordinator action or fact you need before sending a question. The transport
-enforces this order; progress notes alone preserve the user-owned checkpoint.
+with the needed action or fact before asking; transport enforces this order, while progress notes preserve the checkpoint.
 
 ```bash
 uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/send-dispatch-message.py" \
