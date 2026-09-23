@@ -528,8 +528,9 @@ def wrapped_up_open_panes(live: LiveAgents) -> list[dict[str, Any]]:
         if not pane_id or str(pane_id) not in live.panes:
             continue
         if instruction.get("herdr_pane_closed_at"):
-            # close-worker-pane.py already closed it; an open pane under this
-            # id belongs to whoever herdr handed the id to next.
+            # close-worker-pane.py already closed it, or recover-task-status.py
+            # already confirmed it closed; an open pane under this id belongs
+            # to whoever herdr handed the id to next.
             continue
         occupant = live.by_pane.get(str(pane_id))
         if occupant is not None and not agent_matches_identity(

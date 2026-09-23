@@ -84,6 +84,12 @@ def recover_task_status(
             "and let it report its own terminal status instead of recovering on its behalf"
         )
 
+    # Wrap-up and roll-call read this the same way close-worker-pane.py's own
+    # write does, to stop naming a close step for a pane already proven gone.
+    if not instruction.get("herdr_pane_closed_at"):
+        instruction["herdr_pane_closed_at"] = datetime.now(timezone.utc).isoformat()
+        dump_json(inst_path, instruction)
+
     status_path = resolve_instruction_status_path(inst_path, instruction)
     if status_path.is_file():
         existing_status = load_json(status_path).get("status")

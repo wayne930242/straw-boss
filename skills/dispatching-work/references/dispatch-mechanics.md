@@ -153,6 +153,7 @@ uv run --script "${CLAUDE_PLUGIN_ROOT}/scripts/recover-task-status.py" \
 ```
 
 The command validates the live main agent, confirms the worker pane is unreachable, and records `recovered_by_main_agent`.
+It also records `herdr_pane_closed_at` on the instruction, the same field `close-worker-pane.py` sets, so wrap-up and roll-call stop naming a close step for a pane already confirmed gone.
 It refuses a reachable worker or an existing terminal status.
 Determine the outcome from work evidence; pane closure alone establishes only reachability.
 

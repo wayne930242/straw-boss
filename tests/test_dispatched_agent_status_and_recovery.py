@@ -1219,6 +1219,11 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         archive = self.home / ".straw-boss" / "dispatch" / "archive"
         self.assertTrue((archive / f"{stem}.status.json").is_file())
 
+        # The worker pane was already confirmed unreachable above -- wrap-up
+        # must not hand back a close command for a pane already proven gone.
+        remaining_steps = json.loads(wrap.stdout)["remaining_steps"]
+        self.assertFalse(any("close-worker-pane.py" in step for step in remaining_steps))
+
     def test_recover_task_status_refuses_when_worker_pane_still_live(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         self.set_worker_endpoint(instruction_path)
