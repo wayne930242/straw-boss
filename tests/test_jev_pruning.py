@@ -97,6 +97,55 @@ class JevPruningTests(unittest.TestCase):
         self.assertEqual(record["gate_reduction_pct"], 2)
         self.assertIsNone(record["measurement"]["actual_session_tokens_after"])
 
+    def test_native_messages_merge_split_turns_so_tool_results_follow_their_calls(self):
+        history = [{"role": "assistant", "text": "Reading", "toolUses": []},
+                   {"role": "assistant", "text": "", "toolUses": [
+                       {"tool_use_id": "a", "tool": "Read", "input": {"file_path": "x"}}]},
+                   {"role": "assistant", "text": "", "toolUses": [
+                       {"tool_use_id": "b", "tool": "Read", "input": {"file_path": "y"}}]},
+                   {"role": "user", "text": "", "toolResults": [{"tool_use_id": "a", "text": "x"}]},
+                   {"role": "user", "text": "yTool loaded.",
+                    "toolResults": [{"tool_use_id": "b", "text": "y"}]}]
+        blocks = jev_measurement.native_messages(history)
+        self.assertEqual([m["role"] for m in blocks], ["assistant", "user"])
+        self.assertEqual([b.get("id") for b in blocks[0]["content"]], [None, "a", "b"])
+        self.assertEqual([b.get("tool_use_id") for b in blocks[1]["content"]], ["a", "b", None])
+
+    def test_native_messages_return_streamed_results_to_the_turn_after_their_call(self):
+        def use(name):
+            return {"role": "assistant", "text": "", "toolUses": [
+                {"tool_use_id": name, "tool": "Read", "input": {}}]}
+
+        def result(name):
+            return {"role": "user", "text": "", "toolResults": [{"tool_use_id": name, "text": name}]}
+
+        blocks = jev_measurement.native_messages(
+            [use("a"), use("b"), result("a"), use("c"), result("b"), result("c")])
+        self.assertEqual([[b.get("id") or b.get("tool_use_id") for b in m["content"]] for m in blocks],
+                         [["a", "b"], ["a", "b"], ["c"], ["c"]])
+
+    def test_count_tokens_sends_the_base_model_id_for_1m_context_sessions(self):
+        sent = {}
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"input_tokens": 7}'
+
+        def urlopen(request, timeout):
+            sent.update(json.loads(request.data))
+            return Response()
+
+        history = [{"role": "user", "text": "hi"}]
+        with patch.object(jev_measurement.urllib.request, "urlopen", urlopen):
+            self.assertEqual(jev_measurement.count_tokens("claude-opus-5-5[1m]", history, {}), 7)
+        self.assertEqual(sent["model"], "claude-opus-5-5")
+
     def test_recovery_keeps_exact_originals_and_pair_byte_accounting(self):
         call = {"tool_use_id": "a", "tool": "Bash", "input": {"command": "once"}}
         result = {"tool_use_id": "a", "text": "one-shot output 原文"}

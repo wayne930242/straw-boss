@@ -13,7 +13,12 @@ from pathlib import Path
 
 
 def native_messages(messages: list[dict]) -> list[dict]:
-    result = []
+    # Claude Code stores one turn as several same-role entries, and streamed
+    # tool execution can record a result between calls of one turn. Rebuild
+    # API turns: merge same-role runs, then place each result in the user
+    # message right after the call's turn, ahead of that message's text.
+    turns: list[dict] = []
+    results: list[dict] = []
     for message in messages:
         blocks = []
         if message.get("text"):
@@ -21,11 +26,23 @@ def native_messages(messages: list[dict]) -> list[dict]:
         for tool in message.get("toolUses", []):
             blocks.append({"type": "tool_use", "id": tool["tool_use_id"],
                            "name": tool["tool"], "input": tool["input"]})
-        for tool in message.get("toolResults", []):
-            blocks.append({"type": "tool_result", "tool_use_id": tool["tool_use_id"],
-                           "content": tool["text"], "is_error": bool(tool.get("isError"))})
-        if blocks:
-            result.append({"role": message["role"], "content": blocks})
+        results += [{"type": "tool_result", "tool_use_id": tool["tool_use_id"],
+                     "content": tool["text"], "is_error": bool(tool.get("isError"))}
+                    for tool in message.get("toolResults", [])]
+        if not blocks and not message.get("toolResults"):
+            continue
+        if not turns or turns[-1]["role"] != message["role"]:
+            turns.append({"role": message["role"], "content": [], "results": []})
+        turns[-1]["content"] += blocks
+    owner = {block["id"]: index for index, turn in enumerate(turns)
+             for block in turn["content"] if block["type"] == "tool_use"}
+    for block in results:
+        if block["tool_use_id"] not in owner:
+            raise ValueError("orphan-tool-result")
+        turns[owner[block["tool_use_id"]] + 1]["results"].append(block)
+    result = [{"role": turn["role"], "content": turn.pop("results") + turn["content"]}
+              for turn in turns]
+    result = [turn for turn in result if turn["content"]]
     if not result:
         raise ValueError("empty-countable-history")
     return result
@@ -65,7 +82,7 @@ def credential_headers() -> dict[str, str]:
 def count_tokens(model: str, messages: list[dict], headers: dict) -> int:
     request = urllib.request.Request(
         "https://api.anthropic.com/v1/messages/count_tokens",
-        data=json.dumps({"model": model, "messages": native_messages(messages)}).encode(),
+        data=json.dumps({"model": model.removesuffix("[1m]"), "messages": native_messages(messages)}).encode(),
         headers=headers,
     )
     try:
