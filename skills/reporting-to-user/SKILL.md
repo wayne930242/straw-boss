@@ -29,8 +29,9 @@ A mixed result reports each part: what landed, what stalled, and what was left o
 
 ## Resolve Next
 
-Ask the user whether to dispatch each Next item, using the harness-native ask-question interface.
-Present one item at a time in Next order, wait for each answer, and collect the answers until every item has one.
+Gather every open Next item -- this round's and any still undecided from an earlier round -- and ask about all of them together in one call to the harness-native ask-question interface, each with its context, its options, and a recommendation.
+A harness without a multi-question interface gets one compact message listing every item together instead; no item is presented alone or left as trailing prose.
+State explicitly when no Next item is open.
 A declined item is recorded with the user's decision and closed.
 
 ## Open the next round

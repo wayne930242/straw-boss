@@ -551,10 +551,15 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("Alert-derived items first, then Warn-derived", source)
         self.assertIn("harness-native ask-question interface", source)
         self.assertIn(
-            "Present one item at a time in Next order, wait for each answer, "
-            "and collect the answers until every item has one",
+            "Gather every open Next item -- this round's and any still undecided "
+            "from an earlier round -- and ask about all of them together in one "
+            "call to the harness-native ask-question interface",
             source,
         )
+        self.assertIn(
+            "no item is presented alone or left as trailing prose", source
+        )
+        self.assertIn("State explicitly when no Next item is open", source)
         self.assertIn("A declined item is recorded with the user's decision", source)
         self.assertIn("The accepted items enter", source)
         self.assertIn("together as one round", source)

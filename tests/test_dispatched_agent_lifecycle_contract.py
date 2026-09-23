@@ -1120,7 +1120,12 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             "Keep user interaction compact",
             "current coordination delta",
             "harness-native ask-question interface",
-            "Present exactly one decision, wait for its answer, then present the next",
+            "a mid-flight reply -- checkpoint release, dispatch acknowledgement, "
+            "answer to a user question -- follows the same rule",
+            "Gather every pending user-owned decision, this round's and any still "
+            "open from an earlier one, and ask them together in one call to the "
+            "harness-native ask-question interface",
+            "Every user-owned decision belongs inside that ask",
         ):
             self.assertIn(boundary, normalized)
         self.assertEqual(normalized.count("Run ADAAV silently"), 1)
@@ -1130,13 +1135,15 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         # rules. Keep the trim, or restate a rule somewhere it is not already
         # stated and this fails. The budget buys one line per coordination rule
         # a main agent actually operates -- 1,800 to 1,900 when orchestrator
-        # registration became one of them, and 1,900 to 2,400 when deleting
+        # registration became one of them, 1,900 to 2,400 when deleting
         # docs/roles.md made this the only execution-time home for the naming
         # rule and the dispatched-agent boundary, and ADAAV stopped being an
-        # acronym with no definition anywhere a session could reach. The
-        # each-rule-stated-once assertions above stay the guard against
-        # restatement buying that room back.
-        self.assertLessEqual(len(injected), 2400, injected)
+        # acronym with no definition anywhere a session could reach, and 2,400
+        # to 2,700 when the one-at-a-time user-decision rule was replaced by
+        # gathering every pending decision -- new and carried over -- into one
+        # ask together. The each-rule-stated-once assertions above stay the
+        # guard against restatement buying that room back.
+        self.assertLessEqual(len(injected), 2700, injected)
 
     def test_control_message_preserves_the_exact_slash_command(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
