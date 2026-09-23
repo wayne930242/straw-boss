@@ -36,6 +36,23 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         self.assertIn("non-empty", result.stderr)
         self.assertFalse(status_path.exists())
 
+    def test_status_for_a_missing_instruction_is_a_plain_error(self) -> None:
+        missing = self.home / ".straw-boss" / "dispatch" / "api--gone.json"
+
+        result = self.run_script(
+            "report-task-status.py",
+            "--instruction-path",
+            str(missing),
+            "--status",
+            "awaiting-main-agent",
+            "--note",
+            "Need the coordinator.",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"error: no instruction file at {missing.resolve()}", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_status_rejects_more_than_two_sentences_before_persistence(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")
         status_path = instruction_path.with_name("api--contract-claude.status.json")

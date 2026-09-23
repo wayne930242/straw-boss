@@ -95,6 +95,8 @@ def validate_status_sender_when_ready(
             validate_status_sender(instruction_path, status)
             return
         except ValueError:
+            if not Path(instruction_path).is_file():
+                raise
             instruction = load_json(Path(instruction_path))
             if (
                 status == "cancelled"
