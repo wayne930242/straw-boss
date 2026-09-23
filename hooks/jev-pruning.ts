@@ -25,6 +25,9 @@ export async function host($: Engine, command: string, data: unknown): Promise<a
 
 export const register: Register = (on) => {
   let pendingRun: string | undefined;
+  // `$.session.model()` answers the /model label (an alias such as `opus`),
+  // which the token-count API rejects; count with the id the API reported.
+  let apiModel: string | undefined;
 
   on('session.start', async ($, event, next) => {
     // Clear inherited readiness so an unloaded or child session cannot opt out
@@ -108,7 +111,7 @@ export const register: Register = (on) => {
         record.fallback_reason = 'no-removable-records';
       } else {
         Object.assign(record, await host($, 'measure', {
-          model: await $.session.model(), before: event.messages, after: candidate,
+          model: apiModel ?? await $.session.model(), before: event.messages, after: candidate,
           live_input_tokens: usage.context.tokens,
         }));
         apply = record.gate_reduction_pct >= policy.min_reduction_ratio * 100;
@@ -140,6 +143,7 @@ export const register: Register = (on) => {
   });
 
   on('turn.complete', async ($, event, next) => {
+    if (!event.agentId && event.usage?.model) apiModel = event.usage.model;
     if (await active($)) {
       const usage = await $.session.usage();
       if (usage.context.tokens !== undefined) {

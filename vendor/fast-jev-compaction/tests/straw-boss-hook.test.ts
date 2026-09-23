@@ -72,6 +72,17 @@ describe('Straw Boss compaction boundary',()=>{
     expect(h.writes[0].record.jev.model).toBe('jev-1.test');
     expect(h.writes[0].original_messages).toEqual(messages);
   });
+  it('measures with the model id the API reported, not the /model alias',async()=>{
+    const h=engine();const run=h.$.process.run;const measured:string[]=[];
+    h.$.session.model=async()=>'opus';
+    h.$.process.run=async(a:any,i:any)=>{if(a[2]==='measure')measured.push(JSON.parse(i.stdin).model);return run(a,i);};
+    const compact=()=>h.events['session.compact'](h.$,{trigger:'auto',messages:fixture()},()=>{throw Error('unexpected fallback');});
+    await compact();
+    await h.events['turn.complete'](h.$,{agentId:'sub',usage:{model:'claude-haiku-4-5'}},async()=>({text:''}));
+    await h.events['turn.complete'](h.$,{usage:{model:'claude-opus-5-5'}},async()=>({text:''}));
+    await compact();
+    expect(measured).toEqual(['opus','claude-opus-5-5']);
+  });
   it('measurement below the gate delegates original history',async()=>{
     const h=engine();const run=h.$.process.run;
     h.$.process.run=async(a:any,i:any)=>a[2]==='measure'?{exitCode:0,stdout:'{"gate_reduction_pct":9.9}'}:run(a,i);
