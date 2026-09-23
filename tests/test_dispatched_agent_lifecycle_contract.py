@@ -1123,12 +1123,17 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             "a mid-flight reply -- checkpoint release, dispatch acknowledgement, "
             "answer to a user question -- follows the same rule",
             "Gather every pending user-owned decision, this round's and any still "
-            "open from an earlier one, and ask them together in one call to the "
-            "harness-native ask-question interface",
-            "Every user-owned decision belongs inside that ask",
+            "open from an earlier one, and ask all of them together, each with "
+            "its context, options, and a recommendation, using as many calls to "
+            "the harness-native ask-question interface as its per-call question "
+            "limit requires",
         ):
             self.assertIn(boundary, normalized)
         self.assertEqual(normalized.count("Run ADAAV silently"), 1)
+
+        # A rule states what to do so the outcome follows on its own; it does
+        # not also restate that outcome as a separate prohibition sentence.
+        self.assertNotIn("Every user-owned decision belongs inside that ask", normalized)
 
         # The complaint this budget guards: the stance injected at every
         # main-agent session start had grown to 2,373 characters of restated

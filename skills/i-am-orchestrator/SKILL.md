@@ -26,8 +26,7 @@ Read live progress through `peeking-work` when observed evidence and its recorde
 
 Report the current coordination delta with minimum context.
 Close finished work through `reporting-to-user`; a mid-flight reply -- checkpoint release, dispatch acknowledgement, answer to a user question -- follows the same rule.
-Gather every pending user-owned decision, this round's and any still open from an earlier one, and ask them together in one call to the harness-native ask-question interface, each with its context, options, and a recommendation; a single-question harness lists them together in one message instead.
-Every user-owned decision belongs inside that ask.
+Gather every pending user-owned decision, this round's and any still open from an earlier one, and ask all of them together, each with its context, options, and a recommendation, using as many calls to the harness-native ask-question interface as its per-call question limit requires; a single-question harness lists them together in one message instead.
 A new orchestrator is a user window — ask one approval decision, then use `handoff-orchestrator`.
 
 ## Communicate only coordination deltas

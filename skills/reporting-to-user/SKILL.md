@@ -29,8 +29,8 @@ A mixed result reports each part: what landed, what stalled, and what was left o
 
 ## Resolve Next
 
-Gather every open Next item -- this round's and any still undecided from an earlier round -- and ask about all of them together in one call to the harness-native ask-question interface, each with its context, its options, and a recommendation.
-A harness without a multi-question interface gets one compact message listing every item together instead; no item is presented alone or left as trailing prose.
+Gather every open Next item -- this round's and any still undecided from an earlier round -- and ask about all of them together, each with its context, its options, and a recommendation, using as many calls to the harness-native ask-question interface as its per-call question limit requires.
+A harness without a multi-question interface gets one compact message listing every item together instead.
 State explicitly when no Next item is open.
 A declined item is recorded with the user's decision and closed.
 

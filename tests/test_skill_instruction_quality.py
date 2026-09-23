@@ -552,11 +552,13 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("harness-native ask-question interface", source)
         self.assertIn(
             "Gather every open Next item -- this round's and any still undecided "
-            "from an earlier round -- and ask about all of them together in one "
-            "call to the harness-native ask-question interface",
+            "from an earlier round -- and ask about all of them together, each "
+            "with its context, its options, and a recommendation, using as many "
+            "calls to the harness-native ask-question interface as its per-call "
+            "question limit requires",
             source,
         )
-        self.assertIn(
+        self.assertNotIn(
             "no item is presented alone or left as trailing prose", source
         )
         self.assertIn("State explicitly when no Next item is open", source)
