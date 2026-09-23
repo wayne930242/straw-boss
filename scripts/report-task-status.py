@@ -52,7 +52,6 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from time import monotonic, sleep
 
 from straw_boss.dispatch.messages import validate_note
 from straw_boss.dispatch.state import (
@@ -62,10 +61,8 @@ from straw_boss.dispatch.state import (
     resolve_instruction_status_path,
     straw_boss_root,
 )
-from straw_boss.herdr.transport import (
-    send_instruction_message,
-    validate_status_sender,
-)
+from straw_boss.herdr.session import validate_status_sender_when_ready
+from straw_boss.herdr.transport import send_instruction_message
 
 
 def status_path(plan_slug: str, task_id: str) -> Path:
@@ -80,35 +77,6 @@ VALID_STATUSES = (
     "awaiting-main-agent",
     "cancelled",
 )
-
-
-def validate_status_sender_when_ready(
-    instruction_path: str,
-    status: str,
-    *,
-    timeout_seconds: float = 15.0,
-    poll_interval_seconds: float = 0.25,
-) -> None:
-    deadline = monotonic() + timeout_seconds
-    while True:
-        try:
-            validate_status_sender(instruction_path, status)
-            return
-        except ValueError:
-            if not Path(instruction_path).is_file():
-                raise
-            instruction = load_json(Path(instruction_path))
-            if (
-                status == "cancelled"
-                or instruction.get("status") != "pending"
-                or instruction.get("herdr_pane_id")
-            ):
-                raise
-            remaining = deadline - monotonic()
-            if remaining <= 0:
-                raise
-            sleep(min(poll_interval_seconds, remaining))
-
 
 
 def live_instruction_for_plan_task(plan_slug: str | None, task_id: str | None) -> Path | None:

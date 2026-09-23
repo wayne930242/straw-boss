@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from straw_boss.dispatch.messages import normalize_references
+from straw_boss.dispatch.state import load_json
+from straw_boss.herdr.session import validate_status_sender_when_ready
 
 
 def progress_log_path(instruction_path: Path) -> Path:
@@ -48,6 +50,11 @@ def append_progress(
 ) -> Path:
     if not instruction_path.is_file():
         raise ValueError(f"no instruction file at {instruction_path}")
+    # Every Codex thread's shell carries its own CODEX_THREAD_ID, so a spawned
+    # subagent is refused here; a Claude subagent shares the worker's session
+    # and is kept off by the subagent-channel-guard hook instead.
+    if load_json(instruction_path).get("agent_kind") == "codex":
+        validate_status_sender_when_ready(instruction_path, "progress")
     normalized_references = normalize_references(references)
     log_path = progress_log_path(instruction_path)
     entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "note": note}

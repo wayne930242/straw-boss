@@ -70,6 +70,26 @@ class CodexDispatchSenderTests(DispatchedAgentLifecycleFixture, unittest.TestCas
         self.assertIn("sender thread", result.stderr)
         self.assert_no_delivery()
 
+    def test_other_thread_cannot_write_progress_but_the_worker_can(self) -> None:
+        # A spawned subagent's shell carries its own thread id, like a background one.
+        progress_path = self.instruction_path.with_name(
+            self.instruction_path.name.removesuffix(".json") + ".progress.jsonl"
+        )
+        arguments = [
+            "report-progress.py", "--instruction-path", str(self.instruction_path),
+            "--note", "Waiting on my review.", "--waiting-on", "review",
+        ]
+        refused = self.run_script(*arguments, extra_env=self.env)
+        self.assertNotEqual(refused.returncode, 0, refused.stdout)
+        self.assertIn("sender thread", refused.stderr)
+        self.assertFalse(progress_path.exists())
+
+        accepted = self.run_script(
+            *arguments, extra_env={**self.env, "CODEX_THREAD_ID": "worker-thread"}
+        )
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertEqual(json.loads(progress_path.read_text())["waiting_on"], "review")
+
     def test_missing_caller_or_live_thread_is_unverifiable(self) -> None:
         for overrides in ({"CODEX_THREAD_ID": ""}, {"HERDR_OMIT_AGENT_SESSION": "1"}):
             with self.subTest(overrides=overrides):

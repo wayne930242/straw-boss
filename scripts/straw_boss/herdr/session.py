@@ -7,6 +7,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic, sleep
 from typing import Any, Literal
 
 from straw_boss.dispatch.state import load_json
@@ -412,3 +413,36 @@ def validate_status_sender(instruction_path: str | Path, status: str) -> None:
         else resolve_endpoint(instruction, "worker")
     )
     validate_current_sender(source)
+
+
+def validate_status_sender_when_ready(
+    instruction_path: str | Path,
+    status: str,
+    *,
+    timeout_seconds: float = 15.0,
+    poll_interval_seconds: float = 0.25,
+) -> None:
+    """validate_status_sender, waiting out a launch that has not confirmed yet.
+
+    A worker can report before its launcher records the pane, so a pending
+    instruction without one is retried until confirmation or the timeout.
+    """
+    deadline = monotonic() + timeout_seconds
+    while True:
+        try:
+            validate_status_sender(instruction_path, status)
+            return
+        except ValueError:
+            if not Path(instruction_path).is_file():
+                raise
+            instruction = load_json(Path(instruction_path))
+            if (
+                status == "cancelled"
+                or instruction.get("status") != "pending"
+                or instruction.get("herdr_pane_id")
+            ):
+                raise
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise
+            sleep(min(poll_interval_seconds, remaining))
