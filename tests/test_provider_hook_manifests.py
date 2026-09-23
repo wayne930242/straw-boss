@@ -23,7 +23,10 @@ class ProviderHookManifestsTest(unittest.TestCase):
 
     def test_provider_commands_stay_in_sync_and_claude_keeps_jev(self):
         claude = json.loads((ROOT / 'hooks/hooks.json').read_text())
-        self.assertEqual(codex_hooks()['hooks'], claude['hooks'])
+        # Only Claude's hook input names the subagent making a tool call.
+        shared = {event: entries for event, entries in claude['hooks'].items()
+                  if event != 'PreToolUse'}
+        self.assertEqual(codex_hooks()['hooks'], shared)
         self.assertEqual(claude['modules'], ['./jev-pruning.ts'])
         self.assertTrue((ROOT / 'hooks' / claude['modules'][0]).is_file())
 

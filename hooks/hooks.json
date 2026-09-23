@@ -12,6 +12,18 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"${CLAUDE_PLUGIN_ROOT:-}\" ] && [ -x \"$CLAUDE_PLUGIN_ROOT\"/scripts/subagent-channel-guard.py ]; then exec \"$CLAUDE_PLUGIN_ROOT\"/scripts/subagent-channel-guard.py; elif [ -n \"${STRAW_BOSS_PLUGIN_ROOT:-}\" ] && [ -x \"$STRAW_BOSS_PLUGIN_ROOT\"/scripts/subagent-channel-guard.py ]; then exec \"$STRAW_BOSS_PLUGIN_ROOT\"/scripts/subagent-channel-guard.py; fi; cat >/dev/null; printf '%s\\n' '{\"systemMessage\":\"straw-boss: CLAUDE_PLUGIN_ROOT is unset or does not contain scripts/subagent-channel-guard.py, so the subagent channel guard was skipped. Restart this session to reload plugin roots.\"}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "*",
