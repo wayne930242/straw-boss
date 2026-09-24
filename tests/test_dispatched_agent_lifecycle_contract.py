@@ -1115,6 +1115,8 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             "Once work is dispatched",
             "Keep the lifecycle event-driven",
             "A dispatch reports itself",
+            "Track each dispatch as a harness-native todo item",
+            "checked off when it turns terminal",
             "spend the time between events on other coordination or on the user's conversation",
             "when observed evidence and its recorded state actually disagree, or when the user asks",
             "Keep user interaction compact",
@@ -1146,9 +1148,11 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         # acronym with no definition anywhere a session could reach, and 2,400
         # to 2,700 when the one-at-a-time user-decision rule was replaced by
         # gathering every pending decision -- new and carried over -- into one
-        # ask together. The each-rule-stated-once assertions above stay the
-        # guard against restatement buying that room back.
-        self.assertLessEqual(len(injected), 2700, injected)
+        # ask together, and 2,700 to 2,850 when mirroring each dispatch into the
+        # harness-native todo list gave the user a visible progress view. The
+        # each-rule-stated-once assertions above stay the guard against
+        # restatement buying that room back.
+        self.assertLessEqual(len(injected), 2850, injected)
 
     def test_control_message_preserves_the_exact_slash_command(self) -> None:
         instruction_path, _ = self.write_dispatch("claude")

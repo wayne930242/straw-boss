@@ -19,6 +19,7 @@ Surface text grows only for a real gap, handoff, decision, or result.
 ## Keep the lifecycle event-driven
 
 A dispatch reports itself.
+Track each dispatch as a harness-native todo item, in progress while it runs and checked off when it turns terminal, so the user sees coordination progress.
 Each persisted status cues checkpoint resolution, scheduling, shared-resource coordination, or cleanup; otherwise spend the time between events on other coordination or on the user's conversation.
 Read live progress through `peeking-work` when observed evidence and its recorded state actually disagree, or when the user asks what it is doing.
 
