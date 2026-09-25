@@ -7,10 +7,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from straw_boss.herdr.transport import confirm_prompt_delivery
+from straw_boss.herdr.transport import confirm_prompt_delivery, transcript_confirm_poll_interval_seconds
 
 
 class PromptDeliveryEvidenceTests(unittest.TestCase):
+    def test_transcript_poll_interval_defaults_to_two_seconds_and_accepts_an_override(self) -> None:
+        variable = "STRAW_BOSS_TRANSCRIPT_CONFIRM_POLL_INTERVAL_SECONDS"
+        with patch.dict("os.environ", {}, clear=False) as env:
+            env.pop(variable, None)
+            self.assertEqual(transcript_confirm_poll_interval_seconds(), 2.0)
+            env[variable] = "0"
+            self.assertEqual(transcript_confirm_poll_interval_seconds(), 0.0)
+
     def receipt(self, **agent_fields):
         return {"result": {"type": "agent_prompted", "agent": {
             "pane_id": "scratch-pane", "agent": "codex", **agent_fields,

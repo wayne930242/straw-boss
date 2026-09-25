@@ -37,6 +37,9 @@ class DispatchedAgentLifecycleFixture:
             # to catch a startup gate herdr has not classified yet; the fake
             # herdr answers instantly, so that window would only buy wall-clock.
             "STRAW_BOSS_AGENT_SETTLE_SECONDS": "0",
+            # Likewise the fake transcript is fixed between reads, so its
+            # confirmation polls need no pause.
+            "STRAW_BOSS_TRANSCRIPT_CONFIRM_POLL_INTERVAL_SECONDS": "0",
         }
         if extra_env:
             env.update(extra_env)

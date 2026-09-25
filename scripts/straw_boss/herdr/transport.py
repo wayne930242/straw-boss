@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from pathlib import Path
@@ -88,16 +89,29 @@ def transcript_contains(transcript: str, message: str) -> bool:
     return normalize_transcript_text(message) in normalize_transcript_text(transcript)
 
 
+def transcript_confirm_poll_interval_seconds() -> float:
+    """Pause between transcript reads, overridable for tests.
+
+    Tests drive a fake herdr whose transcript never changes between reads, so
+    real polling would only buy wall-clock; production needs it because the
+    agent is still rendering the delivered text.
+    """
+    override = os.environ.get("STRAW_BOSS_TRANSCRIPT_CONFIRM_POLL_INTERVAL_SECONDS")
+    return float(override) if override else TRANSCRIPT_CONFIRM_POLL_INTERVAL_S
+
+
 def confirm_transcript_contains(
     target: str,
     message: str,
     agent_kind: str,
     *,
     attempts: int = TRANSCRIPT_CONFIRM_POLL_ATTEMPTS,
-    poll_interval_seconds: float = TRANSCRIPT_CONFIRM_POLL_INTERVAL_S,
+    poll_interval_seconds: float | None = None,
 ) -> bool:
     if attempts < 1:
         raise ValueError("transcript confirmation attempts must be positive")
+    if poll_interval_seconds is None:
+        poll_interval_seconds = transcript_confirm_poll_interval_seconds()
     for attempt in range(attempts):
         if transcript_contains(read_agent_transcript(target, agent_kind), message):
             return True
