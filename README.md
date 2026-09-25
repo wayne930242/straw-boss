@@ -24,7 +24,7 @@ Bounded work should stay bounded. When a task benefits from its own workroom, st
 
 ## Requirements
 
-- Claude Code with plugins enabled, Codex CLI with plugin support, or Google Antigravity (AGY CLI).
+- Claude Code with plugins enabled, Codex CLI with plugin support, Google Antigravity (AGY CLI), or Pi with [`pi-herdr-agents`](https://github.com/giuseppecrj/pi-herdr-agents).
 - Python 3 for the bundled lifecycle and installation scripts.
 - [Herdr](https://github.com/herdrdev/herdr), required for dispatch. Claude Code, Codex CLI, and Antigravity workers all run in a Herdr pane you can watch and join. Installing, reading configuration, and tidying persisted state all work on their own; starting a dispatch needs a running Herdr service and a current pane.
 
@@ -88,6 +88,14 @@ Then run once per project:
 ```
 
 `init` confirms the managed apps and work routes, writes `.straw-boss/apps.json`, syncs the root `AGENTS.md` and `CLAUDE.md`, offers to fill in each app's missing instruction files, and checks the Herdr dispatch requirement.
+
+### Pi
+
+```bash
+pi install git:github.com/wayne930242/straw-boss
+```
+
+Pi loads `boss-say`, `work-on`, `choosing-graph`, `shipping-task`, `reporting-to-user`, and `dispatching-work`, plus the `dispatch_control` extension. A Pi main agent keeps the same workflow and dispatches Pi workers through `pi-herdr-agents`; it runs none of the bundled Python scripts. Worker models come from the tiers of your Pi model strategy. Its skills are a separate Pi set under `pi/skills/`, so the Claude Code, Codex, and Antigravity skills stay as they are. See [Pi dispatching-work](pi/skills/dispatching-work/SKILL.md).
 
 For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it to check Herdr readiness, configure per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 

@@ -24,7 +24,7 @@
 
 ## 需求
 
-- Claude Code（plugins 要開）、支援 plugin 的 Codex CLI，或 Google Antigravity（AGY CLI）。
+- Claude Code（plugins 要開）、支援 plugin 的 Codex CLI、Google Antigravity（AGY CLI），或裝了 [`pi-herdr-agents`](https://github.com/giuseppecrj/pi-herdr-agents) 的 Pi。
 - Python 3，用來執行內附的生命週期與安裝腳本。
 - [Herdr](https://github.com/herdrdev/herdr)（委派必要需求）。Claude Code、Codex CLI 與 Antigravity worker 都在可查看、可加入的 Herdr pane 執行。安裝、讀取設定與整理已保存狀態可獨立執行；開始委派前須有可用的 Herdr 服務與目前 pane。
 
@@ -85,6 +85,14 @@ agy plugin install wayne930242/straw-boss
 ```
 
 `init` 會詢問要管理哪些 app、設定 work route、寫入 `.straw-boss/apps.json`、同步 root `AGENTS.md` 與 `CLAUDE.md`，為缺少 agent system 的 app 提議建立一套，並檢查 Herdr 委派需求。
+
+### Pi
+
+```bash
+pi install git:github.com/wayne930242/straw-boss
+```
+
+Pi 會載入 `boss-say`、`work-on`、`choosing-graph`、`shipping-task`、`reporting-to-user`、`dispatching-work` 與 `dispatch_control` extension。Pi 主 agent 沿用同一套工作流，透過 `pi-herdr-agents` 派 Pi worker，不執行內附的 Python 腳本；worker 的 model 取自你 Pi model strategy 的 tier。Pi 的 skill 是 `pi/skills/` 下獨立的一套，Claude Code、Codex 與 Antigravity 的 skill 不受影響。細節見 [Pi dispatching-work](pi/skills/dispatching-work/SKILL.md)。
 
 單一 app 的話 `init` 只是加分，裝好 plugin 就能直接用 `boss-say`。檢查 Herdr、設定 `forbidDirectCommit`/`localFiles` 這類選項、或設定 monorepo 多個 app，才需要跑。
 
