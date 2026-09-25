@@ -22,7 +22,7 @@ Spec: [spec.md](spec.md). Evidence was collected on 2026-09-25/26 on the uncommi
 | 11. Mutation checkpoints | Written in `pi/skills/shipping-task`; `tests/test_pi_skills.py` keeps its merge-authorization rule identical to the shared skill. No source change was dispatched live. | unknown |
 | 12. Recovery and handoff | `dispatch_control roll-call` listed both dispatches as `done` in the live run. Handoff and reattach are covered by the moved unit and Node tests only. | pass (roll-call); unknown live (handoff, reattach) |
 | 13. Close-out | `pi/skills/reporting-to-user` is identical to the shared skill, which the tests assert; the live run reported back through intercom. | pass |
-| 14. `weihung-user-claude` migration | The moved files and the three Pi skills are removed. `pi-target.py` installs straw-boss like aaaav, from a sibling checkout or else `git:github.com/wayne930242/straw-boss`. `tests/install.sh`, `tests/uninstall.sh`, `pi_fresh_machine.py` (install and remove through the git source), `pi_port_install.py`, and `pi_review_fixes.py` pass. On this machine `bash scripts/install.sh --skip-external` recorded `../../projects/straw-boss` in settings and regenerated `AGENTS.md` naming `boss-say` and `dispatch_control`. | pass |
+| 14. `weihung-user-claude` migration | The moved files and the three Pi skills are removed. `pi-target.py` installs straw-boss as `git:github.com/wayne930242/straw-boss` pinned at `3d0fceb` and retires any other straw-boss revision. `tests/install.sh`, `tests/uninstall.sh`, `pi_fresh_machine.py` (install and remove through the git source), `pi_port_install.py`, and `pi_review_fixes.py` pass. On this machine a full `bash scripts/install.sh` cloned the pinned commit, and the loader in `moldplan-center` then read all six skills and both extensions from it with 0 collisions. The repository was later renamed `weihung-agent-root`; its installer migrates state kept under the former name. | pass |
 | 15. `moldplan-center` `work-on` hands work to `boss-say` | The diff replaces `straw-boss:boss-say` with `boss-say` and removes host-specific wording; the live run started from `boss-say`. | pass |
 | 16. No skill collision in `moldplan-center` | The loader reports 56 skills and 0 collisions after `.agents/skills/*` became symlinks into the mp-infra plugin. | pass |
 
@@ -39,7 +39,7 @@ Spec: [spec.md](spec.md). Evidence was collected on 2026-09-25/26 on the uncommi
 ## Gaps
 
 - Team-mode worktree with `localFiles`, `caller_ping` round trips, dependency scheduling, and live handoff remain unexercised against a real Pi session. The first real ticket batch through `work-on` exercises the first three.
-- Nothing is committed, pushed, or published; `pi install git:github.com/wayne930242/straw-boss` works only after a push.
+- A straw-boss change reaches Pi only after it is pushed and the pin in `weihung-agent-root/scripts/pi-target.py` is bumped.
 
 ## Reflexive
 
