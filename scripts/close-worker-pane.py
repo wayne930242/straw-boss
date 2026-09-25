@@ -61,7 +61,9 @@ def close_dispatch_pane(instruction_path: str) -> dict[str, str | None]:
         raise ValueError(
             f"no status file at {status_path} -- a live worker writes its own terminal "
             f"status, so refusing to close a pane out from under one. If the pane is "
-            f"already gone, use recover-task-status.py --instruction-path {inst_path}"
+            f"already gone, or its live worker's own report is refused, record the status "
+            f"with recover-task-status.py --instruction-path {inst_path} (adding "
+            f"--worker-cannot-report for a live worker) and close again"
         )
     status = str(load_json(status_path)["status"])
     if status not in TERMINAL_STATUSES:

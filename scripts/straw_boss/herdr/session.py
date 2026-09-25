@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,9 @@ class Endpoint:
     expected_session_id: str | None
     expected_terminal_id: str | None
     agent_kind: str
+    # The worker's dispatch contract, which its opening prompt names; Codex's
+    # own thread record of that prompt corroborates a caller herdr cannot.
+    contract_path: str | None = None
 
 
 class HerdrCommandError(ValueError):
@@ -114,12 +118,14 @@ def resolve_endpoint(instruction: dict[str, Any], target: Target) -> Endpoint:
         raise ValueError(f"dispatch instruction has no {target} session or terminal fingerprint")
     if agent_kind not in {"claude", "codex", "agy", "antigravity"}:
         raise ValueError(f"dispatch instruction has unsupported {target} agent kind")
+    contract_path = instruction.get("contract_path") if target == "worker" else None
     return Endpoint(
         target,
         str(pane_id),
         str(session_id) if session_id else None,
         str(terminal_id) if terminal_id else None,
         str(agent_kind),
+        str(contract_path) if contract_path else None,
     )
 
 
@@ -200,6 +206,55 @@ def session_value(agent: dict[str, Any]) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def contract_prompt_line(contract_path: object) -> str:
+    """The opening-prompt line that hands a worker its dispatch contract."""
+    return f"Before any task action, read and follow the mandatory contract at {contract_path}.\n"
+
+
+def codex_state_database() -> Path | None:
+    home_value = os.environ.get("CODEX_HOME")
+    home = Path(home_value).expanduser() if home_value else Path.home() / ".codex"
+    versioned = [
+        (int(path.stem.removeprefix("state_")), path)
+        for path in home.glob("state_*.sqlite")
+        if path.stem.removeprefix("state_").isdigit()
+    ]
+    return max(versioned)[1] if versioned else None
+
+
+def codex_thread_opened_contract(thread_id: str, contract_path: str) -> bool:
+    """Whether Codex recorded `thread_id` as a user thread opened on this contract.
+
+    herdr learns a Codex conversation only from a SessionStart hook, which can
+    fail to arrive. Codex's own state database still records each persisted
+    thread's source and opening message: the dispatched worker is the `cli`
+    thread whose first prompt names its contract, while background
+    consolidation and spawned subagents carry thread ids that never match.
+    """
+    database = codex_state_database()
+    if database is None:
+        return False
+    try:
+        connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True, timeout=2)
+        try:
+            row = connection.execute(
+                "SELECT source, first_user_message FROM threads WHERE id = ?",
+                (thread_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return False
+    if row is None:
+        return False
+    source, first_message = row
+    return (
+        source == "cli"
+        and isinstance(first_message, str)
+        and first_message.startswith(contract_prompt_line(contract_path))
+    )
+
+
 def agent_matches_identity(
     agent: dict[str, Any], agent_kind: str,
     session_id: str | None, terminal_id: str | None,
@@ -240,6 +295,16 @@ def validate_live_session(
                 f"{endpoint.target} agent kind mismatch for pane {endpoint.pane_id!r}: "
                 f"expected {endpoint.agent_kind!r}, live {agent.get('agent')!r}; refusing to send"
             )
+        if (
+            sender_thread_id is not None
+            and session_value(agent) is None
+            and endpoint.contract_path
+            and codex_thread_opened_contract(sender_thread_id, endpoint.contract_path)
+        ):
+            agent = {
+                **agent,
+                "agent_session": {"agent": expected_kind, "value": sender_thread_id},
+            }
         if sender_thread_id is not None and session_value(agent) != sender_thread_id:
             raise ValueError(
                 f"sender thread mismatch for pane {endpoint.pane_id!r}: "

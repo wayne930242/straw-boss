@@ -3,8 +3,8 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Recover a dispatched task's own terminal status when its worker pane
-already closed before it could self-report.
+"""Recover a dispatched task's own terminal status when its worker cannot
+self-report: its pane already closed, or it is live but its report is refused.
 
 See skills/dispatching-work/SKILL.md's "Branch: Wrap up an instruction" and
 references/dispatch-mechanics.md's "Closing an instruction". Normal order
@@ -26,6 +26,13 @@ at all) and is out of scope here. Refuses unless: the caller is genuinely
 the live main agent pane recorded on the dispatch; the worker pane is
 confirmed unreachable, not merely believed closed; and no terminal status is
 already on file for this task.
+
+`--worker-cannot-report` covers the other dead end: a live worker whose own
+report keeps being refused (for example its sender identity cannot be
+verified), while `close-worker-pane.py` refuses to close a pane with no
+terminal status. The coordinator records the status first, then closes the
+pane the normal way. It still refuses a worker herdr shows `working`, since
+that worker may yet report for itself.
 """
 
 from __future__ import annotations
@@ -44,8 +51,10 @@ from straw_boss.dispatch.state import (
     resolve_instruction_status_path,
 )
 from straw_boss.herdr.transport import (
+    HerdrCommandError,
     resolve_coordinator_endpoint,
     resolve_endpoint,
+    run_herdr,
     validate_current_sender,
     worker_endpoint_confirmed_closed,
 )
@@ -59,6 +68,8 @@ def recover_task_status(
     status: str,
     note: str,
     references: list[str] | tuple[str, ...] = (),
+    *,
+    worker_cannot_report: bool = False,
 ) -> dict[str, Any]:
     if status not in RECOVERABLE_STATUSES:
         raise ValueError(
@@ -78,15 +89,29 @@ def recover_task_status(
     validate_current_sender(resolve_coordinator_endpoint(instruction))
 
     worker_endpoint = resolve_endpoint(instruction, "worker")
-    if not worker_endpoint_confirmed_closed(worker_endpoint):
+    try:
+        worker_live = not worker_endpoint_confirmed_closed(worker_endpoint)
+    except ValueError:
+        # A pane whose conversation herdr cannot name is not proven closed.
+        if not worker_cannot_report:
+            raise
+        worker_live = True
+    if worker_live and not worker_cannot_report:
         raise ValueError(
             f"worker pane {worker_endpoint.pane_id!r} is still live -- reply to the agent "
-            "and let it report its own terminal status instead of recovering on its behalf"
+            "and let it report its own terminal status instead of recovering on its behalf; "
+            "if its own report is refused, rerun with --worker-cannot-report"
         )
-
-    # Wrap-up and roll-call read this the same way close-worker-pane.py's own
-    # write does, to stop naming a close step for a pane already proven gone.
-    if not instruction.get("herdr_pane_closed_at"):
+    if worker_live:
+        worker_status = live_worker_status(worker_endpoint.pane_id)
+        if worker_status == "working":
+            raise ValueError(
+                f"worker pane {worker_endpoint.pane_id!r} is still working -- wait until it "
+                "stops, since it may yet report its own terminal status"
+            )
+    elif not instruction.get("herdr_pane_closed_at"):
+        # Wrap-up and roll-call read this the same way close-worker-pane.py's own
+        # write does, to stop naming a close step for a pane already proven gone.
         instruction["herdr_pane_closed_at"] = datetime.now(timezone.utc).isoformat()
         dump_json(inst_path, instruction)
 
@@ -105,10 +130,23 @@ def recover_task_status(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "recovered_by_main_agent": True,
     }
+    if worker_live:
+        payload["worker_live_at_recovery"] = True
     if normalized_references:
         payload["refs"] = list(normalized_references)
     dump_json(status_path, payload)
     return {"status_path": str(status_path), "status": status}
+
+
+def live_worker_status(pane_id: str) -> str | None:
+    try:
+        agent = run_herdr(["agent", "get", pane_id]).get("result", {}).get("agent")
+    except HerdrCommandError as exc:
+        if exc.error_code in {"agent_not_found", "pane_not_found"}:
+            return None
+        raise
+    status = agent.get("agent_status") if isinstance(agent, dict) else None
+    return status if isinstance(status, str) else None
 
 
 def main() -> int:
@@ -123,10 +161,18 @@ def main() -> int:
         "--note", required=True, help="explicit terminal status reasoning, at most two sentences"
     )
     parser.add_argument("--ref", action="append", default=[], help="artifact/evidence reference")
+    parser.add_argument(
+        "--worker-cannot-report",
+        action="store_true",
+        help="the worker pane is live but its own terminal report is refused",
+    )
     args = parser.parse_args()
 
     try:
-        result = recover_task_status(args.instruction_path, args.status, args.note, args.ref)
+        result = recover_task_status(
+            args.instruction_path, args.status, args.note, args.ref,
+            worker_cannot_report=args.worker_cannot_report,
+        )
     except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

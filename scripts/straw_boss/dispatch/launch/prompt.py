@@ -8,6 +8,7 @@ from time import sleep
 from straw_boss.dispatch.launch.agent import live_agent
 from straw_boss.dispatch.launch.retry import prompt_retry_backoff_seconds
 from straw_boss.dispatch.state import sha256_text
+from straw_boss.herdr.session import contract_prompt_line
 from straw_boss.herdr.transport import (
     HerdrCommandError,
     confirm_transcript_contains,
@@ -37,11 +38,7 @@ def task_delivery_marker(task: str) -> str:
     return f"[{TASK_DELIVERY_MARKER_PREFIX}:{digest.rstrip('=')}]"
 
 def task_start_prompt(task: str, contract_path: object | None = None) -> str:
-    prefix = (
-        f"Before any task action, read and follow the mandatory contract at {contract_path}.\n"
-        if contract_path
-        else ""
-    )
+    prefix = contract_prompt_line(contract_path) if contract_path else ""
     return f"{prefix}Begin contract task.\n{task_delivery_marker(task)}"
 
 def prompt_task_with_confirmation(

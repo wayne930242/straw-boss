@@ -157,6 +157,9 @@ It also records `herdr_pane_closed_at` on the instruction, the same field `close
 It refuses a reachable worker or an existing terminal status.
 Determine the outcome from work evidence; pane closure alone establishes only reachability.
 
+When a live worker's own terminal report is refused, add `--worker-cannot-report`.
+The command then records the status with `worker_live_at_recovery` while the pane stays open, refuses a worker herdr still shows `working`, and leaves the close to `close-worker-pane.py`.
+
 ## Close a worker pane
 
 ```bash
