@@ -1,6 +1,6 @@
 {
   "name": "straw-boss",
-  "version": "0.30.48",
+  "version": "0.31.0",
   "private": true,
   "description": "Straw Boss workflow for Pi: route work, dispatch app-rooted Pi workers through pi-herdr-agents, and carry the git lifecycle.",
   "license": "MIT",
