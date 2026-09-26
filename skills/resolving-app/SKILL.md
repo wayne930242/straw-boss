@@ -1,5 +1,5 @@
 ---
-name: work-on
+name: resolving-app
 description: Use to resolve which of the project's managed apps a request belongs to.
 ---
 

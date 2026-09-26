@@ -92,8 +92,8 @@ class SkillInstructionQualityTests(unittest.TestCase):
                 offenders.append(path.relative_to(ROOT).as_posix())
         self.assertEqual(offenders, [])
 
-    def test_init_and_work_on_use_the_shared_config_handler(self) -> None:
-        for name in ("init", "work-on"):
+    def test_init_and_resolving_app_use_the_shared_config_handler(self) -> None:
+        for name in ("init", "resolving-app"):
             source = normalized(ROOT / "skills" / name / "SKILL.md")
             self.assertIn("shared read handler", source)
         schema = normalized(ROOT / "skills/init/references/apps-config-schema.md")
@@ -378,7 +378,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
             "bringing-coworker", "choosing-graph", "contacting-orchestrators",
             "create-great-harness", "dispatching-work", "handoff-orchestrator",
             "i-am-orchestrator", "init", "notifying-main-agent", "peeking-work",
-            "reporting-to-user", "shipping-task", "work-on",
+            "reporting-to-user", "shipping-task", "resolving-app",
         }
         paths = list((ROOT / "skills").glob("*/SKILL.md"))
         self.assertEqual({p.parent.name for p in paths}, expected)
@@ -403,10 +403,10 @@ class SkillInstructionQualityTests(unittest.TestCase):
     def test_cross_skill_references_use_named_sections(self) -> None:
         for path in (ROOT / "skills").rglob("*.md"):
             self.assertNotRegex(path.read_text(), r"(?:Task|Step) \d+['’]s", str(path))
-        work_on = normalized(ROOT / "skills/work-on/SKILL.md")
-        self.assertIn("this skill only resolves targets", work_on)
-        self.assertNotIn("Write ~/.straw-boss/plans", work_on)
-        self.assertIn("../boss-say/SKILL.md#plan-and-schedule", work_on)
+        resolving_app = normalized(ROOT / "skills/resolving-app/SKILL.md")
+        self.assertIn("this skill only resolves targets", resolving_app)
+        self.assertNotIn("Write ~/.straw-boss/plans", resolving_app)
+        self.assertIn("../boss-say/SKILL.md#plan-and-schedule", resolving_app)
 
     def test_graph_precedence_and_anchor_categories_have_one_owner(self) -> None:
         graph = (ROOT / "skills/choosing-graph/SKILL.md").read_text()

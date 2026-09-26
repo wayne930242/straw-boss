@@ -8,7 +8,7 @@ Named after the ranch foreman who works the ground alongside the crew, not from 
 
 ## Why
 
-Bounded work should stay bounded. When a task benefits from its own workroom, straw-boss roots that worker in the app it owns instead of copying the app's context into a summary that can drift. Claude Code workers load that app's `.claude/skills/` and `.claude/settings.json` hooks there; Claude Code, Codex CLI, and Antigravity workers all operate from the correct app directory and local instructions. The same routing applies to implementation, audits, research, and diagnosis. Cross-app routing through `work-on` is available for monorepos, not required for a single app. Full rationale: [docs/architecture.md](docs/architecture.md).
+Bounded work should stay bounded. When a task benefits from its own workroom, straw-boss roots that worker in the app it owns instead of copying the app's context into a summary that can drift. Claude Code workers load that app's `.claude/skills/` and `.claude/settings.json` hooks there; Claude Code, Codex CLI, and Antigravity workers all operate from the correct app directory and local instructions. The same routing applies to implementation, audits, research, and diagnosis. Cross-app routing through `resolving-app` is available for monorepos, not required for a single app. Full rationale: [docs/architecture.md](docs/architecture.md).
 
 ## Highlights
 
@@ -95,7 +95,7 @@ Then run once per project:
 pi install git:github.com/wayne930242/straw-boss
 ```
 
-Pi loads `boss-say`, `work-on`, `choosing-graph`, `shipping-task`, `reporting-to-user`, and `dispatching-work`, plus the `dispatch_control` extension. A Pi main agent keeps the same workflow and dispatches Pi workers through `pi-herdr-agents`; it runs none of the bundled Python scripts. Worker models come from the tiers of your Pi model strategy. Its skills are a separate Pi set under `pi/skills/`, so the Claude Code, Codex, and Antigravity skills stay as they are. See [Pi dispatching-work](pi/skills/dispatching-work/SKILL.md).
+Pi loads `boss-say`, `resolving-app`, `choosing-graph`, `shipping-task`, `reporting-to-user`, and `dispatching-work`, plus the `dispatch_control` extension. A Pi main agent keeps the same workflow and dispatches Pi workers through `pi-herdr-agents`; it runs none of the bundled Python scripts. Worker models come from the tiers of your Pi model strategy. Its skills are a separate Pi set under `pi/skills/`, so the Claude Code, Codex, and Antigravity skills stay as they are. See [Pi dispatching-work](pi/skills/dispatching-work/SKILL.md).
 
 For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it to check Herdr readiness, configure per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 
@@ -122,7 +122,7 @@ Call a skill by name when the situation fits; anything unlisted goes to `boss-sa
 |-------|-------------|
 | Fix, build, audit, research, or diagnose; work through a backlog; ask what is running; close out a dispatch | `boss-say` |
 | Set up managed apps and work routes, or check Herdr readiness | `init` |
-| Find which app owns a request | `work-on` |
+| Find which app owns a request | `resolving-app` |
 | See what a dispatch is doing without joining or interrupting it | `peeking-work` |
 | Move a scope and its in-progress dispatches to a new orchestrator tab | `handoff-orchestrator` |
 | Have this window take over dispatches another main agent coordinates | `boss-say`; it moves them only when you ask |

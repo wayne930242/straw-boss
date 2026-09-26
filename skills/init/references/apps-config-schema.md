@@ -1,7 +1,7 @@
 # Apps config schema
 
 The managed-apps list lives at `.straw-boss/apps.json`, relative to the project's repo root — checked into git, shared with the team, edited by `init` (see `SKILL.md`) or by hand.
-`work-on`, `shipping-task`, and `dispatching-work` all read this file; none of them hardcode an app list.
+`resolving-app`, `shipping-task`, and `dispatching-work` all read this file; none of them hardcode an app list.
 
 ## Shared read handler
 
@@ -12,7 +12,7 @@ A skill runs this once it has resolved the git repo root:
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/read-apps-config.py" --repo-root "<repo-root>"
 ```
 
-Success is exit 0, with JSON carrying `path` (the source actually read), `legacy` (whether the old location was used), and `config` (the whole configuration); exit 3 means neither location exists, which sends `init` and `work-on` down their no-config branch; exit 1 means a read or format error — fix the config from stderr and retry.
+Success is exit 0, with JSON carrying `path` (the source actually read), `legacy` (whether the old location was used), and `config` (the whole configuration); exit 3 means neither location exists, which sends `init` and `resolving-app` down their no-config branch; exit 1 means a read or format error — fix the config from stderr and retry.
 Every reader goes through this handler, and checks its own app fields only after it has the configuration.
 
 ## Location and compatibility
@@ -63,8 +63,8 @@ The single-app no-config branch applies when neither path exists.
 |---|---|---|---|
 | `name` | string | yes | Unique identifier, matches how the team refers to the app. Kebab-case recommended. |
 | `dir` | string | yes | Path to the app's own checkout, relative to repo root. |
-| `match` | array of strings | yes | Phrases a request might use to name this app. `work-on`'s routing table is built from these. |
-| `redirectTo` | string \| `null` | no | Another entry's `name`. When set, this entry is a legacy/retired source — new work redirects to the named app instead ([work-on](../../work-on/SKILL.md#resolve-the-app)). Omit or `null` for a live app. |
+| `match` | array of strings | yes | Phrases a request might use to name this app. `resolving-app`'s routing table is built from these. |
+| `redirectTo` | string \| `null` | no | Another entry's `name`. When set, this entry is a legacy/retired source — new work redirects to the named app instead ([resolving-app](../../resolving-app/SKILL.md#resolve-the-app)). Omit or `null` for a live app. |
 | `note` | string \| `null` | no | Free-text caveat surfaced whenever this app is resolved or redirected — e.g. "still looks actively maintained, but new feature work belongs in `api` instead" for a `redirectTo` entry that doesn't read as deprecated. |
 | `forbidDirectCommit` | boolean | no | Default `false`. When `true`, `shipping-task` only offers team-mode (worktree→MR) for this app, never a direct commit to its base branch. The selected mode follows the established lifecycle authorization. |
 | `agentKind` | string \| `null` | no | Which agent CLI a dispatch into this app defaults to (`"claude"`, `"codex"`, `"agy"`, ...). `null`/omitted means `"claude"`. `dispatching-work` can still override it for one dispatch (an explicit `--agent-kind`, or a task judged against the agent-routing policy in root `AGENTS.md` and `CLAUDE.md` if one exists) without changing this stored default. Applies equally to standalone, batch, and Plan tasks. |
@@ -75,8 +75,8 @@ The single-app no-config branch applies when neither path exists.
 ## Owners
 
 - [init](../SKILL.md) writes configuration and synchronizes root instruction summaries.
-- [work-on](../../work-on/SKILL.md) reads app matching, redirects, and cross-app skill pointers.
+- [resolving-app](../../resolving-app/SKILL.md) reads app matching, redirects, and cross-app skill pointers.
 - [shipping-task](../../shipping-task/SKILL.md) reads lifecycle options; [worktree preparation](../../dispatching-work/references/plan-mechanics.md#worktree-ownership) reads `localFiles`.
 - [dispatching-work](../../dispatching-work/SKILL.md) resolves provider setup using the app default and work routes.
 
-A missing configuration uses `work-on`'s implicit single-app branch or an unresolved multi-app question.
+A missing configuration uses `resolving-app`'s implicit single-app branch or an unresolved multi-app question.

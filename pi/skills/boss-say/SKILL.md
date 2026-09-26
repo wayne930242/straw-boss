@@ -5,7 +5,7 @@ description: Use when the user or prompt explicitly names boss say, or when work
 
 ## Route the work
 
-Select the owning skill, resolve the target through [work-on](../work-on/SKILL.md), and apply [choosing-graph](../choosing-graph/SKILL.md).
+Select the owning skill, resolve the target through [resolving-app](../resolving-app/SKILL.md), and apply [choosing-graph](../choosing-graph/SKILL.md).
 Load the owning skill when this session carries the work; a dispatched worker chooses its own method in its checkout.
 Carry bounded work here; use a separate workroom when app ownership, interaction, or continuity warrants one.
 Source-changing work follows the target's source-change workflow and [shipping-task](../shipping-task/SKILL.md).

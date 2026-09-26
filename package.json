@@ -12,7 +12,7 @@
     ],
     "skills": [
       "./pi/skills/boss-say",
-      "./pi/skills/work-on",
+      "./pi/skills/resolving-app",
       "./pi/skills/choosing-graph",
       "./pi/skills/shipping-task",
       "./pi/skills/reporting-to-user",

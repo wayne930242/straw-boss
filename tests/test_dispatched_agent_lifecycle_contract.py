@@ -568,10 +568,10 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
 
     def test_target_app_work_uses_the_smallest_sufficient_execution_tier(self) -> None:
         boss = (ROOT / "skills/boss-say/SKILL.md").read_text()
-        work_on = (ROOT / "skills/work-on/SKILL.md").read_text()
+        resolving_app = (ROOT / "skills/resolving-app/SKILL.md").read_text()
         self.assertIn("Carry bounded work here", boss)
         self.assertIn("when app ownership, interaction, or continuity warrants one", boss)
-        self.assertIn("this skill only resolves targets", work_on)
+        self.assertIn("this skill only resolves targets", resolving_app)
         self.assertIn("../choosing-graph/SKILL.md", boss)
 
     def test_prompt_authority_keeps_herdr_worker_independent(self) -> None:

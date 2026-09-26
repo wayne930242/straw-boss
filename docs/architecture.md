@@ -4,7 +4,7 @@ Design rationale for straw-boss — read this if you're extending the plugin, no
 
 ## Why app-rooted workrooms, not a condensed summary
 
-App-rooted workrooms are the plugin's core value when a separate session is useful. That value is independent of app count: it applies to one app in a single-app repo as well as one app in a monorepo. Routing across multiple apps (`work-on`) is an additional layer, not what makes a workroom worthwhile.
+App-rooted workrooms are the plugin's core value when a separate session is useful. That value is independent of app count: it applies to one app in a single-app repo as well as one app in a monorepo. Routing across multiple apps (`resolving-app`) is an additional layer, not what makes a workroom worthwhile.
 
 Path-scoped rules and nested `CLAUDE.md` files already reach a session working from a main agent's own root reactively, once a matching file is touched. What doesn't reach it: an app's own `.claude/skills/` and `.claude/settings.json` hooks, which only load for a session whose root is that app's own directory. A session working on an app from somewhere else has never actually triggered that app's own hooks, and never sees its own skills.
 
@@ -34,7 +34,7 @@ This table is what each skill *does*; `skills/i-am-orchestrator/SKILL.md` names 
 
 | Component | Kind | Role |
 |---|---|---|
-| `work-on` | skill (invoked internally by every specialist skill) | Classify a request against the project's configured apps (`.straw-boss/apps.json`) or the implicit root of a single-app repository, apply any configured legacy redirect; return app directories and cross-app skill pointers to the caller. `boss-say` owns decomposition and plans |
+| `resolving-app` | skill (invoked internally by every specialist skill) | Classify a request against the project's configured apps (`.straw-boss/apps.json`) or the implicit root of a single-app repository, apply any configured legacy redirect; return app directories and cross-app skill pointers to the caller. `boss-say` owns decomposition and plans |
 | `dispatching-work` | skill (internal machinery, fronted by `boss-say`) | Verify Herdr readiness and resolve the complete work route (agent kind, provider profile, model, effort, and optional Claude advisor), write/track dispatch instructions, launch each resolved task, list outstanding dispatches, and wrap them up |
 | `dispatch-task.py` + `launch-dispatched-agent.py` | public scripts | Generate an immutable per-dispatch contract, name the shared tab after the dispatched task before splitting and the worker pane before prompting, record and apply the resolved provider profile/model/effort plus Claude-only advisor, inject the lifecycle contract, confirm the initial task reached the transcript before recording a launch receipt, and refuse identity divergence or unsupported Codex/Antigravity advisor |
 | `copy-local-files.py` | public script | Preflight one app's configured `localFiles`, require explicit approval for sensitive entries, and copy files or directories into a verified worktree without overwriting destinations or exposing file contents |
@@ -55,7 +55,7 @@ This table is what each skill *does*; `skills/i-am-orchestrator/SKILL.md` names 
 | `choosing-graph` | skill (the main agent invokes it before work starts) | Name the coordination graph — single-loop, sub-agent fan-out/fan-in, or the orchestrator-worker that dispatches more than one app-rooted worker and alone writes `plan.json` — and the reality anchor that will prove the result: testing, pseudo-human, human, or an independent agent's adversarial review. The anchor names the category and its checkpoint; the seam, cases, and tools inside it stay with the worker and the user. A frontend human/pseudo-human anchor gets its port claimed at dispatch |
 | `shipping-task` | skill (a specialist `boss-say` drives) | Implementation lifecycle for **one** task, picked per task from how the user regards the work: team-mode (worktree → develop → MR → merge → archive) or solo-mode (direct commit to base) — delegated to the target app's own `gitWorkflowSkill` where configured, else this skill's fallback steps; commits freely in either mode, pushes its own feature branch freely too (reported, not gated), and gates merge (and any push outside its own feature branch) on explicit user authorization |
 
-Audit, research, and diagnosis are dispatched on the question alone — no straw-boss skill wraps them, because a worker inside the app has that app's own skills loaded and picks the method better than the coordinator can. `boss-say` carries the routing rules each of them needs; `boss-say`, `shipping-task`, and `work-on` stand on their own.
+Audit, research, and diagnosis are dispatched on the question alone — no straw-boss skill wraps them, because a worker inside the app has that app's own skills loaded and picks the method better than the coordinator can. `boss-say` carries the routing rules each of them needs; `boss-say`, `shipping-task`, and `resolving-app` stand on their own.
 
 ## Why one entry point for everything
 
@@ -76,7 +76,7 @@ Both are stated, not asked. A user who disagrees overrides it in one sentence, w
 ## Routing rule
 
 1. `boss-say` fires on any request — implementation, audit, research, or diagnosis.
-2. Each item resolves its app via `work-on`, which classifies against configured apps and applies any legacy redirect. In a single-app repository without configuration, the repository root can be the implicit app.
+2. Each item resolves its app via `resolving-app`, which classifies against configured apps and applies any legacy redirect. In a single-app repository without configuration, the repository root can be the implicit app.
 3. `boss-say` states the owner, scale, coordination graph, and reality anchor it picked. One bounded logical item stays in the current loop; clear branches may fan out; a durable workroom uses `dispatching-work`; independent batch items run under a cap in this turn or a `/loop` it starts itself.
 4. Multiple app-rooted tasks use a Plan owned by `boss-say`. Reuse confirmed tasks and dependencies and ask only about unresolved choices. The Plan records dispatch structure; a single-task request creates no Plan.
 5. The execution owner loads the target checkout's instructions, then follows that app's development and SDD route. For a separate workroom, the specialist skill's brief carries three things -- the work, its anchor and who exercises it, and the task's place in the coordination with the user's motive -- while target-app discovery stays with the dispatched agent. Investigation, audit, and diagnosis return explanations with evidence references rather than binary answers.
@@ -92,7 +92,7 @@ Both are stated, not asked. A user who disagrees overrides it in one sentence, w
 
 Configuration is read from `.straw-boss/apps.json` first, falling back to `.claude/straw-boss/apps.json` when the new path does not exist. `init` writes the confirmed old configuration to the new path, leaves the old file in place, and reports that it has been superseded.
 
-Everything that used to be hardcoded per app (the routing table, legacy redirects, forbid-direct-commit rules, per-app git-workflow skills, gitignored local files a worktree needs, cross-app coordination pointers) is real knowledge about *your* project, not about straw-boss. `init` asks for it once and writes it to `.straw-boss/apps.json` (schema: `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md`) plus a synced section in your project's root `AGENTS.md` and `CLAUDE.md`. Without that config, `work-on` can infer only the root of a repository that clearly contains one app; monorepo routing and per-app policy come from the project's config.
+Everything that used to be hardcoded per app (the routing table, legacy redirects, forbid-direct-commit rules, per-app git-workflow skills, gitignored local files a worktree needs, cross-app coordination pointers) is real knowledge about *your* project, not about straw-boss. `init` asks for it once and writes it to `.straw-boss/apps.json` (schema: `${CLAUDE_PLUGIN_ROOT}/skills/init/references/apps-config-schema.md`) plus a synced section in your project's root `AGENTS.md` and `CLAUDE.md`. Without that config, `resolving-app` can infer only the root of a repository that clearly contains one app; monorepo routing and per-app policy come from the project's config.
 
 ## State: project config vs. machine state
 

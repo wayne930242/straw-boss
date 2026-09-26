@@ -5,7 +5,7 @@ description: Use to carry one task through a managed app's git lifecycle.
 
 ## Select the mode
 
-Resolve an unknown target through [work-on](../work-on/SKILL.md).
+Resolve an unknown target through [resolving-app](../resolving-app/SKILL.md).
 Read `forbidDirectCommit` and `gitWorkflowSkill` from the [apps configuration](../../../skills/init/references/apps-config-schema.md).
 
 Reuse the user's established mode and base branch.

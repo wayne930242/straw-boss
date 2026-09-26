@@ -23,7 +23,7 @@ Solo-mode work and read-only work launch with the app directory as `cwd`.
 
 Team-mode work runs in a worktree this session owns:
 
-1. Create and verify it with plain git from the app directory resolved by [work-on](../work-on/SKILL.md):
+1. Create and verify it with plain git from the app directory resolved by [resolving-app](../resolving-app/SKILL.md):
 
    ```bash
    git -C "<app_dir>" worktree add --no-track "<app_dir>-<slug>" -b "<branch>" "<base_branch>"

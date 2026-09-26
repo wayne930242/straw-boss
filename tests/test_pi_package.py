@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-PI_SKILLS = {"boss-say", "work-on", "choosing-graph", "shipping-task", "reporting-to-user", "dispatching-work"}
+PI_SKILLS = {"boss-say", "resolving-app", "choosing-graph", "shipping-task", "reporting-to-user", "dispatching-work"}
 PI_EXTENSIONS = {"dispatch-recovery.ts", "pane-balance.ts"}
 RESOLVE = """
 const [managerModule, settingsModule, root, agentDir] = process.argv.slice(1);

@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PI = ROOT / "pi/skills"
 SHARED = ROOT / "skills"
-NAMES = ("boss-say", "work-on", "choosing-graph", "shipping-task", "reporting-to-user", "dispatching-work")
+NAMES = ("boss-say", "resolving-app", "choosing-graph", "shipping-task", "reporting-to-user", "dispatching-work")
 OTHER_HOST_MECHANICS = re.compile(
     r"CLAUDE_PLUGIN_ROOT|scripts/|plan\.json|\.straw-boss/plans|\.straw-boss/dispatch|awaiting-(?:main-agent|user-input|authorization)"
     r"|notifying-main-agent|peeking-work|contacting-orchestrators|bringing-coworker|claim-resource|/loop|ScheduleWakeup"
@@ -107,7 +107,7 @@ class PiSkillSetTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, (PI / "shipping-task/SKILL.md").read_text())
                 self.assertIn(phrase, (SHARED / "shipping-task/SKILL.md").read_text())
-        for name in ("work-on", "boss-say"):
+        for name in ("resolving-app", "boss-say"):
             shared = (SHARED / name / "SKILL.md").read_text()
             pi = (PI / name / "SKILL.md").read_text()
             with self.subTest(skill=name):

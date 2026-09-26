@@ -8,7 +8,7 @@
 
 ## 為什麼
 
-有界工作就留在有界迴圈內。當任務需要自己的 workroom，straw-boss 會讓 worker 直接以負責的 app 為根目錄，不必複製一份終究會過時的 app 脈絡摘要。Claude Code worker 會在那裡載入 app 的 `.claude/skills/` 與 `.claude/settings.json` hooks；Claude Code、Codex CLI 與 Antigravity worker 都會從正確的 app 目錄與本地指示開始工作。改程式、稽核、研究與故障診斷都走同一套路由。Monorepo 可用 `work-on` 做跨 app 路由，單一 app 不需要先做這層設定。完整理由見 [docs/architecture.md](docs/architecture.md)。
+有界工作就留在有界迴圈內。當任務需要自己的 workroom，straw-boss 會讓 worker 直接以負責的 app 為根目錄，不必複製一份終究會過時的 app 脈絡摘要。Claude Code worker 會在那裡載入 app 的 `.claude/skills/` 與 `.claude/settings.json` hooks；Claude Code、Codex CLI 與 Antigravity worker 都會從正確的 app 目錄與本地指示開始工作。改程式、稽核、研究與故障診斷都走同一套路由。Monorepo 可用 `resolving-app` 做跨 app 路由，單一 app 不需要先做這層設定。完整理由見 [docs/architecture.md](docs/architecture.md)。
 
 ## 特色
 
@@ -92,7 +92,7 @@ agy plugin install wayne930242/straw-boss
 pi install git:github.com/wayne930242/straw-boss
 ```
 
-Pi 會載入 `boss-say`、`work-on`、`choosing-graph`、`shipping-task`、`reporting-to-user`、`dispatching-work` 與 `dispatch_control` extension。Pi 主 agent 沿用同一套工作流，透過 `pi-herdr-agents` 派 Pi worker，不執行內附的 Python 腳本；worker 的 model 取自你 Pi model strategy 的 tier。Pi 的 skill 是 `pi/skills/` 下獨立的一套，Claude Code、Codex 與 Antigravity 的 skill 不受影響。細節見 [Pi dispatching-work](pi/skills/dispatching-work/SKILL.md)。
+Pi 會載入 `boss-say`、`resolving-app`、`choosing-graph`、`shipping-task`、`reporting-to-user`、`dispatching-work` 與 `dispatch_control` extension。Pi 主 agent 沿用同一套工作流，透過 `pi-herdr-agents` 派 Pi worker，不執行內附的 Python 腳本；worker 的 model 取自你 Pi model strategy 的 tier。Pi 的 skill 是 `pi/skills/` 下獨立的一套，Claude Code、Codex 與 Antigravity 的 skill 不受影響。細節見 [Pi dispatching-work](pi/skills/dispatching-work/SKILL.md)。
 
 單一 app 的話 `init` 只是加分，裝好 plugin 就能直接用 `boss-say`。檢查 Herdr、設定 `forbidDirectCommit`/`localFiles` 這類選項、或設定 monorepo 多個 app，才需要跑。
 
@@ -116,7 +116,7 @@ boss-say 把 docs/backlog.md 做掉
 |-------|-------------|
 | 修 bug、做功能、稽核、研究、診斷、跑整份 backlog、問現在有哪些派工、收尾派工 | `boss-say` |
 | 設定 managed app 與 work route，或檢查 Herdr 是否就緒 | `init` |
-| 找出請求屬於哪個 app | `work-on` |
+| 找出請求屬於哪個 app | `resolving-app` |
 | 不加入、不打斷，看一眼派工正在做什麼 | `peeking-work` |
 | 把一個 scope 與它進行中的派工移到新的 orchestrator tab | `handoff-orchestrator` |
 | 讓這個窗口接手另一個 main agent 協調的派工 | `boss-say`；只有你要求時才會接手 |
