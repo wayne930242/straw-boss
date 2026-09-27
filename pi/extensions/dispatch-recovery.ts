@@ -15,6 +15,8 @@ type Dispatch = {
   paneId?: string;
   status: "running" | "done" | "failed" | "transferred";
   delivered?: boolean;
+  /** Launches of this session file; subagent_resume reuses it, so each run delivers once. */
+  runs?: number;
 };
 
 const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
@@ -104,13 +106,19 @@ function sessionEntries(file: string): any[] {
   });
 }
 
-function deliveredInParent(parentFile: string, childFile: string, id?: string): any | undefined {
-  return sessionEntries(parentFile).find((entry) =>
+function deliveriesInParent(parentFile: string, childFile: string, id?: string): any[] {
+  return sessionEntries(parentFile).filter((entry) =>
     entry.type === "custom_message" && (
       (entry.customType === "subagent_result" && entry.details?.sessionFile === childFile) ||
       (id !== undefined && entry.customType === "recovered_dispatch_result" && entry.details?.id === id)
     )
   );
+}
+
+/** The current run is delivered only once the parent holds one result per launch. */
+function currentRunDelivery(parentFile: string, record: Dispatch): any | undefined {
+  const deliveries = deliveriesInParent(parentFile, record.sessionFile, record.id);
+  return deliveries.length >= (record.runs ?? 1) ? deliveries.at(-1) : undefined;
 }
 
 function reconcileDelivered(sessionId: string, parentFile: string): void {
@@ -119,7 +127,7 @@ function reconcileDelivered(sessionId: string, parentFile: string): void {
     let changed = false;
     for (const record of records) {
       if (record.status !== "running" || committedTransfer(record.id, sessionId)) continue;
-      const result = deliveredInParent(parentFile, record.sessionFile);
+      const result = currentRunDelivery(parentFile, record);
       if (!result) continue;
       record.status = result.details?.exitCode === 0 ? "done" : "failed";
       record.delivered = true;
@@ -160,7 +168,7 @@ function observe(sessionId: string, parentFile: string, record: Dispatch, pi: Ex
       const status = result.status === "done" || result.status === "failed"
         ? result.status : (result.type === "done" ? "done" : "failed");
       const delivered = existsSync(deliveredFile(current.id)) ||
-        Boolean(deliveredInParent(parentFile, current.sessionFile, current.id));
+        Boolean(currentRunDelivery(parentFile, current));
       if (!delivered) {
         try {
           pi.sendMessage({
@@ -234,9 +242,10 @@ export default function dispatchRecovery(pi: ExtensionAPI): void {
   }
 
   pi.on("tool_result", (event, ctx) => {
-    if (event.toolName !== "subagent" || event.isError) return;
+    if ((event.toolName !== "subagent" && event.toolName !== "subagent_resume") || event.isError) return;
     const details = event.details as any;
-    if (details?.status !== "started" || !details.id || !details.sessionFile) return;
+    const sessionFile = event.toolName === "subagent" ? details?.sessionFile : details?.sessionPath;
+    if (details?.status !== "started" || !details.id || !sessionFile) return;
     const sessionId = ctx.sessionManager.getSessionId();
     withLedgerLock(sessionId, () => {
       const records = readLedger(sessionId);
@@ -246,11 +255,28 @@ export default function dispatchRecovery(pi: ExtensionAPI): void {
         const script = readFileSync(details.launchScriptFile, "utf8");
         paneId = script.match(/PI_SUBAGENT_SURFACE=([^\s;]+)/)?.[1]?.replaceAll("'", "");
       }
-      records.push({
-        id: details.id, name: details.name, task: details.task,
-        cwd: String(event.input.cwd || ctx.cwd), sessionFile: details.sessionFile,
-        launchScriptFile: details.launchScriptFile, paneId, status: "running",
-      });
+      // A resume relaunches an existing session file: reopen its record for one more delivery
+      // instead of letting the finished run's delivery swallow the new result.
+      const resumed = event.toolName === "subagent_resume" &&
+        records.find((record) => record.sessionFile === sessionFile && record.status !== "transferred");
+      if (resumed) {
+        resumed.status = "running";
+        resumed.delivered = false;
+        resumed.runs = (resumed.runs ?? 1) + 1;
+        resumed.launchScriptFile = details.launchScriptFile;
+        resumed.paneId = paneId;
+        if (existsSync(deliveredFile(resumed.id))) unlinkSync(deliveredFile(resumed.id));
+      } else {
+        const parentFile = ctx.sessionManager.getSessionFile();
+        const earlier = event.toolName === "subagent_resume" && parentFile
+          ? deliveriesInParent(parentFile, sessionFile).length : 0;
+        records.push({
+          id: details.id, name: details.name, task: details.task ?? String(event.input.message ?? "resumed session"),
+          cwd: String(event.input.cwd || ctx.cwd), sessionFile,
+          launchScriptFile: details.launchScriptFile, paneId, status: "running",
+          ...(earlier ? { runs: earlier + 1 } : {}),
+        });
+      }
       writeLedger(sessionId, records);
     });
   });

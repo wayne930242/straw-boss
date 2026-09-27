@@ -164,6 +164,75 @@ try {
   assert.equal(retry.messages.length, 1);
   assert.equal(JSON.parse(readFileSync(retryLedger))[0].status, "done");
   await retry.handlers.get("session_shutdown")();
+
+  // subagent_resume reuses the child session file. The resumed run's result must reach the
+  // parent, and the first run's delivery must not settle the resumed run.
+  const resumeParent = join(home, "resume-parent.jsonl");
+  const resumeChild = join(home, "resume-child.jsonl");
+  writeFileSync(resumeParent, "");
+  writeFileSync(resumeChild, "");
+  const resumeLedger = join(process.env.PI_CODING_AGENT_DIR, "dispatch-ledger/resume-parent.json");
+  const resumeResult = (content) => ({ role: "custom", customType: "subagent_result", content,
+    details: { sessionFile: resumeChild, exitCode: 0 } });
+  delete globalThis.__weihungDispatchSessions;
+  const resume = session("resume-parent", resumeParent);
+  (await import(`${extension.href}?resume=1`)).default(resume.api);
+  await resume.handlers.get("tool_result")({
+    toolName: "subagent", isError: false,
+    details: { status: "started", id: "resume-child", name: "resume-worker", task: "Work", sessionFile: resumeChild },
+    input: { cwd: home },
+  }, resume.ctx);
+  assert.equal(await resume.handlers.get("message_end")({ type: "message_end", message: resumeResult("FIRST_RESULT") }, resume.ctx), undefined);
+  assert.equal(JSON.parse(readFileSync(resumeLedger))[0].status, "done");
+  writeFileSync(resumeParent, JSON.stringify({ type: "custom_message", customType: "subagent_result",
+    details: { sessionFile: resumeChild, exitCode: 0 } }) + "\n");
+  await resume.handlers.get("tool_result")({
+    toolName: "subagent_resume", isError: false,
+    details: { status: "started", id: "resume-run-2", name: "resume-worker", sessionPath: resumeChild },
+    input: { sessionPath: resumeChild },
+  }, resume.ctx);
+  const resumedRecords = JSON.parse(readFileSync(resumeLedger));
+  assert.equal(resumedRecords.length, 1);
+  assert.equal(resumedRecords[0].status, "running");
+  assert.equal(resumedRecords[0].runs, 2);
+  await resume.handlers.get("session_shutdown")();
+
+  delete globalThis.__weihungDispatchSessions;
+  const restarted = session("resume-parent", resumeParent);
+  (await import(`${extension.href}?resume=2`)).default(restarted.api);
+  await restarted.handlers.get("session_start")({ type: "session_start", reason: "resume" }, restarted.ctx);
+  assert.equal(JSON.parse(readFileSync(resumeLedger))[0].status, "running", "the first run's delivery must not settle the resumed run");
+  assert.equal(await restarted.handlers.get("message_end")({ type: "message_end", message: resumeResult("SECOND_RESULT") }, restarted.ctx), undefined,
+    "the resumed run's result must reach the parent unchanged");
+  assert.equal(JSON.parse(readFileSync(resumeLedger))[0].status, "done");
+  const duplicate = await restarted.handlers.get("message_end")({ type: "message_end", message: resumeResult("SECOND_RESULT") }, restarted.ctx);
+  assert.equal(duplicate.message.customType, "transferred_dispatch_notice", "a repeated delivery of one run stays suppressed");
+  await restarted.handlers.get("session_shutdown")();
+
+  // Resuming a session the ledger never saw records it so its result is tracked.
+  const unknownChild = join(home, "unknown-child.jsonl");
+  writeFileSync(unknownChild, "");
+  await restarted.handlers.get("tool_result")({
+    toolName: "subagent_resume", isError: false,
+    details: { status: "started", id: "unknown-run", name: "unknown-worker", sessionPath: unknownChild },
+    input: { sessionPath: unknownChild },
+  }, restarted.ctx);
+  const unknown = JSON.parse(readFileSync(resumeLedger)).find((record) => record.sessionFile === unknownChild);
+  assert.equal(unknown?.status, "running");
+  assert.equal(unknown?.id, "unknown-run");
+  assert.equal(unknown?.runs, undefined);
+
+  // An unrecorded session whose earlier result already reached the parent needs one more delivery.
+  const deliveredChild = join(home, "delivered-child.jsonl");
+  writeFileSync(deliveredChild, "");
+  writeFileSync(resumeParent, JSON.stringify({ type: "custom_message", customType: "subagent_result",
+    details: { sessionFile: deliveredChild, exitCode: 0 } }) + "\n");
+  await restarted.handlers.get("tool_result")({
+    toolName: "subagent_resume", isError: false,
+    details: { status: "started", id: "delivered-run", name: "delivered-worker", sessionPath: deliveredChild },
+    input: { sessionPath: deliveredChild },
+  }, restarted.ctx);
+  assert.equal(JSON.parse(readFileSync(resumeLedger)).find((record) => record.sessionFile === deliveredChild)?.runs, 2);
 } finally {
   rmSync(home, { recursive: true, force: true });
 }
