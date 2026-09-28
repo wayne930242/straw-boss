@@ -6,6 +6,8 @@ type Split = { id: string; direction: "right" | "down"; ratio: number; rect: Rec
 type Pane = { pane_id: string; rect: Rect };
 export type Layout = { panes: Pane[]; splits: Split[]; zoomed?: boolean };
 export type Resize = { pane: string; direction: "left" | "right" | "up" | "down"; amount: number };
+type ListedPane = { pane_id: string; tab_id: string; workspace_id: string };
+type ListedTab = { tab_id: string; label: string };
 
 // Herdr reports its split tree flat: `split_<depth>_<path>`, where the path spells the
 // first (0) or second (1) child taken from the root, and the root's path is `root`.
@@ -19,6 +21,8 @@ const TOLERANCE = 0.01;
 const SETTLE_DELAYS_MS = [400, 1500];
 // Tools that open a worker pane: a dispatch, a resumed dispatch, or dispatch-recovery's reattach and handoff.
 const PANE_TOOLS = ["subagent", "subagent_resume", "dispatch_control"];
+// pi-herdr-agents' grouped mode opens workers in tabs it labels "Agents", "Agents 2", ...
+const AGENTS_TAB = /^Agents(?: \d+)?$/;
 
 /** The resizes that give every leaf an equal share along each split's axis. */
 export function planBalance(layout: Layout): Resize[] {
@@ -84,6 +88,20 @@ export async function balanceTab(paneId: string, run = herdr): Promise<void> {
   }
 }
 
+/** Balances the lead's tab, then every Agents tab in the lead's workspace. */
+export async function balanceWorkspace(paneId: string, run = herdr): Promise<void> {
+  await balanceTab(paneId, run);
+  const panes = JSON.parse(await run(["pane", "list"])).result.panes as ListedPane[];
+  const lead = panes.find((pane) => pane.pane_id === paneId);
+  if (!lead) return;
+  const tabs = JSON.parse(await run(["tab", "list", "--workspace", lead.workspace_id])).result.tabs as ListedTab[];
+  for (const tab of tabs) {
+    if (tab.tab_id === lead.tab_id || !AGENTS_TAB.test(tab.label)) continue;
+    const anchor = panes.find((pane) => pane.tab_id === tab.tab_id);
+    if (anchor) await balanceTab(anchor.pane_id, run);
+  }
+}
+
 export default function paneBalance(pi: ExtensionAPI): void {
   const paneId = process.env.HERDR_PANE_ID;
   if (!paneId) return;
@@ -92,7 +110,7 @@ export default function paneBalance(pi: ExtensionAPI): void {
     for (const delay of SETTLE_DELAYS_MS) {
       const timer = setTimeout(() => {
         timers.delete(timer);
-        balanceTab(paneId).catch(() => {});
+        balanceWorkspace(paneId).catch(() => {});
       }, delay);
       timers.add(timer);
     }

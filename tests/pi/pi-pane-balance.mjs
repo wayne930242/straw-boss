@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import paneBalance, { balanceTab, planBalance } from "../../pi/extensions/pane-balance.ts";
+import paneBalance, { balanceTab, balanceWorkspace, planBalance } from "../../pi/extensions/pane-balance.ts";
 
 const rect = (x, y, width, height) => ({ x, y, width, height });
 
@@ -70,6 +70,46 @@ await balanceTab("lead", async (args) => {
   return JSON.stringify({ result: { layout: { ...chain, zoomed: true } } });
 });
 assert.equal(calls.length, 1, "a zoomed tab is left alone");
+
+// pi-herdr-agents' grouped mode opens workers in "Agents" / "Agents N" tabs beside the lead's tab.
+const workspace = {
+  panes: [
+    { pane_id: "lead", tab_id: "w:t1", workspace_id: "w" },
+    { pane_id: "a1", tab_id: "w:t2", workspace_id: "w" },
+    { pane_id: "a2", tab_id: "w:t2", workspace_id: "w" },
+    { pane_id: "b1", tab_id: "w:t3", workspace_id: "w" },
+    { pane_id: "u1", tab_id: "w:t4", workspace_id: "w" },
+    { pane_id: "x1", tab_id: "x:t1", workspace_id: "x" },
+  ],
+  tabs: [
+    { tab_id: "w:t1", label: "release", workspace_id: "w" },
+    { tab_id: "w:t2", label: "Agents", workspace_id: "w" },
+    { tab_id: "w:t3", label: "Agents 2", workspace_id: "w" },
+    { tab_id: "w:t4", label: "Agents notes", workspace_id: "w" },
+  ],
+};
+const laidOut = [];
+await balanceWorkspace("lead", async (args) => {
+  if (args[0] === "pane" && args[1] === "list") return JSON.stringify({ result: { panes: workspace.panes } });
+  if (args[0] === "tab" && args[1] === "list") {
+    assert.deepEqual(args.slice(2), ["--workspace", "w"]);
+    return JSON.stringify({ result: { tabs: workspace.tabs } });
+  }
+  if (args[1] === "layout") {
+    laidOut.push(args[3]);
+    return JSON.stringify({ result: { layout: balanced } });
+  }
+  throw new Error(`unexpected herdr call ${args.join(" ")}`);
+});
+assert.deepEqual(laidOut, ["lead", "a1", "b1"], "the lead's tab and its workspace's Agents tabs balance; other tabs stay put");
+
+laidOut.length = 0;
+await balanceWorkspace("gone", async (args) => {
+  if (args[1] === "list") return JSON.stringify({ result: { panes: workspace.panes, tabs: workspace.tabs } });
+  laidOut.push(args[3]);
+  return JSON.stringify({ result: { layout: balanced } });
+});
+assert.deepEqual(laidOut, ["gone"], "an unlisted lead pane still balances its own tab only");
 
 const handlers = new Map();
 const previous = process.env.HERDR_PANE_ID;
