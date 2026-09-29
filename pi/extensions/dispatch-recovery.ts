@@ -29,6 +29,7 @@ const processSessions = ((globalThis as any).__weihungDispatchSessions ??= new S
 const watchers = new Map<string, ReturnType<typeof watch>>();
 const timers = new Map<string, ReturnType<typeof setInterval>>();
 const handoffTimers = new Set<ReturnType<typeof setInterval>>();
+const paneTimers = new Set<ReturnType<typeof setTimeout>>();
 const lockWait = new Int32Array(new SharedArrayBuffer(4));
 
 function withLedgerLock<T>(sessionId: string, action: () => T): T {
@@ -144,6 +145,47 @@ function finalMessage(childFile: string): string {
   return text || "The child session ended without a final text message. Inspect its session file.";
 }
 
+type HerdrPane = { pane_id: string; label?: string; agent?: string };
+
+function herdrPanes(): HerdrPane[] {
+  try {
+    const output = execFileSync(process.env.HERDR_BIN_PATH || "herdr", ["pane", "list"], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000,
+    });
+    return JSON.parse(output).result?.panes ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// subagent_resume launch scripts carry no PI_SUBAGENT_SURFACE; pi-herdr-agents labels the pane with the dispatch name.
+function paneByLabel(name: string | undefined): string | undefined {
+  if (!name) return undefined;
+  const matches = herdrPanes().filter((pane) => pane.label === name);
+  return matches.length === 1 ? matches[0].pane_id : undefined;
+}
+
+// pi-herdr-agents closes a finished worker's pane from the launching process only. A recovered delivery
+// has no such process, so close the pane here once its agent has exited; a pane with a live agent stays.
+function closeExitedPane(paneId: string, attemptsLeft = 30): void {
+  const pane = herdrPanes().find((item) => item.pane_id === paneId);
+  if (!pane) return;
+  if (pane.agent) {
+    if (attemptsLeft <= 1) return;
+    const timer = setTimeout(() => {
+      paneTimers.delete(timer);
+      closeExitedPane(paneId, attemptsLeft - 1);
+    }, 1000);
+    paneTimers.add(timer);
+    return;
+  }
+  try {
+    execFileSync(process.env.HERDR_BIN_PATH || "herdr", ["pane", "close", paneId], { stdio: "ignore", timeout: 5000 });
+  } catch (error) {
+    console.error(`Dispatch pane ${paneId} was left open:`, error);
+  }
+}
+
 function observe(sessionId: string, parentFile: string, record: Dispatch, pi: ExtensionAPI): void {
   if (watchers.has(record.id) || record.status !== "running") return;
   const sidecar = `${record.sessionFile}.exit`;
@@ -193,6 +235,7 @@ function observe(sessionId: string, parentFile: string, record: Dispatch, pi: Ex
       clearInterval(timers.get(record.id));
       timers.delete(record.id);
       if (existsSync(forwarded)) unlinkSync(forwarded);
+      if (current.paneId) closeExitedPane(current.paneId);
     }));
   };
   mkdirSync(dirname(sidecar), { recursive: true });
@@ -255,6 +298,7 @@ export default function dispatchRecovery(pi: ExtensionAPI): void {
         const script = readFileSync(details.launchScriptFile, "utf8");
         paneId = script.match(/PI_SUBAGENT_SURFACE=([^\s;]+)/)?.[1]?.replaceAll("'", "");
       }
+      paneId ??= paneByLabel(details.name);
       // A resume relaunches an existing session file: reopen its record for one more delivery
       // instead of letting the finished run's delivery swallow the new result.
       const resumed = event.toolName === "subagent_resume" &&
@@ -375,5 +419,7 @@ export default function dispatchRecovery(pi: ExtensionAPI): void {
     timers.clear();
     for (const timer of handoffTimers) clearInterval(timer);
     handoffTimers.clear();
+    for (const timer of paneTimers) clearTimeout(timer);
+    paneTimers.clear();
   });
 }
