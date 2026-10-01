@@ -14,8 +14,8 @@ Workers are Pi sessions launched by `subagent` from `pi-herdr-agents`; it checks
 
 Pick a tier from the user's active Pi model strategy.
 A work route in the root `AGENTS.md` of the repository holding the apps configuration may map a kind of task to a tier; otherwise pick the tier whose purpose matches the task: `recon` for read-only investigation, `review` for a checkpoint review, `coding` for other source changes.
-Pass that tier's full model list as `model` and its thinking level as `thinking`, and state the selected tier and reason.
-Leave `agent` unset: a bare spawn runs autonomously with the full tool set, including `caller_ping`.
+Each tier is a `pi-herdr-agents` role that carries the strategy's model list and thinking level, so pass the tier as `agent` and leave `model` and `thinking` unset; pass them only for a model the user chose explicitly.
+State the selected tier and reason.
 
 ### Prepare the checkout
 
@@ -54,7 +54,7 @@ The brief ends with this worker contract:
 
 ### Launch
 
-Call `subagent` with `name` (`<task>-<role>[-n]`), `cwd`, `model`, `thinking`, and `task`.
+Call `subagent` with `name` (`<task>-<role>[-n]`), `agent` (the tier), `cwd`, and `task`.
 Track the dispatch as an in-progress todo item and report its name, tier, and `cwd`.
 `pi-herdr-agents` places the pane in the Herdr workspace that owns the checkout, or in this session's workspace when none does.
 
@@ -64,7 +64,7 @@ Each delivered event starts one [scheduling round](../boss-say/SKILL.md#plan-and
 
 | Event | Action |
 |---|---|
-| `subagent_result` or `recovered_dispatch_result` | Check it against the brief, then wrap up below. |
+| `subagent_result` or `recovered_dispatch_result` | Check it against the brief, wrap up below, and update the dispatch's todo item before the round schedules anything else. |
 | `caller_ping` | Gather every pending decision from all workers, ask them together through `ask_user` with each one's context, options, and recommendation, then continue each worker with `subagent_resume` carrying its answer. The worker keeps its slot meanwhile. |
 | Stall notice | Report the worker's name and pane to the user. |
 
@@ -78,8 +78,13 @@ A dispatch is `done` only when every item below holds:
 
 A task under a shared checkpoint that meets item 1 is `delivered`: note it on its todo item and keep its worktree until the checkpoint task returns; that result then settles items 2 and 3 for every covered task.
 
-Then update the originating ticket as [shipping-task](../shipping-task/SKILL.md#complete-the-lifecycle) directs, while the worktree still exists for a tracker that reads its commit there; remove a worktree this session created with `git -C "<app_dir>" worktree remove "<absolute-worktree-path>"`; and check off the todo item.
-A result missing item 1, or a checkpoint that fails, marks the task failed or reopens it with a fix task; its dependents stay blocked.
+Then update the originating ticket as [shipping-task](../shipping-task/SKILL.md#complete-the-lifecycle) directs, while the worktree still exists for a tracker that reads its commit there; remove a worktree this session created with `git -C "<app_dir>" worktree remove "<absolute-worktree-path>"`.
+
+Every result settles its todo item:
+
+- `done`: mark the item `completed`, which unblocks its dependents.
+- `delivered`: keep it `in_progress` with the note above until the checkpoint task returns.
+- A result missing item 1, or a failed checkpoint: set the item back to `pending` with the failure in its description and add a fix task it depends on; its dependents stay blocked.
 `pi-herdr-agents` closes an ordinary worker pane after delivery.
 
 ## Recover and hand off
@@ -92,4 +97,4 @@ Use the `dispatch_control` tool:
 
 Results arrive once while the owning Pi process runs, and at least once across a crash.
 
-**Complete when:** each dispatch is launched and tracked, or its result, checkpoint, review disposition, ticket update, and worktree removal are confirmed.
+**Complete when:** each dispatch is launched and tracked, or its result, checkpoint, review disposition, ticket update, worktree removal, and todo item status are confirmed.
