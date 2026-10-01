@@ -50,7 +50,7 @@ Name a method skill only when the user explicitly requested it.
 
 The brief ends with this worker contract:
 
-> Work in this checkout and follow its own instructions. When you need a decision that the authorizations above do not cover, call `caller_ping` with the question, the options, and your recommendation, then stop; the answer arrives when this session resumes. Finish with one final message. For a source change, give the completion reference (commit, MR/PR, or merge), the evidence references for the anchor's checkpoint, any push of your own feature branch, and the review disposition when this brief assigns the review checkpoint to you. For an investigation or audit, give the explanatory result with its evidence references. On failure, give the failure and its evidence.
+> Work in this checkout and follow its own instructions. When you need a decision that the authorizations above do not cover, call `caller_ping` with the question, the options, and your recommendation, then stop; the answer arrives when this session resumes. Finish with one final message; only that message is delivered, so it carries the whole result even when a monitor wakes you after you have reported. For a source change, give the completion reference (commit, MR/PR, or merge), the evidence references for the anchor's checkpoint, any push of your own feature branch, and the review disposition when this brief assigns the review checkpoint to you. For an investigation or audit, give the explanatory result with its evidence references. On failure, give the failure and its evidence.
 
 ### Launch
 
