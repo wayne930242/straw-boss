@@ -95,7 +95,7 @@ Then run once per project:
 pi install git:github.com/wayne930242/straw-boss
 ```
 
-Pi loads `boss-say`, `resolving-app`, `choosing-graph`, `shipping-task`, `reporting-to-user`, and `dispatching-work`, plus the `dispatch_control` extension. A Pi main agent keeps the same workflow and dispatches Pi workers through `pi-herdr-agents`; it runs none of the bundled Python scripts. Worker models come from the tiers of your Pi model strategy. Its skills are a separate Pi set under `pi/skills/`, so the Claude Code, Codex, and Antigravity skills stay as they are. See [Pi dispatching-work](pi/skills/dispatching-work/SKILL.md).
+Pi loads `boss-say`, `resolving-app`, `choosing-graph`, `shipping-task`, `reporting-to-user`, and `dispatching-work`, plus the `dispatch_control` extension. A Pi main agent keeps the same workflow and dispatches Pi workers through `pi-herdr-agents`; it runs none of the bundled Python scripts. Worker models come from the role models in your `pi-herdr-agents` configuration. Its skills are a separate Pi set under `pi/skills/`, so the Claude Code, Codex, and Antigravity skills stay as they are. See [Pi dispatching-work](pi/skills/dispatching-work/SKILL.md).
 
 For a single app, `init` is a bonus — `boss-say` works the moment the plugin's installed. Run it to check Herdr readiness, configure per-app options like `forbidDirectCommit`/`localFiles`, or a monorepo's apps configured.
 

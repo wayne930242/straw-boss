@@ -20,7 +20,7 @@ Before solo work starts, check the primary checkout is clean and reserve it for 
 
 ## Prepare and execute
 
-The execution tier comes from [boss-say](../boss-say/SKILL.md#route-the-work).
+The worker role comes from [boss-say](../boss-say/SKILL.md#route-the-work).
 In team-mode, the main agent creates and verifies the worktree and copies declared local files through [Prepare the checkout](../dispatching-work/SKILL.md#prepare-the-checkout).
 The verified path becomes the worker's cwd.
 

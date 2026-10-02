@@ -12,10 +12,10 @@ Workers are Pi sessions launched by `subagent` from `pi-herdr-agents`; it checks
 
 ### Resolve the worker setup
 
-Pick a tier from the user's active Pi model strategy.
-A work route in the root `AGENTS.md` of the repository holding the apps configuration may map a kind of task to a tier; otherwise pick the tier whose purpose matches the task: `recon` for read-only investigation, `review` for a checkpoint review, `coding` for other source changes.
-Each tier is a `pi-herdr-agents` role that carries the strategy's model list and thinking level, so pass the tier as `agent` and leave `model` and `thinking` unset; pass them only for a model the user chose explicitly.
-State the selected tier and reason.
+Pick the `pi-herdr-agents` role and thinking level for the worker.
+A work route in the root `AGENTS.md` of the repository holding the apps configuration may map a kind of task to a role; otherwise pick the role whose purpose matches the task: `scout` for read-only investigation, `reviewer` for a checkpoint review, `worker` for other source changes.
+The user sets each role's model in `pi-herdr-agents` configuration, so leave `model` unset unless the user chose one explicitly. Set `thinking` for the work: `low` for bounded mechanical tasks, `medium` for ordinary implementation and review, `high` for architecture, security, or hard diagnosis.
+State the selected role, thinking level, and reason.
 
 ### Prepare the checkout
 
@@ -54,8 +54,8 @@ The brief ends with this worker contract:
 
 ### Launch
 
-Call `subagent` with `name` (`<task>-<role>[-n]`), `agent` (the tier), `cwd`, and `task`.
-Track the dispatch as an in-progress todo item and report its name, tier, and `cwd`.
+Call `subagent` with `name` (`<task>-<role>[-n]`), `agent` (the role), `thinking`, `cwd`, and `task`.
+Track the dispatch as an in-progress todo item and report its name, role, and `cwd`.
 `pi-herdr-agents` places the pane in the Herdr workspace that owns the checkout, or in this session's workspace when none does.
 
 ## Handle events
