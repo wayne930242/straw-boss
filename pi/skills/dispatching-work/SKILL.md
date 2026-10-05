@@ -40,12 +40,14 @@ When parallel tasks target the same moving base, the worker refreshes through th
 
 The `task` is written in English and carries:
 
-- **The work** — the user requirement and requested outcome, plus any input or artifact path the worker cannot reach from its own checkout.
-- **The anchor and who exercises it** — this task's anchor, and whether the worker runs its own checkpoint or hands its completion reference and evidence to the group's shared one. The worker and user choose the verification method inside that anchor.
+- **The work** — the user requirement and requested outcome, stated per item as the current symptom and the required behavior, plus any input or artifact path the worker cannot reach from its own checkout. What this session already found travels as evidence references, such as a reproduction, report, or session file, for the worker to weigh.
+- **The anchor and who exercises it** — this task's anchor and the behavior it observes, and whether the worker runs its own checkpoint or hands its completion reference and evidence to the group's shared one. The worker and user choose the verification method inside that anchor.
 - **Its place and motive** — where this task sits in the coordination and the user's original reason for it.
-- **Authorizations** — every authorization the user granted for this work, quoted.
+- **Authorizations** — every authorization and exclusion the user stated for this work, quoted.
 
-Target-app context and work decisions stay with the worker, so repository conventions and implementation direction stay out.
+Target-app context discovery and work decisions stay with the worker: the cause, where to change the code, the app's conventions, and its verification commands stay out, because a prescribed cause or location binds the worker to an unverified guess.
+Process rules reach the worker through its role definition and the user instructions every Pi session loads.
+Keep the brief before the worker contract near 300 words, quoted user text aside; 101 sampled briefs with a 598-word median there were mostly this excluded material.
 Name a method skill only when the user explicitly requested it.
 
 The brief ends with this worker contract:

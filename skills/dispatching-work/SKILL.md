@@ -20,11 +20,12 @@ Team-mode cwd preparation belongs to [shipping-task](../shipping-task/SKILL.md#p
 
 A brief carries three things:
 
-- **The work** -- the user requirement and requested outcome, plus any input, artifact path, or assigned port the worker cannot reach from its own harness.
-- **The anchor and who exercises it** -- this task's anchor, and whether the worker runs its own checkpoint or hands its completion reference and evidence to the group's shared one. The worker and user choose the verification method inside that anchor.
+- **The work** -- the user requirement and requested outcome, stated per item as the current symptom and the required behavior, the exclusions the user stated, and any input, artifact path, or assigned port the worker cannot reach from its own harness. What the main agent already found travels as evidence references for the worker to weigh.
+- **The anchor and who exercises it** -- this task's anchor and the behavior it observes, and whether the worker runs its own checkpoint or hands its completion reference and evidence to the group's shared one. The worker and user choose the verification method inside that anchor.
 - **Its place and motive** -- where this task sits in the coordination and the user's original reason for it.
 
-Target-app context discovery and work decisions stay with the worker in its own harness, so repo conventions, implementation direction, and anything else readable from that checkout stay out.
+Target-app context discovery and work decisions stay with the worker in its own harness: the cause, where to change the code, repo conventions, verification commands, and anything else readable from that checkout stay out, because a prescribed cause or location binds the worker to an unverified guess.
+Keep the brief near 300 words, quoted user text aside.
 Name a method skill only when the user explicitly requested it; the app chooses its own methods otherwise.
 Investigation and audit briefs request an explanatory result with evidence references.
 
