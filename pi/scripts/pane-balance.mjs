@@ -1,5 +1,5 @@
 // Equalises the panes of one Herdr tab. The Pi extension imports it when its pane opens,
-// and runs it detached as `pane-balance.mjs after-close <pane>` when its Pi quits, because
+// and runs it detached as `pane-balance.mjs after-close <pane> <tab>` when its Pi quits, because
 // the pane closes only after the Pi process is gone.
 import { execFile } from "node:child_process";
 import { mkdir, rmdir, stat } from "node:fs/promises";
@@ -92,8 +92,8 @@ export function planBalance(layout) {
 /** @type {Run} */
 export const herdr = (args) =>
   new Promise((resolve, reject) => {
-    execFile(process.env.HERDR_BIN_PATH || "herdr", args, { encoding: "utf8" }, (error, stdout) =>
-      error ? reject(Object.assign(error, { stdout })) : resolve(stdout));
+    execFile(process.env.HERDR_BIN_PATH || "herdr", args, { encoding: "utf8" }, (error, stdout, stderr) =>
+      error ? reject(Object.assign(error, { stderr })) : resolve(stdout));
   });
 
 const readLayout = async (paneId, run) =>
@@ -150,25 +150,29 @@ async function paneTab(paneId, run) {
   try {
     return /** @type {string} */ (JSON.parse(await run(["pane", "get", paneId])).result.pane.tab_id);
   } catch (error) {
-    if (String(error?.stdout ?? "").includes("pane_not_found")) return null;
+    // Herdr reports a missing pane on stderr.
+    if (String(error?.stderr ?? "").includes("pane_not_found")) return null;
     return undefined;
   }
 }
 
 /**
- * Waits for `paneId` to close, then equalises the tab it left. A pane that outlives its
+ * Waits for `paneId` to close, then equalises the tab it left. The pane may already be gone
+ * when this starts, so `knownTab` names the tab the Pi last saw. A pane that outlives its
  * Pi, such as a shell the user keeps, changes no layout and is left alone.
  * @param {string} paneId
+ * @param {string | undefined} knownTab
  * @param {{ run?: Run, lockRoot?: string, pollMs?: number, waitMs?: number }} [options]
  */
-export async function balanceAfterClose(paneId, { run = herdr, lockRoot = LOCK_ROOT, pollMs = POLL_MS, waitMs = CLOSE_WAIT_MS } = {}) {
-  const tabId = await paneTab(paneId, run);
+export async function balanceAfterClose(paneId, knownTab, { run = herdr, lockRoot = LOCK_ROOT, pollMs = POLL_MS, waitMs = CLOSE_WAIT_MS } = {}) {
+  let current = await paneTab(paneId, run);
+  const tabId = current || knownTab;
   if (!tabId) return;
   const deadline = Date.now() + waitMs;
-  for (;;) {
+  while (current !== null) {
     if (Date.now() > deadline) return;
     await sleep(pollMs);
-    if ((await paneTab(paneId, run)) === null) break;
+    current = await paneTab(paneId, run);
   }
   const panes = /** @type {{ pane_id: string, tab_id: string }[]} */ (JSON.parse(await run(["pane", "list"])).result.panes);
   const anchor = panes.find((pane) => pane.tab_id === tabId);
@@ -176,5 +180,5 @@ export async function balanceAfterClose(paneId, { run = herdr, lockRoot = LOCK_R
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === "after-close" && process.argv[3]) {
-  await balanceAfterClose(process.argv[3]).catch(() => {});
+  await balanceAfterClose(process.argv[3], process.argv[4]).catch(() => {});
 }

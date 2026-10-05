@@ -110,7 +110,7 @@ const closing = (goneAfter) => {
   const run = async (args) => {
     if (args[1] === "get") {
       if (gets++ < goneAfter) return JSON.stringify({ result: { pane: { pane_id: args[2], tab_id: "w:t1" } } });
-      throw Object.assign(new Error("exit 1"), { stdout: '{"error":{"code":"pane_not_found"}}' });
+      throw Object.assign(new Error("exit 1"), { stderr: '{"error":{"code":"pane_not_found"}}' });
     }
     if (args[1] === "list") {
       return JSON.stringify({ result: { panes: [{ pane_id: "x1", tab_id: "x:t1" }, { pane_id: "lead", tab_id: "w:t1" }] } });
@@ -124,20 +124,25 @@ const closing = (goneAfter) => {
   return { run, laidOut };
 };
 const closed = closing(3);
-await balanceAfterClose("w1", { run: closed.run, lockRoot, pollMs: 1, waitMs: 1000 });
+await balanceAfterClose("w1", "w:t9", { run: closed.run, lockRoot, pollMs: 1, waitMs: 1000 });
 assert.deepEqual(closed.laidOut, ["lead", "lead"], "the tab the pane left is balanced once it closes");
 
 const kept = closing(Infinity);
-await balanceAfterClose("w1", { run: kept.run, lockRoot, pollMs: 1, waitMs: 20 });
+await balanceAfterClose("w1", "w:t1", { run: kept.run, lockRoot, pollMs: 1, waitMs: 20 });
 assert.deepEqual(kept.laidOut, [], "a pane that stays open after Pi quits changes nothing");
 
+// Herdr can close the pane before the helper first asks about it; the tab the Pi saw still counts.
+const gone = closing(0);
+await balanceAfterClose("w1", "w:t1", { run: gone.run, lockRoot, pollMs: 1, waitMs: 1000 });
+assert.deepEqual(gone.laidOut, ["lead", "lead"], "a pane already closed still rebalances the tab it left");
+
 const spawned = [];
-spawnAfterClose("w1", (command, args, options) => {
+spawnAfterClose("w1", "w:t1", (command, args, options) => {
   spawned.push({ args, options });
   return { on() {}, unref() {} };
 });
 assert.match(spawned[0].args[0], /pi\/scripts\/pane-balance\.mjs$/);
-assert.deepEqual(spawned[0].args.slice(1), ["after-close", "w1"]);
+assert.deepEqual(spawned[0].args.slice(1), ["after-close", "w1", "w:t1"]);
 assert.equal(spawned[0].options.detached, true, "the helper outlives the quitting Pi");
 
 const handlers = new Map();

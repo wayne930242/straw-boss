@@ -9,9 +9,9 @@ export { balanceAfterClose, balanceTab, planBalance } from "../scripts/pane-bala
 const HELPER = fileURLToPath(new URL("../scripts/pane-balance.mjs", import.meta.url));
 
 /** Runs the helper outside this process, which exits before Herdr closes its pane. */
-export function spawnAfterClose(paneId: string, launch = spawn): void {
+export function spawnAfterClose(paneId: string, tabId = process.env.HERDR_TAB_ID ?? "", launch = spawn): void {
   const runtime = /^(node|bun)(\.exe)?$/.test(basename(process.execPath)) ? process.execPath : "node";
-  const child = launch(runtime, [HELPER, "after-close", paneId], { detached: true, stdio: "ignore" });
+  const child = launch(runtime, [HELPER, "after-close", paneId, tabId], { detached: true, stdio: "ignore" });
   child.on("error", () => {});
   child.unref();
 }
