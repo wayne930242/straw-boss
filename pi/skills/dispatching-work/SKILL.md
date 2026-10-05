@@ -56,7 +56,7 @@ The brief ends with this worker contract:
 
 Call `subagent` with `name` (`<task>-<role>[-n]`), `agent` (the role), `thinking`, `cwd`, and `task`.
 Track the dispatch as an in-progress todo item and report its name, role, and `cwd`.
-`pi-herdr-agents` places the pane in the Herdr workspace that owns the checkout, or in this session's workspace when none does.
+Read its pane with `herdr pane read <pane_id> --lines 15` once Pi has started; a worker held at a trust prompt gets the trust-parent-folder choice through `herdr pane send-keys`, because an unanswered prompt has left a worker idle for hours.
 
 ## Handle events
 
@@ -66,7 +66,7 @@ Each delivered event starts one [scheduling round](../boss-say/SKILL.md#plan-and
 |---|---|
 | `subagent_result` or `recovered_dispatch_result` | Check it against the brief, wrap up below, and update the dispatch's todo item before the round schedules anything else. |
 | `caller_ping` | Gather every pending decision from all workers, ask them together through `ask_user` with each one's context, options, and recommendation, then continue each worker with `subagent_resume` carrying its answer. The worker keeps its slot meanwhile. |
-| Stall notice | Report the worker's name and pane to the user. |
+| Stall notice | Interrupt the worker once with `subagent_interrupt` and ask for its result. If it stays idle, close its pane with `herdr pane close <pane_id>`, report it, and respawn only the work still missing. |
 
 ## Wrap up
 

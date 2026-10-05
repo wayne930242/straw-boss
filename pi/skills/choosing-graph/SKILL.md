@@ -21,14 +21,14 @@ The app's own development artifacts follow its local workflow.
 
 The main agent names the anchor and checkpoint; the worker and user choose the verification method inside that anchor.
 
-- **testing** — default for programming changes. Use the smallest credible seam that can go red before the change, plus the app's own verification commands such as its test script, lint, and type check; escalate to integration or E2E according to the app's conventions.
+- **testing** — default for programming changes. Use the smallest credible seam that can go red before the change and the tests that reach the changed code, plus the app's own verification commands such as its test script, lint, and type check; escalate to integration or E2E according to the app's conventions.
 - **pseudo-human** — a browser or computer operates the real interface, with screenshots and measurements as evidence.
 - **human** — the user operates or judges the delivered artifact. Ask about pseudo-human only when the user's risk judgment is unresolved.
 - **adversarial-review** — a fresh-context agent challenges the result against the requirement and evidence references. Use this for read-only work with no credible executable or operable checkpoint.
 
 Naming the anchor settles where its checkpoint runs.
-Tasks that share one anchor and one checkpoint take a single checkpoint dispatch over the whole group, which is both cheaper than one per task and independent of the work it judges.
-A repo-wide command returns the same verdict for every task touching that app, so the group's checkpoint runs the suite, lint, and type check once over their integrated result.
+Tasks that share one anchor and one checkpoint take a single checkpoint dispatch over the whole group.
+A repo-wide command returns the same verdict for every task touching that app, so the suite, lint, and type check run once over the integrated result: at the group's checkpoint, or before merge for a lone task.
 A task whose checkpoint is distinct, or plainly cheaper exercised in place, carries its own.
 
 For a frontend human or pseudo-human checkpoint, name the address the user assigned in the brief.
@@ -36,7 +36,8 @@ For a frontend human or pseudo-human checkpoint, name the address the user assig
 ## Review checkpoint
 
 Review one coherent programming change-set once, after implementation and primary verification.
-A fresh-context reviewer examines the finished change-set directly; correctness and contract findings return to the work loop, and nits receive an explicit disposition.
+When naming the anchor, the main agent assigns a fresh-context reviewer to a change-set that touches a shared contract, authorization or permission data, a migration, several modules, or durable work, because author self-review has missed correctness findings there; any other change-set takes its disposition from the author's read of its own diff against the brief.
+Correctness and contract findings return to the work loop, and nits receive an explicit disposition.
 
 A shared checkpoint belongs to the main agent: one [checkpoint task](../boss-say/SKILL.md#plan-and-schedule) exercises the anchor itself over the group's finished change-sets and reports its findings.
 
