@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import paneBalance, { balanceTab, balanceWorkspace, planBalance } from "../../pi/extensions/pane-balance.ts";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import paneBalance, { balanceAfterClose, balanceTab, planBalance, spawnAfterClose } from "../../pi/extensions/pane-balance.ts";
 
 const rect = (x, y, width, height) => ({ x, y, width, height });
 
@@ -54,62 +57,88 @@ const stacked = {
 };
 assert.deepEqual(planBalance(stacked), [{ pane: "bottom", direction: "up", amount: 0.2 }]);
 
+const lockRoot = mkdtempSync(join(tmpdir(), "pane-balance-test-"));
+const withTab = (layout) => JSON.stringify({ result: { layout: { ...layout, tab_id: "w:t1" } } });
+
+// Each resize is planned from a fresh layout, so the chain takes one resize per read.
+const afterRoot = { ...chain, splits: [{ ...chain.splits[0], ratio: 0.75 }, ...chain.splits.slice(1)] };
+const layouts = [chain, chain, afterRoot, balanced];
 const calls = [];
-await balanceTab("lead", async (args) => {
-  calls.push(args);
-  return args[1] === "layout" ? JSON.stringify({ result: { layout: chain } }) : "{}";
+await balanceTab("lead", {
+  lockRoot,
+  run: async (args) => {
+    calls.push(args);
+    return args[1] === "layout" ? withTab(layouts.shift()) : "{}";
+  },
 });
-assert.deepEqual(calls.slice(1), [
+assert.deepEqual(calls.filter((args) => args[1] === "resize"), [
   ["pane", "resize", "--pane", "w2", "--direction", "right", "--amount", "0.25"],
   ["pane", "resize", "--pane", "w3", "--direction", "right", "--amount", "0.1667"],
 ]);
+assert.equal(layouts.length, 0, "the layout is reread after every resize");
 
 calls.length = 0;
-await balanceTab("lead", async (args) => {
-  calls.push(args);
-  return JSON.stringify({ result: { layout: { ...chain, zoomed: true } } });
-});
-assert.equal(calls.length, 1, "a zoomed tab is left alone");
+await balanceTab("lead", { lockRoot, run: async (args) => (calls.push(args), withTab({ ...chain, zoomed: true })) });
+assert.ok(calls.every((args) => args[1] === "layout"), "a zoomed tab is left alone");
 
-// pi-herdr-agents' grouped mode opens workers in "Agents" / "Agents N" tabs beside the lead's tab.
-const workspace = {
+// Two sessions balancing one tab take turns instead of applying the same delta twice.
+let ratio = 0.75;
+let resizes = 0;
+const live = () => ({
+  splits: [{ id: "split_0_root", direction: "right", ratio, rect: rect(0, 0, 180, 60) }],
   panes: [
-    { pane_id: "lead", tab_id: "w:t1", workspace_id: "w" },
-    { pane_id: "a1", tab_id: "w:t2", workspace_id: "w" },
-    { pane_id: "a2", tab_id: "w:t2", workspace_id: "w" },
-    { pane_id: "b1", tab_id: "w:t3", workspace_id: "w" },
-    { pane_id: "u1", tab_id: "w:t4", workspace_id: "w" },
-    { pane_id: "x1", tab_id: "x:t1", workspace_id: "x" },
+    { pane_id: "lead", rect: rect(0, 0, 180 * ratio, 60) },
+    { pane_id: "w1", rect: rect(180 * ratio, 0, 180 * (1 - ratio), 60) },
   ],
-  tabs: [
-    { tab_id: "w:t1", label: "release", workspace_id: "w" },
-    { tab_id: "w:t2", label: "Agents", workspace_id: "w" },
-    { tab_id: "w:t3", label: "Agents 2", workspace_id: "w" },
-    { tab_id: "w:t4", label: "Agents notes", workspace_id: "w" },
-  ],
+});
+const shared = async (args) => {
+  if (args[1] === "layout") return withTab(live());
+  resizes++;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const amount = Number(args[7]);
+  ratio += args[5] === "right" ? amount : -amount;
+  return "{}";
 };
-const laidOut = [];
-await balanceWorkspace("lead", async (args) => {
-  if (args[0] === "pane" && args[1] === "list") return JSON.stringify({ result: { panes: workspace.panes } });
-  if (args[0] === "tab" && args[1] === "list") {
-    assert.deepEqual(args.slice(2), ["--workspace", "w"]);
-    return JSON.stringify({ result: { tabs: workspace.tabs } });
-  }
-  if (args[1] === "layout") {
-    laidOut.push(args[3]);
-    return JSON.stringify({ result: { layout: balanced } });
-  }
-  throw new Error(`unexpected herdr call ${args.join(" ")}`);
-});
-assert.deepEqual(laidOut, ["lead", "a1", "b1"], "the lead's tab and its workspace's Agents tabs balance; other tabs stay put");
+await Promise.all([balanceTab("lead", { lockRoot, run: shared }), balanceTab("w1", { lockRoot, run: shared })]);
+assert.ok(Math.abs(ratio - 0.5) < 0.01, `concurrent sessions leave equal columns, got ${ratio}`);
+assert.equal(resizes, 1, "the second session sees the balanced tab instead of overshooting it");
 
-laidOut.length = 0;
-await balanceWorkspace("gone", async (args) => {
-  if (args[1] === "list") return JSON.stringify({ result: { panes: workspace.panes, tabs: workspace.tabs } });
-  laidOut.push(args[3]);
-  return JSON.stringify({ result: { layout: balanced } });
+// A quitting Pi waits for its pane to close, then balances the tab it left through another pane.
+const closing = (goneAfter) => {
+  let gets = 0;
+  const laidOut = [];
+  const run = async (args) => {
+    if (args[1] === "get") {
+      if (gets++ < goneAfter) return JSON.stringify({ result: { pane: { pane_id: args[2], tab_id: "w:t1" } } });
+      throw Object.assign(new Error("exit 1"), { stdout: '{"error":{"code":"pane_not_found"}}' });
+    }
+    if (args[1] === "list") {
+      return JSON.stringify({ result: { panes: [{ pane_id: "x1", tab_id: "x:t1" }, { pane_id: "lead", tab_id: "w:t1" }] } });
+    }
+    if (args[1] === "layout") {
+      laidOut.push(args[3]);
+      return withTab(balanced);
+    }
+    throw new Error(`unexpected herdr call ${args.join(" ")}`);
+  };
+  return { run, laidOut };
+};
+const closed = closing(3);
+await balanceAfterClose("w1", { run: closed.run, lockRoot, pollMs: 1, waitMs: 1000 });
+assert.deepEqual(closed.laidOut, ["lead", "lead"], "the tab the pane left is balanced once it closes");
+
+const kept = closing(Infinity);
+await balanceAfterClose("w1", { run: kept.run, lockRoot, pollMs: 1, waitMs: 20 });
+assert.deepEqual(kept.laidOut, [], "a pane that stays open after Pi quits changes nothing");
+
+const spawned = [];
+spawnAfterClose("w1", (command, args, options) => {
+  spawned.push({ args, options });
+  return { on() {}, unref() {} };
 });
-assert.deepEqual(laidOut, ["gone"], "an unlisted lead pane still balances its own tab only");
+assert.match(spawned[0].args[0], /pi\/scripts\/pane-balance\.mjs$/);
+assert.deepEqual(spawned[0].args.slice(1), ["after-close", "w1"]);
+assert.equal(spawned[0].options.detached, true, "the helper outlives the quitting Pi");
 
 const handlers = new Map();
 const previous = process.env.HERDR_PANE_ID;
@@ -118,8 +147,10 @@ paneBalance({ on(event, handler) { handlers.set(event, handler); } });
 assert.equal(handlers.size, 0, "outside Herdr the extension registers nothing");
 process.env.HERDR_PANE_ID = "lead";
 paneBalance({ on(event, handler) { handlers.set(event, handler); } });
-assert.deepEqual([...handlers.keys()].sort(), ["message_end", "session_shutdown", "tool_result"]);
-handlers.get("session_shutdown")();
+assert.deepEqual([...handlers.keys()].sort(), ["session_shutdown", "session_start"],
+  "only a Pi starting or quitting rebalances; dispatch tools and results do not");
+handlers.get("session_start")({ reason: "reload" });
+handlers.get("session_shutdown")({ reason: "reload" });
 if (previous === undefined) delete process.env.HERDR_PANE_ID;
 else process.env.HERDR_PANE_ID = previous;
 
