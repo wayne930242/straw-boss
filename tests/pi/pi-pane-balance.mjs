@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import paneBalance, { balanceAfterClose, balanceTab, planBalance, spawnAfterClose } from "../../pi/extensions/pane-balance.ts";
+import paneBalance, { spawnAfterClose } from "../../pi/extensions/pane-balance.ts";
+import { balanceAfterClose, balanceTab, planBalance } from "../../pi/scripts/pane-balance.mjs";
 
 const rect = (x, y, width, height) => ({ x, y, width, height });
 
@@ -124,7 +125,7 @@ const closing = (goneAfter) => {
   return { run, laidOut };
 };
 const closed = closing(3);
-await balanceAfterClose("w1", "w:t9", { run: closed.run, lockRoot, pollMs: 1, waitMs: 1000 });
+await balanceAfterClose("w1", "w:t1", { run: closed.run, lockRoot, pollMs: 1, waitMs: 1000 });
 assert.deepEqual(closed.laidOut, ["lead", "lead"], "the tab the pane left is balanced once it closes");
 
 const kept = closing(Infinity);

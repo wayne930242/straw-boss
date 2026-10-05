@@ -80,11 +80,14 @@ export function planBalance(layout) {
     const start = (pane) => (horizontal ? pane.rect.x : pane.rect.y);
     // Herdr moves the named edge of the pane: grow the first side from its far edge,
     // or grow the second side from its near edge.
-    const pane = delta > 0
-      ? members.get(`${path}0`).reduce((best, pane) => (edge(pane) > edge(best) ? pane : best))
-      : members.get(`${path}1`).reduce((best, pane) => (start(pane) < start(best) ? pane : best));
-    const direction = delta > 0 ? (horizontal ? "right" : "down") : (horizontal ? "left" : "up");
-    resizes.push({ pane: pane.pane_id, direction, amount: Number(Math.abs(delta).toFixed(4)) });
+    const amount = Number(Math.abs(delta).toFixed(4));
+    if (delta > 0) {
+      const pane = members.get(`${path}0`).reduce((best, pane) => (edge(pane) > edge(best) ? pane : best));
+      resizes.push({ pane: pane.pane_id, direction: horizontal ? "right" : "down", amount });
+    } else {
+      const pane = members.get(`${path}1`).reduce((best, pane) => (start(pane) < start(best) ? pane : best));
+      resizes.push({ pane: pane.pane_id, direction: horizontal ? "left" : "up", amount });
+    }
   }
   return resizes;
 }
@@ -145,34 +148,23 @@ export async function balanceTab(paneId, { run = herdr, lockRoot = LOCK_ROOT } =
   });
 }
 
-/** Whether Herdr still has the pane; `undefined` when Herdr could not answer. */
-async function paneTab(paneId, run) {
-  try {
-    return /** @type {string} */ (JSON.parse(await run(["pane", "get", paneId])).result.pane.tab_id);
-  } catch (error) {
-    // Herdr reports a missing pane on stderr.
-    if (String(error?.stderr ?? "").includes("pane_not_found")) return null;
-    return undefined;
-  }
-}
+/** Whether Herdr reports the pane gone; it says so on stderr. Any other failure counts as open. */
+const paneGone = (paneId, run) =>
+  run(["pane", "get", paneId]).then(() => false, (error) => String(error?.stderr ?? "").includes("pane_not_found"));
 
 /**
- * Waits for `paneId` to close, then equalises the tab it left. The pane may already be gone
- * when this starts, so `knownTab` names the tab the Pi last saw. A pane that outlives its
- * Pi, such as a shell the user keeps, changes no layout and is left alone.
+ * Waits for `paneId` to close, then equalises `tabId`, the tab the quitting Pi was in.
+ * A pane that outlives its Pi, such as a shell the user keeps, changes no layout and is left alone.
  * @param {string} paneId
- * @param {string | undefined} knownTab
+ * @param {string | undefined} tabId
  * @param {{ run?: Run, lockRoot?: string, pollMs?: number, waitMs?: number }} [options]
  */
-export async function balanceAfterClose(paneId, knownTab, { run = herdr, lockRoot = LOCK_ROOT, pollMs = POLL_MS, waitMs = CLOSE_WAIT_MS } = {}) {
-  let current = await paneTab(paneId, run);
-  const tabId = current || knownTab;
+export async function balanceAfterClose(paneId, tabId, { run = herdr, lockRoot = LOCK_ROOT, pollMs = POLL_MS, waitMs = CLOSE_WAIT_MS } = {}) {
   if (!tabId) return;
   const deadline = Date.now() + waitMs;
-  while (current !== null) {
+  while (!(await paneGone(paneId, run))) {
     if (Date.now() > deadline) return;
     await sleep(pollMs);
-    current = await paneTab(paneId, run);
   }
   const panes = /** @type {{ pane_id: string, tab_id: string }[]} */ (JSON.parse(await run(["pane", "list"])).result.panes);
   const anchor = panes.find((pane) => pane.tab_id === tabId);
