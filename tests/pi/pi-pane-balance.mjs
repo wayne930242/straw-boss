@@ -146,15 +146,20 @@ assert.deepEqual(spawned[0].args.slice(1), ["after-close", "w1", "w:t1"]);
 assert.equal(spawned[0].options.detached, true, "the helper outlives the quitting Pi");
 
 const handlers = new Map();
+const loadBalanced = [];
+const register = () => paneBalance({ on(event, handler) { handlers.set(event, handler); } }, async (pane) => { loadBalanced.push(pane); });
 const previous = process.env.HERDR_PANE_ID;
 delete process.env.HERDR_PANE_ID;
-paneBalance({ on(event, handler) { handlers.set(event, handler); } });
+register();
 assert.equal(handlers.size, 0, "outside Herdr the extension registers nothing");
+assert.deepEqual(loadBalanced, []);
 process.env.HERDR_PANE_ID = "lead";
-paneBalance({ on(event, handler) { handlers.set(event, handler); } });
-assert.deepEqual([...handlers.keys()].sort(), ["session_shutdown", "session_start"],
+register();
+assert.deepEqual(loadBalanced, ["lead"], "a starting Pi balances its tab as soon as it loads");
+register();
+assert.deepEqual(loadBalanced, ["lead"], "a /reload in the same process does not balance again");
+assert.deepEqual([...handlers.keys()], ["session_shutdown"],
   "only a Pi starting or quitting rebalances; dispatch tools and results do not");
-handlers.get("session_start")({ reason: "reload" });
 handlers.get("session_shutdown")({ reason: "reload" });
 if (previous === undefined) delete process.env.HERDR_PANE_ID;
 else process.env.HERDR_PANE_ID = previous;

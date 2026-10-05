@@ -16,13 +16,19 @@ export function spawnAfterClose(paneId: string, tabId = process.env.HERDR_TAB_ID
   child.unref();
 }
 
+// Survives /reload, which loads extensions again in the same process.
+const STARTED = Symbol.for("straw-boss.pane-balance.started");
+
 /** Equalises a Herdr tab only when a Pi starts in it or quits out of it. */
-export default function paneBalance(pi: ExtensionAPI): void {
+export default function paneBalance(pi: ExtensionAPI, balance = balanceTab): void {
   const paneId = process.env.HERDR_PANE_ID;
   if (!paneId) return;
-  pi.on("session_start", (event) => {
-    if (event.reason === "startup") balanceTab(paneId).catch(() => {});
-  });
+  // Balance on load: session_start waits for every other extension's handler, about ten seconds later.
+  const host = globalThis as { [STARTED]?: boolean };
+  if (!host[STARTED]) {
+    host[STARTED] = true;
+    balance(paneId).catch(() => {});
+  }
   pi.on("session_shutdown", (event) => {
     if (event.reason === "quit") spawnAfterClose(paneId);
   });
