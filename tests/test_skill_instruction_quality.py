@@ -484,7 +484,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("assigns a fresh-context reviewer to a change-set that touches a shared contract", graph)
         self.assertIn("confirms the completion reference", graph)
         self.assertIn("Reuse an existing disposition for the same change-set", graph)
-        self.assertIn("unresolved findings reopen", graph)
+        self.assertIn("re-checks only the P0/P1 fix diff, once", graph)
         shipping = normalized(ROOT / "skills/shipping-task/SKILL.md")
         self.assertIn("For each completed task", shipping)
         self.assertIn("current-agent task applies that checkpoint here", shipping)
@@ -547,11 +547,11 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("Number the items inside each level from 1", source)
         self.assertIn("cites the findings it answers as (Alert 1) or (Warn 2)", source)
         self.assertIn("Every item is one line", source)
-        self.assertIn("the only level that asks the user anything", source)
+        self.assertIn("user-owned decision", source)
         self.assertIn("Alert-derived items first, then Warn-derived", source)
         self.assertIn("harness-native ask-question interface", source)
         self.assertIn(
-            "Gather every open Next item -- this round's and any still undecided "
+            "Gather every open user-owned item -- this round's and any still undecided "
             "from an earlier round -- and ask about all of them together, each "
             "with its context, its options, and a recommendation, using as many "
             "calls to the harness-native ask-question interface as its per-call "
@@ -561,9 +561,9 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertNotIn(
             "no item is presented alone or left as trailing prose", source
         )
-        self.assertIn("State explicitly when no Next item is open", source)
+        self.assertIn("State explicitly when no user-owned item is open", source)
         self.assertIn("A declined item is recorded with the user's decision", source)
-        self.assertIn("The accepted items enter", source)
+        self.assertIn("The execution choices and the accepted user-owned items enter", source)
         self.assertIn("together as one round", source)
         self.assertIn("../boss-say/SKILL.md#route-the-work", source)
         # The close-out has one owner, reached from the entry point and the
@@ -585,7 +585,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
         self.assertIn("carries its own", graph)
         # The anchor names the app's own verification commands, which is what
         # makes one run over the group's integrated result the cheaper shape.
-        self.assertIn("test script, lint, and type check", graph)
+        self.assertIn("smallest check that can go red before the change", graph)
         self.assertIn("A repo-wide command returns the same verdict", graph)
 
         boss_say = normalized(ROOT / "skills/boss-say/SKILL.md")

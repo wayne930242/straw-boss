@@ -12,9 +12,8 @@ Workers are Pi sessions launched by `subagent` from `pi-herdr-agents`; it checks
 
 ### Resolve the worker setup
 
-Pick the `pi-herdr-agents` role and thinking level for the worker.
-A work route in the root `AGENTS.md` of the repository holding the apps configuration may map a kind of task to a role; otherwise pick the role whose purpose matches the task: `scout` for read-only investigation, `reviewer` for a checkpoint review, `worker` for other source changes.
-The user sets each role's model in `pi-herdr-agents` configuration, so leave `model` unset unless the user chose one explicitly. Set `thinking` for the work: `low` for bounded mechanical tasks, `medium` for ordinary implementation and review, `high` for architecture, security, or hard diagnosis.
+Apply the role and thinking rules in the user instructions, then the work route in the root `AGENTS.md` of the repository holding the apps configuration, which may map a kind of task to a role.
+Leave `model` unset unless the user chose one explicitly.
 State the selected role, thinking level, and reason.
 
 ### Prepare the checkout
@@ -52,7 +51,7 @@ Name a method skill only when the user explicitly requested it.
 
 The brief ends with this worker contract:
 
-> Work in this checkout and follow its own instructions. When you need a decision that the authorizations above do not cover, call `caller_ping` with the question, the options, and your recommendation, then stop; the answer arrives when this session resumes. Finish with one final message; only that message is delivered, so it carries the whole result even when a monitor wakes you after you have reported. For a source change, give the completion reference (commit, MR/PR, or merge), the evidence references for the anchor's checkpoint, any push of your own feature branch, and the review disposition when this brief assigns the review checkpoint to you. For an investigation or audit, give the explanatory result with its evidence references. On failure, give the failure and its evidence.
+> Work in this checkout and follow its own instructions. When you need a decision that the authorizations above do not cover, call `caller_ping`, then stop; the answer arrives when this session resumes. Give the review disposition in your final message when this brief assigns the review checkpoint to you. For an investigation or audit, give evidence references.
 
 ### Launch
 
@@ -75,17 +74,17 @@ Each delivered event starts one [scheduling round](../boss-say/SKILL.md#plan-and
 A dispatch is `done` only when every item below holds:
 
 1. The result carries what the brief asked for: a completion reference for a source change, or an explanatory result with evidence references for an investigation or audit.
-2. The task's checkpoint has run. A source change resolves the [review checkpoint](../choosing-graph/SKILL.md#review-checkpoint) and records a disposition against the completion reference; a task under a shared checkpoint takes its disposition from that checkpoint task. An adversarial-review anchor launches one fresh-context `subagent` in an ordinary pane, named `<task>-review`, with the review tier; its brief carries the requirement, the result, and its evidence references, and asks for a verdict of pass, pass with nits, or fail with each finding's evidence. Nits on a read-only result are corrected in the report to the user.
+2. The task's checkpoint has run. A source change resolves the [review checkpoint](../choosing-graph/SKILL.md#review-checkpoint) and records a disposition against the completion reference; a task under a shared checkpoint takes its disposition from that checkpoint task. An adversarial-review anchor launches one fresh-context `subagent` in an ordinary pane, named `<task>-review`, with the `reviewer` role; its brief carries the requirement, the result, and its evidence references, and asks for a verdict of pass, pass with nits, or fail with each finding's evidence. Nits on a read-only result are corrected in the report to the user.
 3. Open review findings are resolved or returned as fix tasks.
 
-A task under a shared checkpoint that meets item 1 is `delivered`: note it on its todo item and keep its worktree until the checkpoint task returns; that result then settles items 2 and 3 for every covered task.
+A task under a shared checkpoint that meets item 1 is `delivered`, as [boss-say](../boss-say/SKILL.md#plan-and-schedule) defines; keep its worktree until the checkpoint task returns.
 
 Then update the originating ticket as [shipping-task](../shipping-task/SKILL.md#complete-the-lifecycle) directs, while the worktree still exists for a tracker that reads its commit there; remove a worktree this session created with `git -C "<app_dir>" worktree remove "<absolute-worktree-path>"`.
 
 Every result settles its todo item:
 
 - `done`: mark the item `completed`, which unblocks its dependents.
-- `delivered`: keep it `in_progress` with the note above until the checkpoint task returns.
+- `delivered`: keep it `in_progress`, noted, until the checkpoint task returns.
 - A result missing item 1, or a failed checkpoint: set the item back to `pending` with the failure in its description and add a fix task it depends on; its dependents stay blocked.
 `pi-herdr-agents` closes an ordinary worker pane after delivery.
 

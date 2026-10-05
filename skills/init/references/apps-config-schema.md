@@ -40,6 +40,7 @@ The single-app no-config branch applies when neither path exists.
       "forbidDirectCommit": false,
       "agentKind": null,
       "gitWorkflowSkill": null,
+      "standingMergeAuthorization": null,
       "localFiles": [
         {"path": ".env", "sensitive": true, "optional": false, "note": "carries live DB credentials"}
       ],
@@ -69,6 +70,7 @@ The single-app no-config branch applies when neither path exists.
 | `forbidDirectCommit` | boolean | no | Default `false`. When `true`, `shipping-task` only offers team-mode (worktree→MR) for this app, never a direct commit to its base branch. The selected mode follows the established lifecycle authorization. |
 | `agentKind` | string \| `null` | no | Which agent CLI a dispatch into this app defaults to (`"claude"`, `"codex"`, `"agy"`, ...). `null`/omitted means `"claude"`. `dispatching-work` can still override it for one dispatch (an explicit `--agent-kind`, or a task judged against the agent-routing policy in root `AGENTS.md` and `CLAUDE.md` if one exists) without changing this stored default. Applies equally to standalone, batch, and Plan tasks. |
 | `gitWorkflowSkill` | string \| `null` | no | Name of a project-level skill (in this app's own `.claude/skills/`) that already drives commit/MR/release mechanics. When set, `shipping-task` tells the agent to run that skill's steps instead of its own fallback. |
+| `standingMergeAuthorization` | object \| `null` | no | The user's recorded standing authorization to merge this app's work. Fields: `baseBranch` (string, the only branch it covers), `condition` (string, e.g. `"CI green"`), `production` (boolean, default `false`; production targets are asked every time, so a `true` here is ignored). `shipping-task` skips the merge question when the merge targets `baseBranch` and `condition` holds. Omit or `null` to ask each time. |
 | `localFiles` | array of objects | no | Gitignored files `git worktree add` won't check out, that a fresh worktree needs. Each entry: `path` (string, relative to `dir`), `sensitive` (boolean, default `false`), `optional` (boolean, default `false`; set `true` only when the app remains operable without it), `note` (string, optional). |
 | `crossAppSkills` | array of objects | no | Pointers to an existing project skill that already handles this app depending on another. Each entry: `withApp` (the other app's `name`), `skill` (the skill's name), `note` (string, optional). |
 

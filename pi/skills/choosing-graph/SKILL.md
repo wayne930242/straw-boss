@@ -5,7 +5,7 @@ description: Use at the start of Straw Boss work, and when its coordination shap
 
 ## Coordination graphs
 
-State the graph before work starts, using the first matching case:
+Default to single-loop and state nothing; state the graph only when it is fan-out or orchestrator-worker. Use the first matching case:
 
 - **single-loop** — one bounded task carried by one agent, including coordination of one dispatch.
 - **sub-agent fan-out/fan-in** — independent work branches run in subagents and their caller integrates the results. Work needing the target app's own harness uses an app-rooted dispatch.
@@ -21,7 +21,7 @@ The app's own development artifacts follow its local workflow.
 
 The main agent names the anchor and checkpoint; the worker and user choose the verification method inside that anchor.
 
-- **testing** — default for programming changes. Use the smallest credible seam that can go red before the change and the tests that reach the changed code, plus the app's own verification commands such as its test script, lint, and type check; escalate to integration or E2E according to the app's conventions.
+- **testing** — default for programming changes. Use the smallest check that can go red before the change and reaches the changed code. The repo-wide suite, lint, and type check belong to the shared checkpoint or the pre-merge run below, not to each task.
 - **pseudo-human** — a browser or computer operates the real interface, with screenshots and measurements as evidence.
 - **human** — the user operates or judges the delivered artifact. Ask about pseudo-human only when the user's risk judgment is unresolved.
 - **adversarial-review** — a fresh-context agent challenges the result against the requirement and evidence references. Use this for read-only work with no credible executable or operable checkpoint.
@@ -36,13 +36,13 @@ For a frontend human or pseudo-human checkpoint, name the address the user assig
 ## Review checkpoint
 
 Review one coherent programming change-set once, after implementation and primary verification.
-When naming the anchor, the main agent assigns a fresh-context reviewer to a change-set that touches a shared contract, authorization or permission data, a migration, several modules, or durable work, because author self-review has missed correctness findings there; any other change-set takes its disposition from the author's read of its own diff against the brief.
+When naming the anchor, the main agent assigns a fresh-context reviewer to a change-set that touches a shared contract, authorization or permission data, or a migration, because author self-review has missed correctness findings there; any other change-set takes its disposition from the author's read of its own diff against the brief.
 Correctness and contract findings return to the work loop, and nits receive an explicit disposition.
 
-A shared checkpoint belongs to the main agent: one [checkpoint task](../boss-say/SKILL.md#plan-and-schedule) exercises the anchor itself over the group's finished change-sets and reports its findings.
+A shared checkpoint belongs to the main agent and runs as a checkpoint task, as [boss-say](../boss-say/SKILL.md#plan-and-schedule) describes.
 
 The lifecycle owner confirms the completion reference and records the review disposition against it.
-Reuse an existing disposition for the same change-set; changed code or unresolved findings reopen the relevant check.
+Reuse an existing disposition for the same change-set. After fixes, the same reviewer re-checks only the P0/P1 fix diff, once; the author disposes of P2 and below.
 A task carrying its own checkpoint reaches it through [wrap-up](../dispatching-work/SKILL.md#wrap-up); current-agent work through [shipping-task](../shipping-task/SKILL.md#complete-the-lifecycle).
 
 **Complete when:** graph, anchor, and checkpoint are established; a completed programming change has its confirmed reference and review disposition.
