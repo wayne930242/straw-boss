@@ -481,7 +481,7 @@ class SkillInstructionQualityTests(unittest.TestCase):
     def test_review_policy_reuses_disposition_for_the_completed_change(self) -> None:
         graph = normalized(ROOT / "skills/choosing-graph/SKILL.md")
         self.assertIn("Review one coherent programming change-set once", graph)
-        self.assertIn("fresh-context reviewer examines the finished change-set directly", graph)
+        self.assertIn("assigns a fresh-context reviewer to a change-set that touches a shared contract", graph)
         self.assertIn("confirms the completion reference", graph)
         self.assertIn("Reuse an existing disposition for the same change-set", graph)
         self.assertIn("unresolved findings reopen", graph)
