@@ -209,6 +209,26 @@ try {
   assert.equal(duplicate.message.customType, "transferred_dispatch_notice", "a repeated delivery of one run stays suppressed");
   await restarted.handlers.get("session_shutdown")();
 
+  // A persistent specialist sends one result per task from the same session file: each new task reaches
+  // the parent, and only a repeated delivery of the same task is suppressed.
+  const specialistChild = join(home, "specialist-child.jsonl");
+  writeFileSync(specialistChild, "");
+  await restarted.handlers.get("tool_result")({
+    toolName: "subagent", isError: false,
+    details: { status: "started", id: "specialist", name: "specialist", task: "First", sessionFile: specialistChild },
+    input: { cwd: home },
+  }, restarted.ctx);
+  const taskResult = (task) => ({ role: "custom", customType: "subagent_result", content: task,
+    details: { sessionFile: specialistChild, task, logicalId: "specialist", generationId: "g1" } });
+  assert.equal(await restarted.handlers.get("message_end")({ type: "message_end", message: taskResult("task-1") }, restarted.ctx), undefined);
+  assert.equal(await restarted.handlers.get("message_end")({ type: "message_end", message: taskResult("task-2") }, restarted.ctx), undefined,
+    "a persistent specialist's second task result must reach the parent unchanged");
+  const specialist = JSON.parse(readFileSync(resumeLedger)).find((record) => record.id === "specialist");
+  assert.equal(specialist.status, "done");
+  assert.deepEqual(specialist.deliveredTasks, ["task-1", "task-2"]);
+  const repeatedTask = await restarted.handlers.get("message_end")({ type: "message_end", message: taskResult("task-2") }, restarted.ctx);
+  assert.equal(repeatedTask.message.customType, "transferred_dispatch_notice");
+
   // Resuming a session the ledger never saw records it so its result is tracked.
   const unknownChild = join(home, "unknown-child.jsonl");
   writeFileSync(unknownChild, "");

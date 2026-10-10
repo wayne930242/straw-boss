@@ -17,6 +17,8 @@ type Dispatch = {
   delivered?: boolean;
   /** Launches of this session file; subagent_resume reuses it, so each run delivers once. */
   runs?: number;
+  /** Task ids a persistent specialist already delivered; it sends one result per task from the same session file. */
+  deliveredTasks?: string[];
 };
 
 const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
@@ -333,6 +335,15 @@ export default function dispatchRecovery(pi: ExtensionAPI): void {
       const record = records.find((item) => item.sessionFile === message.details?.sessionFile);
       if (!record) return;
       const transferred = committedTransfer(record.id, ctx.sessionManager.getSessionId());
+      const persistentTask = message.details?.logicalId ? String(message.details.task ?? "") : undefined;
+      if (persistentTask && record.status !== "transferred" && !transferred && !record.deliveredTasks?.includes(persistentTask)) {
+        record.deliveredTasks = [...(record.deliveredTasks ?? []), persistentTask];
+        // A persistent task result carries no exit code; the specialist stays alive for the next task.
+        if (record.status === "running") record.status = message.details?.error ? "failed" : "done";
+        record.delivered = true;
+        writeLedger(ctx.sessionManager.getSessionId(), records);
+        return;
+      }
       if (record.status === "running" && !transferred) {
         record.status = message.details?.exitCode === 0 ? "done" : "failed";
         record.delivered = true;
