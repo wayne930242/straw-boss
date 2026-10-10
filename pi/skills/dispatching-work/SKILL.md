@@ -67,7 +67,7 @@ Each delivered event starts one [scheduling round](../boss-say/SKILL.md#plan-and
 |---|---|
 | `subagent_result` or `recovered_dispatch_result` | Check it against the brief, wrap up below, and update the dispatch's todo item before the round schedules anything else. |
 | `caller_ping` | Gather every pending decision from all workers, ask them together through `ask_user` with each one's context, options, and recommendation, then continue each worker with `subagent_resume` carrying its answer. The worker keeps its slot meanwhile. |
-| Stall notice | Interrupt the worker once with `subagent_interrupt` and ask for its result. If it stays idle, close its pane with `herdr pane close <pane_id>`, report it, and respawn only the work still missing. |
+| Stall notice | Interrupt the worker once with `subagent_interrupt`, which keeps it open, and ask for its result with `herdr pane send-text <pane_id> "<request>"` followed by `herdr pane send-keys <pane_id> enter`. If it stays idle, end it with `subagent_cancel`, report it, and respawn only the work still missing. `subagent_cancel` delivers one cancelled result and launches no fallback model; closing a live worker's pane counts as a failure and relaunches it on the next fallback model. |
 
 ## Wrap up
 

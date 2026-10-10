@@ -16,7 +16,9 @@ from pathlib import Path
 AGENT_DIR = Path(os.environ.get("PI_CODING_AGENT_DIR", str(Path.home() / ".pi/agent")))
 LEDGER_DIR = AGENT_DIR / "dispatch-ledger"
 HANDOFF_DIR = AGENT_DIR / "handoffs"
-SUBAGENT_EXTENSION = AGENT_DIR / "npm/node_modules/pi-herdr-agents/pi-extension/subagents/subagent-done.ts"
+HOST_PACKAGE = "pi-herdr-agents"
+# The child extension inside the host package: v3 layout first, then the v2 layout, so a rollback keeps reattach working.
+CHILD_EXTENSION_PATHS = ("maestro/adapters/pi/child/subagent-done.ts", "pi-extension/subagents/subagent-done.ts")
 # Pause between Herdr readiness polls; the attempt counts stay fixed, so tests
 # driving an instant fake Herdr shorten only the wall-clock budget.
 POLL_SECONDS = float(os.environ.get("PI_DISPATCH_POLL_SECONDS", "0.2"))
@@ -76,6 +78,37 @@ def lock_ledger(owner):
         yield
     finally:
         lock.rmdir()
+
+
+def host_package_dir(source):
+    """Map a settings.json package source to the directory pi installs it in."""
+    if source.startswith("npm:"):
+        name = source[4:]
+        name = name[:name.rindex("@")] if name.rfind("@") > 0 else name
+        return AGENT_DIR / "npm/node_modules" / name
+    if source.startswith(("git:", "https://", "http://", "ssh://", "git://")):
+        location = source.removeprefix("git:").split("://", 1)[-1]
+        host, _, path = location.partition("/")
+        head, _, repo = path.rpartition("/")
+        repo = repo.split("@", 1)[0].split("#", 1)[0].removesuffix(".git")
+        host = host.split("@", 1)[-1].replace(":", "/")
+        return AGENT_DIR / "git" / host / head / repo
+    return Path(source).expanduser()
+
+
+def subagent_extension():
+    """Find the child extension of the pi-herdr-agents package installed in this agent directory."""
+    settings = AGENT_DIR / "settings.json"
+    packages = json.loads(settings.read_text()).get("packages", []) if settings.exists() else []
+    sources = [entry if isinstance(entry, str) else entry.get("source", "") for entry in packages]
+    roots = [host_package_dir(source) for source in sources]
+    roots = [root for root in roots if root.name == HOST_PACKAGE]
+    for root in roots:
+        for relative in CHILD_EXTENSION_PATHS:
+            if (root / relative).is_file():
+                return root / relative
+    searched = ", ".join(str(root) for root in roots) or f"no {HOST_PACKAGE} entry in {settings}"
+    raise ValueError(f"{HOST_PACKAGE} child extension not found ({searched}); reinstall the package before reattaching")
 
 
 def herdr(*args):
@@ -149,6 +182,7 @@ def reattach(owner, dispatch_id):
     if item["status"] != "running" or dispatch_id in committed_dispatch_ids(owner):
         status = "transferred" if dispatch_id in committed_dispatch_ids(owner) else item["status"]
         raise ValueError(f"Dispatch is {status}; inspect its recorded session")
+    extension = subagent_extension()
     pane = item.get("paneId")
     available = pane_available(pane) if pane else None
     if pane and available is False:
@@ -178,9 +212,7 @@ def reattach(owner, dispatch_id):
         "PI_SUBAGENT_AUTO_EXIT": "1",
         "PI_SUBAGENT_SURFACE": pane,
     }
-    args = ["pi", "--session", item["sessionFile"]]
-    if SUBAGENT_EXTENSION.exists():
-        args += ["-e", str(SUBAGENT_EXTENSION)]
+    args = ["pi", "--session", item["sessionFile"], "-e", str(extension)]
     args += ["Continue the assigned task from this session. Report the result when complete."]
     command = "cd " + shlex.quote(item["cwd"]) + " && " + " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items()) + " " + shlex.join(args)
     herdr("pane", "run", pane, command)

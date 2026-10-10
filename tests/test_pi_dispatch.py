@@ -31,6 +31,12 @@ class DispatchCliTest(unittest.TestCase):
             ledger.parent.mkdir(parents=True)
             child = home / "child.jsonl"
             child.write_text("")
+            extension = agent / "git/github.com/owner/pi-herdr-agents/maestro/adapters/pi/child/subagent-done.ts"
+            extension.parent.mkdir(parents=True)
+            extension.write_text("")
+            (agent / "settings.json").write_text(json.dumps({"packages": [
+                "npm:other@1.0.0", "git:github.com/owner/pi-herdr-agents@abc123",
+            ]}))
             ledger.write_text(json.dumps([{
                 "id": "child-1", "name": "worker", "task": "Task", "cwd": str(home),
                 "sessionFile": str(child), "paneId": "w1:p2", "status": "running",
@@ -76,7 +82,8 @@ else:
             self.assertIn("Resumed worker in w1:p2", call("reattach", "child-1"))
             self.assertIn("active dispatches: 1", call("handoff", "--cwd", str(home), "--summary", "Continue the task"))
             calls = [json.loads(line) for line in log.read_text().splitlines()]
-            self.assertTrue(any(args[:2] == ["pane", "run"] and "PI_SUBAGENT_SESSION" in args[-1] for args in calls))
+            self.assertTrue(any(args[:2] == ["pane", "run"] and "PI_SUBAGENT_SESSION" in args[-1] and
+                                f"-e {extension}" in args[-1] for args in calls))
             self.assertTrue(any(args[:2] == ["tab", "create"] and "PI_HANDOFF_ID=" in " ".join(args) for args in calls))
             self.assertTrue(any(args[:2] == ["tab", "create"] and args[args.index("--workspace") + 1] == "w9" for args in calls))
             self.assertTrue(any(args[:2] == ["agent", "start"] and "--kind" in args for args in calls))
@@ -179,12 +186,61 @@ class HandoffCommitTest(unittest.TestCase):
             return "test:pane"
 
         with patch.object(DISPATCH, "new_pane", side_effect=create_pane), \
+             patch.object(DISPATCH, "subagent_extension", return_value=self.home / "subagent-done.ts"), \
              patch.object(DISPATCH, "herdr", return_value={}), redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(ValueError, "changed while opening"):
                 DISPATCH.reattach("owner", "worker")
         worker.join(timeout=2)
         self.assertFalse(worker.is_alive())
         self.assertEqual(json.loads(self.owner_file.read_text())[0]["status"], "done")
+
+
+class SubagentExtensionTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.agent = Path(self.temporary.name)
+        patcher = patch.object(DISPATCH, "AGENT_DIR", self.agent)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def install(self, packages, relative):
+        (self.agent / "settings.json").write_text(json.dumps({"packages": packages}))
+        if relative:
+            path = self.agent / relative
+            path.parent.mkdir(parents=True)
+            path.write_text("")
+            return path
+
+    def test_resolves_the_v3_child_of_a_git_pin(self):
+        path = self.install(["git:github.com/owner/pi-herdr-agents@1616f37"],
+                            "git/github.com/owner/pi-herdr-agents/maestro/adapters/pi/child/subagent-done.ts")
+        self.assertEqual(DISPATCH.subagent_extension(), path)
+
+    def test_resolves_the_v2_child_of_an_npm_package_entry(self):
+        path = self.install([{"source": "npm:pi-herdr-agents@2.0.5", "skills": []}],
+                            "npm/node_modules/pi-herdr-agents/pi-extension/subagents/subagent-done.ts")
+        self.assertEqual(DISPATCH.subagent_extension(), path)
+
+    def test_ignores_a_stale_copy_of_an_uninstalled_source(self):
+        self.install(["git:github.com/owner/pi-herdr-agents@1616f37"],
+                     "npm/node_modules/pi-herdr-agents/pi-extension/subagents/subagent-done.ts")
+        with self.assertRaisesRegex(ValueError, "child extension not found"):
+            DISPATCH.subagent_extension()
+
+    def test_reattach_fails_before_opening_a_pane_when_the_child_is_missing(self):
+        self.install([], None)
+        ledger = self.agent / "dispatch-ledger"
+        ledger.mkdir()
+        (ledger / "owner.json").write_text(json.dumps([{
+            "id": "worker", "name": "worker", "task": "Finish", "cwd": str(self.agent),
+            "sessionFile": str(self.agent / "child.jsonl"), "status": "running",
+        }]))
+        with patch.object(DISPATCH, "LEDGER_DIR", ledger), patch.object(DISPATCH, "HANDOFF_DIR", self.agent / "handoffs"), \
+             patch.object(DISPATCH, "herdr") as herdr:
+            with self.assertRaisesRegex(ValueError, "no pi-herdr-agents entry"):
+                DISPATCH.reattach("owner", "worker")
+        herdr.assert_not_called()
 
 
 class HandoffReceiverStartTest(unittest.TestCase):
