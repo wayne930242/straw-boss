@@ -83,7 +83,7 @@ else:
             self.assertIn("active dispatches: 1", call("handoff", "--cwd", str(home), "--summary", "Continue the task"))
             calls = [json.loads(line) for line in log.read_text().splitlines()]
             self.assertTrue(any(args[:2] == ["pane", "run"] and "PI_SUBAGENT_SESSION" in args[-1] and
-                                f"-e {extension}" in args[-1] for args in calls))
+                                f"-e {extension}" in args[-1] and f"PI_CODING_AGENT_DIR={agent}" in args[-1] for args in calls))
             self.assertTrue(any(args[:2] == ["tab", "create"] and "PI_HANDOFF_ID=" in " ".join(args) for args in calls))
             self.assertTrue(any(args[:2] == ["tab", "create"] and args[args.index("--workspace") + 1] == "w9" for args in calls))
             self.assertTrue(any(args[:2] == ["agent", "start"] and "--kind" in args for args in calls))

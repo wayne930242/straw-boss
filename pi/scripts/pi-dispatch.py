@@ -212,6 +212,9 @@ def reattach(owner, dispatch_id):
         "PI_SUBAGENT_AUTO_EXIT": "1",
         "PI_SUBAGENT_SURFACE": pane,
     }
+    # A Herdr pane does not inherit the owner's environment; keep the child on the owner's agent directory.
+    if "PI_CODING_AGENT_DIR" in os.environ:
+        env["PI_CODING_AGENT_DIR"] = str(AGENT_DIR)
     args = ["pi", "--session", item["sessionFile"], "-e", str(extension)]
     args += ["Continue the assigned task from this session. Report the result when complete."]
     command = "cd " + shlex.quote(item["cwd"]) + " && " + " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items()) + " " + shlex.join(args)
