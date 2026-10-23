@@ -416,7 +416,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
                 ),
             ],
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -435,7 +435,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         fake_claude.chmod(0o755)
         env = {
             **os.environ,
-            "HOME": str(self.home),
+            "HOME": str(self.home), "USERPROFILE": str(self.home),
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
         }
 
@@ -671,7 +671,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
             input=json.dumps({"session_id": instruction["session_id"]}),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -693,7 +693,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
             input=json.dumps({"conversationId": "test-agy-conv-123"}),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -718,7 +718,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
             input=json.dumps({"session_id": instruction["session_id"]}),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -751,7 +751,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
             input=json.dumps({"session_id": instruction["session_id"]}),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -776,7 +776,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
             input=json.dumps({"session_id": instruction["session_id"]}),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -803,7 +803,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
             input=json.dumps({"session_id": instruction["session_id"]}),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -845,7 +845,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
                 [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
                 input=json.dumps({"session_id": "worker-session"}),
                 cwd=ROOT,
-                env={**os.environ, "HOME": str(self.home)},
+                env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -875,7 +875,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "dispatched-agent-stop-guard.py")],
             input=json.dumps({"session_id": session_id}),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -983,7 +983,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         # directory. Resolving the script relative to that cwd either exits 127 or
         # runs an unrelated file that happens to sit at scripts/<same-name>.
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())
-        env = {**os.environ, "HOME": str(self.home)}
+        env = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)}
         env.pop("CLAUDE_PLUGIN_ROOT", None)
 
         session_dir = self.home / "session"
@@ -1023,7 +1023,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())
         env = {
             **os.environ,
-            "HOME": str(self.home),
+            "HOME": str(self.home), "USERPROFILE": str(self.home),
             "CLAUDE_PLUGIN_ROOT": str(ROOT),
         }
 
@@ -1047,7 +1047,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "orchestrator-priming.py")],
             input=json.dumps(payload),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,
@@ -1092,7 +1092,7 @@ class DispatchedAgentLifecycleContractTests(DispatchedAgentLifecycleFixture, uni
             [sys.executable, str(SCRIPTS / "orchestrator-priming.py")],
             input=json.dumps({"session_id": "main-session-with-no-dispatch"}),
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=10,

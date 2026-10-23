@@ -860,7 +860,7 @@ class OrchestratorDirectoryTests(DispatchedAgentLifecycleFixture, unittest.TestC
         )
         result = subprocess.run(
             [sys.executable, "-c", code, json.dumps(record), new_session],
-            env={**os.environ, "HOME": str(self.home), "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "scripts")},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home), "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "scripts")},
             capture_output=True,
             text=True,
         )

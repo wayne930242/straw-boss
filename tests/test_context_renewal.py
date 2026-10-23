@@ -9,6 +9,7 @@ import time
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -42,7 +43,7 @@ def agy_generation(uncached: int, cached: int | None) -> bytes:
 
 class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
     def env(self, **extra: str) -> dict[str, str]:
-        env = {**os.environ, "HOME": str(self.home)}
+        env = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)}
         env.pop("HERDR_PANE_ID", None)
         env.update(extra)
         return env
@@ -119,12 +120,8 @@ class ContextRenewalTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
             connection.execute("INSERT INTO gen_metadata VALUES (1, ?, 0)", (agy_generation(1000, 205_000),))
         payload = {"conversationId": "conv-1"}
         self.assertEqual(renewal.payload_agent_kind(payload), "agy")
-        original_home = os.environ.get("HOME")
-        os.environ["HOME"] = str(self.home)
-        try:
+        with patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}):
             self.assertEqual(renewal.context_tokens(payload, "agy"), 206_000)
-        finally:
-            os.environ["HOME"] = original_home or ""
 
     # --- stop guard ---
 

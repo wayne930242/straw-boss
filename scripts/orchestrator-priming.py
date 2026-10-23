@@ -58,7 +58,7 @@ def dispatched_instruction(session_id: str) -> dict[str, object] | None:
                 payload = json.loads(path.read_text())
             except (OSError, json.JSONDecodeError):
                 continue
-            if payload.get("session_id") == session_id:
+            if isinstance(payload, dict) and payload.get("session_id") == session_id:
                 return payload
     return None
 
@@ -134,6 +134,8 @@ def main() -> int:
     except json.JSONDecodeError:
         return 0  # never block session start over a malformed hook payload
 
+    if not isinstance(payload, dict):
+        return 0
     text = priming_text(payload)
     if text is None:
         return 0

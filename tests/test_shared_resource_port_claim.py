@@ -52,7 +52,7 @@ class SharedResourcePortClaimTests(unittest.TestCase):
         return subprocess.run(
             [sys.executable, str(SCRIPTS / "claim-resource.py"), *args],
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=30,
@@ -198,7 +198,7 @@ class SharedResourcePortClaimTests(unittest.TestCase):
         result = subprocess.run(
             release_args,
             cwd=ROOT,
-            env={**os.environ, "HOME": str(self.home)},
+            env={**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)},
             capture_output=True,
             text=True,
             timeout=30,

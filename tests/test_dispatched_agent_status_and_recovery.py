@@ -810,7 +810,7 @@ class DispatchedAgentStatusAndRecoveryTests(DispatchedAgentLifecycleFixture, uni
         fake_bin, capture = self.install_fake_herdr()
         env = {
             **os.environ,
-            "HOME": str(self.home),
+            "HOME": str(self.home), "USERPROFILE": str(self.home),
             "CODEX_THREAD_ID": "worker-session",
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERDR_CAPTURE": str(capture),

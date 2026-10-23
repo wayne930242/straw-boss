@@ -44,7 +44,8 @@ def find_active_instruction(session_id: str) -> tuple[Path, dict[str, Any]] | No
         except (OSError, json.JSONDecodeError):
             continue
         if (
-            payload.get("session_id") == session_id
+            isinstance(payload, dict)
+            and payload.get("session_id") == session_id
             and payload.get("status") == "in-progress"
             and "task" in payload
         ):
@@ -60,8 +61,10 @@ def has_valid_report(instruction_path: Path, instruction: dict[str, Any]) -> boo
         payload = load_json(path)
     except (OSError, json.JSONDecodeError):
         return False
+    if not isinstance(payload, dict):
+        return False
     status = payload.get("status")
-    if status not in VALID_REPORTED_STATUSES:
+    if not isinstance(status, str) or status not in VALID_REPORTED_STATUSES:
         return False
     if status in TERMINAL_STATUSES:
         return True
@@ -122,6 +125,8 @@ def main() -> int:
     try:
         hook_input = json.load(sys.stdin)
     except json.JSONDecodeError:
+        return 0
+    if not isinstance(hook_input, dict):
         return 0
     session_id = hook_input.get("session_id") or hook_input.get("conversationId")
     if not session_id:

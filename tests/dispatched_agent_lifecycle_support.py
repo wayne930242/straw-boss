@@ -29,7 +29,7 @@ class DispatchedAgentLifecycleFixture:
     ) -> subprocess.CompletedProcess[str]:
         env = {
             **os.environ,
-            "HOME": str(self.home),
+            "HOME": str(self.home), "USERPROFILE": str(self.home),
             # Fake callers have their own thread identity, independent of the
             # real Codex session running the suite.
             "CODEX_THREAD_ID": "worker-session",

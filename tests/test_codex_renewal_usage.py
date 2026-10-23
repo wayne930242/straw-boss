@@ -35,7 +35,7 @@ def compacted_row() -> dict:
 
 class CodexRenewalUsageTests(DispatchedAgentLifecycleFixture, unittest.TestCase):
     def env(self, **extra: str) -> dict[str, str]:
-        env = {**os.environ, "HOME": str(self.home), "STRAW_BOSS_HOME": str(self.home / ".straw-boss")}
+        env = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home), "STRAW_BOSS_HOME": str(self.home / ".straw-boss")}
         env.pop("HERDR_PANE_ID", None)
         env.pop("STRAW_BOSS_JEV", None)
         env.pop("TYPESAFE_API_KEY", None)

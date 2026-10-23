@@ -173,7 +173,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         *args: str,
         extra_env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        env = {**os.environ, "HOME": str(self.home), "CODEX_THREAD_ID": "worker-session"}
+        env = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home), "CODEX_THREAD_ID": "worker-session"}
         if extra_env:
             env.update(extra_env)
         return subprocess.run(
@@ -383,16 +383,16 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
             json.dumps({"status": "awaiting-main-agent", "note": "need input", "timestamp": "1"})
         )
         seen: dict[str, str] = {}
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}):
             first = watcher.collect_status_changes(self.plan_slug, seen)
         self.assertEqual([event["status"] for event in first], ["awaiting-main-agent"])
 
         status_path.write_text(json.dumps({"status": "done", "note": "resumed", "timestamp": "2"}))
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}):
             second = watcher.collect_status_changes(self.plan_slug, seen)
         self.assertEqual([event["status"] for event in second], ["done"])
 
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}):
             recovered = watcher.collect_status_changes(self.plan_slug, {})
         self.assertEqual([event["status"] for event in recovered], ["done"])
 
@@ -406,12 +406,12 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
         status_path = self.plan_dir / "status" / "t1.json"
         status_path.write_text('{"status": "done"')
         seen: dict[str, str] = {}
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}):
             self.assertEqual(watcher.collect_status_changes(self.plan_slug, seen), [])
         self.assertEqual(seen, {})
 
         status_path.write_text(json.dumps({"status": "done", "note": "complete"}))
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}):
             recovered = watcher.collect_status_changes(self.plan_slug, seen)
         self.assertEqual([event["status"] for event in recovered], ["done"])
 
@@ -424,7 +424,7 @@ class CodexPlanOrchestrationTests(unittest.TestCase):
 
         status_path = self.plan_dir / "status" / "t1.json"
         status_path.write_text(json.dumps({"task_id": "t2", "status": "done"}))
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}):
             events = watcher.collect_status_changes(self.plan_slug, {})
         self.assertEqual(events[0]["task_id"], "t1")
 
