@@ -148,7 +148,11 @@ def current_agent(agents: list[dict[str, Any]]) -> dict[str, Any]:
     pane_id = os.environ.get("HERDR_PANE_ID")
     if not pane_id:
         raise ValueError(
-            "the orchestrator directory needs HERDR_PANE_ID; run this from inside a herdr pane"
+            "the orchestrator directory needs inherited HERDR_PANE_ID in this command process; "
+            "run this from inside a Herdr pane. If already in Herdr, check the launcher "
+            "and tool-shell environment: opening another session alone may repeat the failure. "
+            "Do not infer or set the pane id from focus or cwd. "
+            "See docs/herdr-identity-troubleshooting.md"
         )
     for agent in agents:
         if str(agent.get("pane_id")) == pane_id:
