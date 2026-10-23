@@ -420,6 +420,84 @@ def validate_current_sender(endpoint: Endpoint) -> None:
         validate_live_session(endpoint)
 
 
+def _windows_process_parents() -> dict[int, int]:
+    """Read the native process snapshot, without requiring Unix tools on PATH."""
+    import ctypes
+    from ctypes import wintypes
+
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", wintypes.LONG),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * 260),
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    snapshot = kernel.CreateToolhelp32Snapshot
+    snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    snapshot.restype = wintypes.HANDLE
+    first = kernel.Process32FirstW
+    next_entry = kernel.Process32NextW
+    for function in (first, next_entry):
+        function.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
+        function.restype = wintypes.BOOL
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    handle = snapshot(0x00000002, 0)  # TH32CS_SNAPPROCESS
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        entry = ProcessEntry()
+        entry.dwSize = ctypes.sizeof(entry)
+        if not first(handle, ctypes.byref(entry)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        parents = {}
+        while True:
+            parents[entry.th32ProcessID] = entry.th32ParentProcessID
+            if not next_entry(handle, ctypes.byref(entry)):
+                error = ctypes.get_last_error()
+                if error != 18:  # ERROR_NO_MORE_FILES
+                    raise ctypes.WinError(error)
+                return parents
+    finally:
+        close(handle)
+
+
+def _windows_process_created(pid: int) -> int:
+    """Return native creation time so recycled parent PIDs cannot prove ancestry."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    open_process = kernel.OpenProcess
+    open_process.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    open_process.restype = wintypes.HANDLE
+    times = kernel.GetProcessTimes
+    times.argtypes = [wintypes.HANDLE, *([ctypes.POINTER(wintypes.FILETIME)] * 4)]
+    times.restype = wintypes.BOOL
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    handle = open_process(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        values = [wintypes.FILETIME() for _ in range(4)]
+        if not times(handle, *(ctypes.byref(value) for value in values)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return (values[0].dwHighDateTime << 32) | values[0].dwLowDateTime
+    finally:
+        close(handle)
+
+
 def validate_current_process_in_pane(pane_id: str) -> None:
     """Bind a destructive pane-scoped action to the caller's real process tree."""
     current_pane = os.environ.get("HERDR_PANE_ID")
@@ -436,17 +514,36 @@ def validate_current_process_in_pane(pane_id: str) -> None:
         {
             process.get("pid")
             for process in foreground
-            if isinstance(process, dict) and isinstance(process.get("pid"), int)
+            if isinstance(process, dict)
+            and type(process.get("pid")) is int
+            and process["pid"] > 1
         }
         if isinstance(foreground, list)
         else set()
     )
     ancestors: set[int] = set()
     pid = os.getpid()
+    try:
+        windows_parents = _windows_process_parents() if os.name == "nt" else None
+    except OSError as exc:
+        raise ValueError("could not validate the caller process tree") from exc
     for _ in range(64):
         if pid <= 1 or pid in ancestors:
             break
         ancestors.add(pid)
+        if windows_parents is not None:
+            if pid in foreground_pids:
+                return
+            parent = windows_parents.get(pid, 0)
+            if parent <= 1 or parent not in windows_parents:
+                break
+            try:
+                if _windows_process_created(parent) > _windows_process_created(pid):
+                    break
+            except OSError as exc:
+                raise ValueError("could not validate the caller process tree") from exc
+            pid = parent
+            continue
         try:
             result = subprocess.run(
                 ["ps", "-o", "ppid=", "-p", str(pid)],
