@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 from straw_boss import jev_renewal
+from straw_boss.pi_host import inside_pi
 
 from straw_boss.renewal import (
     AGY_BLOCK_WINDOW_SECONDS,
@@ -66,6 +67,8 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
+        return 0
+    if inside_pi():
         return 0
     session = payload_session(payload)
     if not session:

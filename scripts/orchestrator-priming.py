@@ -35,6 +35,7 @@ from pathlib import Path
 from straw_boss.dispatch.state import load_json, straw_boss_root
 from straw_boss.herdr.session import validate_current_process_in_pane
 from straw_boss.net import join_section
+from straw_boss.pi_host import inside_pi
 from straw_boss.renewal import (
     adopt_renewed_session,
     claimable_record,
@@ -144,6 +145,8 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
         return 0  # never block session start over a malformed hook payload
+    if inside_pi():
+        return 0  # pi hosts this session; neither prime it nor claim a renewal record
 
     text = priming_text(payload)
     if text is None:

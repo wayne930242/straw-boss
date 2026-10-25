@@ -28,6 +28,8 @@ Every separate workroom is a Herdr pane, with the service, the current pane, and
 
 Pi runs a reduced workflow: `package.json` loads only [boss-say](../pi/skills/boss-say/SKILL.md) from `pi/skills/`, which defines how the main agent splits work, briefs `pi-herdr-agents` workers, relays their `caller_ping` questions, and reports. No Straw Boss script, extension, ledger, or watcher runs on Pi.
 
+Pi can still start Claude Code itself: pi-claude-bridge runs it through the Agent SDK as Pi's model backend, and a bridge that loads the user's Claude settings loads this plugin's hooks with them. Every hook script returns at once in that process (`scripts/straw_boss/pi_host.py`: `PI_CODING_AGENT=true`, which Pi sets on itself, together with an `sdk-*` `CLAUDE_CODE_ENTRYPOINT`), so Pi's model is never primed as a Claude Code main agent or asked to renew its context. A `claude` CLI session keeps every hook, even when it inherited Pi's environment.
+
 Claude Code and Codex main agents join Pi's straw net through `pi-straw-boss`: `scripts/straw_boss/net.py` runs from the SessionStart hook, starts the per-pane sidecar when the package, `pi-intercom`, and Herdr are present, and appends a short Straw net section to the orchestrator stance. It changes no dispatch script and no hook manifest, and it does nothing when any of them is missing.
 
 ## Components

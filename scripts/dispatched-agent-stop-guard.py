@@ -18,6 +18,7 @@ from straw_boss.dispatch.state import (
     resolve_instruction_status_path,
     straw_boss_root,
 )
+from straw_boss.pi_host import inside_pi
 from straw_boss.renewal import current_record_path, payload_agent_kind, pending_record_from
 
 
@@ -122,6 +123,8 @@ def main() -> int:
     try:
         hook_input = json.load(sys.stdin)
     except json.JSONDecodeError:
+        return 0
+    if inside_pi():
         return 0
     session_id = hook_input.get("session_id") or hook_input.get("conversationId")
     if not session_id:

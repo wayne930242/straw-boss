@@ -20,6 +20,8 @@ import json
 import re
 import sys
 
+from straw_boss.pi_host import inside_pi
+
 
 # A channel script counts where a launcher runs it -- after uv run, python,
 # or exec, or as a --script value -- so reading or grepping one stays open.
@@ -42,6 +44,8 @@ def main() -> int:
     try:
         hook_input = json.load(sys.stdin)
     except json.JSONDecodeError:
+        return 0
+    if inside_pi():
         return 0
     command = (hook_input.get("tool_input") or {}).get("command")
     if not hook_input.get("agent_id") or not isinstance(command, str):
