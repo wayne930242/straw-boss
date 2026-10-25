@@ -1,6 +1,6 @@
 {
   "name": "straw-boss",
-  "version": "0.34.0",
+  "version": "0.34.1",
   "private": true,
   "description": "Straw Boss for Claude Code, Codex, and Antigravity. On pi, use the pi-straw-boss package.",
   "license": "MIT"
